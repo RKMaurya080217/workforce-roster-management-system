@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WRMS - Enterprise Weekly Roster Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <!-- Toast Notification Stack -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Main Application Wrapper -->
+  <div id="appRoot">
+
+    <!-- ========================================== -->
+    <!-- 1. AUTHENTICATION / LOGIN VIEW             -->
+    <!-- ========================================== -->
+    <section id="loginView" class="auth-wrapper">
+      <div class="auth-container">
+        
+        <!-- Left Side: Login Form -->
+        <div class="auth-card">
+          <div class="auth-brand">
+            <div class="brand-logo">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <div>
+              <h1 class="brand-name">WRMS</h1>
+              <span class="brand-tagline">Workforce Roster Management</span>
+            </div>
+          </div>
+
+          <div class="auth-header">
+            <h2>Welcome back</h2>
+            <p>Sign in to access your administrative dashboard and roster controls.</p>
+          </div>
+
+          <form id="loginForm" class="auth-form">
+            <div class="form-group">
+              <label for="loginUsername">Username / Employee Code</label>
+              <div class="input-with-icon">
+                <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <input id="loginUsername" type="text" autocomplete="username" placeholder="e.g. admin" required value="admin">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <div class="label-row">
+                <label for="loginPassword">Password</label>
+              </div>
+              <div class="input-with-icon">
+                <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required value="Admin@123">
+                <button type="button" id="togglePasswordBtn" class="password-toggle" title="Show/Hide Password">
+                  <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button id="loginSubmitBtn" type="submit" class="btn btn-primary btn-block">
+              <span class="btn-text">Sign In to Dashboard</span>
+              <div class="spinner hidden"></div>
+            </button>
+          </form>
+
+          <!-- Quick Fill Demo Chips for Local Dev -->
+          <div class="demo-accounts-card">
+            <span class="demo-title">Development Fast-Login:</span>
+            <div class="demo-chips">
+              <button type="button" class="chip chip-admin" id="demoAdminBtn" title="Fill Admin Credentials">
+                <span class="chip-dot"></span> Admin (admin / Admin@123)
+              </button>
+              <button type="button" class="chip chip-emp" id="demoEmpBtn" title="Fill Employee Credentials">
+                <span class="chip-dot"></span> Staff (emp001 / password123)
+              </button>
+            </div>
+          </div>
+
+          <footer class="auth-footer">
+            <span>Weekly Roster Management System &bull; Production Ready</span>
+          </footer>
+        </div>
+
+        <!-- Right Side: Product Showcase Hero -->
+        <div class="auth-hero">
+          <div class="hero-content">
+            <div class="hero-badge">Enterprise Operations v2.0</div>
+            <h2>Automated, Fair & Constraint-Aware Scheduling</h2>
+            <p>Smart constraint fulfillment with automated shift fairness, gender compliance, consecutive rest protection, and multi-shift capacity scaling.</p>
+            
+            <div class="hero-feature-grid">
+              <div class="feature-item">
+                <div class="feature-icon">🛡️</div>
+                <div>
+                  <strong>Female Staff Protection</strong>
+                  <span>Automatic enforcement of day-only shifts</span>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon">⚖️</div>
+                <div>
+                  <strong>Fair Rotation Scoring</strong>
+                  <span>Intelligent intra-week continuity & balanced offs</span>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon">⚡</div>
+                <div>
+                  <strong>Atomic Shift Swaps</strong>
+                  <span>Instant two-way mutual shift exchanges</span>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon">📊</div>
+                <div>
+                  <strong>Leave Synchronization</strong>
+                  <span>Real-time roster auto-adjustment on leave approval</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ========================================== -->
+    <!-- 2. MAIN APPLICATION WORKSPACE              -->
+    <!-- ========================================== -->
+    <section id="appView" class="app-layout hidden">
+      
+      <!-- Left Navigation Sidebar -->
+      <aside class="app-sidebar" id="appSidebar">
+        <div class="sidebar-header">
+          <div class="brand-logo small">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+          <div class="sidebar-brand-text">
+            <strong>WRMS Admin</strong>
+            <span class="system-status"><span class="status-dot online"></span> System Online</span>
+          </div>
+          <button id="sidebarToggleBtn" class="btn-icon sidebar-collapse-btn" title="Collapse Sidebar" aria-label="Toggle Sidebar Navigation" aria-expanded="true" aria-controls="appSidebar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <nav class="sidebar-nav" id="sidebarNav">
+          <!-- Populated dynamically based on user role -->
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="user-profile-card">
+            <div class="user-avatar" id="sidebarUserAvatar">AD</div>
+            <div class="user-info">
+              <strong id="sidebarUsername">Admin</strong>
+              <small id="sidebarRole">ADMINISTRATOR</small>
+            </div>
+            <button id="logoutBtn" class="btn-icon logout-icon-btn" title="Sign Out">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content Stage -->
+      <main class="app-main">
+        
+        <!-- Top App Bar -->
+        <header class="app-topbar">
+          <div class="topbar-left">
+            <button id="mobileMenuBtn" class="btn-icon mobile-menu-toggle" aria-label="Open navigation menu">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            </button>
+            <div class="page-title-group">
+              <div class="breadcrumbs">
+                <span id="breadcrumbRoot">Roster Management</span>
+                <span class="bc-sep">/</span>
+                <span id="breadcrumbCurrent" class="bc-active">Dashboard</span>
+              </div>
+              <h1 id="pageHeadingTitle">Dashboard Overview</h1>
+            </div>
+          </div>
+
+          <div class="topbar-right">
+            <div class="date-badge" id="currentDateBadge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span id="liveDateStr">Today</span>
+            </div>
+
+            <div class="topbar-actions" id="topbarActionGroup">
+              <!-- Contextual action buttons inserted here -->
+            </div>
+
+            <!-- Notification Center Trigger -->
+            <div class="notification-trigger-wrap">
+              <button id="topbarNotificationBtn" class="btn-icon notification-bell-btn" title="Notifications" aria-label="Open notifications">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+                <span id="notifBadge" class="notif-badge hidden">0</span>
+              </button>
+
+              <!-- Notifications Dropdown Flyout -->
+              <div id="notificationDropdown" class="notification-flyout hidden">
+                <div class="notif-header">
+                  <div class="notif-title-row">
+                    <strong>Notifications</strong>
+                    <span id="notifUnreadCountBadge" class="notif-count-pill">0 unread</span>
+                  </div>
+                  <button id="notifMarkAllReadBtn" class="btn-link-xs">Mark all read</button>
+                </div>
+                <div id="notifListContainer" class="notif-list-body">
+                  <div class="notif-empty">No notifications yet</div>
+                </div>
+              </div>
+            </div>
+
+            <button id="globalRefreshBtn" class="btn btn-secondary btn-sm" title="Refresh data">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </header>
+
+        <!-- View Content Container -->
+        <div class="app-content-viewport">
+          
+          <!-- View 1: Admin Dashboard -->
+          <section id="viewDashboard" class="view-panel active"></section>
+
+          <!-- View 2: Employees Directory -->
+          <section id="viewEmployees" class="view-panel hidden"></section>
+
+          <!-- View 3: Weekly Roster Schedule -->
+          <section id="viewRoster" class="view-panel hidden"></section>
+
+          <!-- View 4: Shift Capacities & Settings -->
+          <section id="viewShifts" class="view-panel hidden"></section>
+
+          <!-- View 5: Leave Approvals & History -->
+          <section id="viewLeaves" class="view-panel hidden"></section>
+
+          <!-- View 6: Roster History Explorer -->
+          <section id="viewHistory" class="view-panel hidden"></section>
+
+          <!-- View 7: Employee Self-Service Workspace -->
+          <section id="viewEmployeeWorkspace" class="view-panel hidden"></section>
+
+          <!-- View 8: Individual Employee Roster Inspector -->
+          <section id="viewEmployeeRosterDetail" class="view-panel hidden"></section>
+
+          <!-- View 9: Roster Conflict & Health Center -->
+          <section id="viewHealth" class="view-panel hidden"></section>
+
+          <!-- View 10: Complete Roster Audit Trail -->
+          <section id="viewAudit" class="view-panel hidden"></section>
+
+          <!-- View 11: Employee Profile Change Approvals -->
+          <section id="viewProfileApprovals" class="view-panel hidden"></section>
+
+        </div>
+      </main>
+
+    </section>
+
+  </div>
+
+
+  <!-- ========================================== -->
+  <!-- 3. GLOBAL MODALS & DIALOGS                 -->
+  <!-- ========================================== -->
+
+  <!-- Modal 1: Add / Edit Employee Modal -->
+  <div id="employeeModal" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="employeeModalTitle">Add New Employee</h3>
+        <button class="modal-close" data-close-modal="employeeModal">&times;</button>
+      </div>
+      <form id="employeeModalForm" class="modal-body stack-gap">
+        <input type="hidden" name="id" id="empFormId">
+        
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="empFormCode">Employee Code <span class="req">*</span></label>
+            <input type="text" id="empFormCode" name="employeeCode" placeholder="e.g. EMP009" required>
+          </div>
+          <div class="form-group">
+            <label for="empFormGender">Gender <span class="req">*</span></label>
+            <select id="empFormGender" name="gender" required>
+              <option value="MALE">MALE (Eligible for all shifts)</option>
+              <option value="FEMALE">FEMALE (Morning & General only)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="empFormFirstName">First Name <span class="req">*</span></label>
+            <input type="text" id="empFormFirstName" name="firstName" placeholder="First Name" required>
+          </div>
+          <div class="form-group">
+            <label for="empFormLastName">Last Name</label>
+            <input type="text" id="empFormLastName" name="lastName" placeholder="Last Name (Optional)">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="empFormEmail">Email Address <span class="req">*</span></label>
+          <input type="email" id="empFormEmail" name="email" placeholder="name@cris.org.in" required>
+        </div>
+
+        <div id="empAccountFields" class="form-row two-col">
+          <div class="form-group">
+            <label for="empFormUsername">User Account</label>
+            <input type="text" id="empFormUsername" name="username" placeholder="Optional login username">
+          </div>
+          <div class="form-group">
+            <label for="empFormPassword">Initial Password</label>
+            <input type="password" id="empFormPassword" name="password" placeholder="Defaults to password123">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="employeeModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveEmployeeBtn">Save Employee</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Generate Roster Modal -->
+  <div id="generateRosterModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3>Generate Weekly Roster</h3>
+        <button class="modal-close" data-close-modal="generateRosterModal">&times;</button>
+      </div>
+      <form id="generateRosterForm" class="modal-body stack-gap">
+        <p class="modal-desc">Select the start date (Day 1) for the 7-day weekly roster cycle. Default is next day.</p>
+        
+        <div class="form-group">
+          <label for="rosterStartDateInput">Cycle Start Date (7 Days)</label>
+          <input type="date" id="rosterStartDateInput" required>
+        </div>
+
+        <div class="alert-info-box">
+          <strong>Constraints Applied:</strong>
+          <ul>
+            <li>Minimum shift staffing guaranteed</li>
+            <li>Female staff assigned to Day shifts only</li>
+            <li>Zero Night &rarr; Morning direct transitions</li>
+            <li>Balanced weekly off across active workforce</li>
+          </ul>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="generateRosterModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="triggerGenerateBtn">
+            <span>Run Generator</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Shift Override / Edit Shift Modal -->
+  <div id="shiftOverrideModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3>Modify Shift Assignment</h3>
+        <button class="modal-close" data-close-modal="shiftOverrideModal">&times;</button>
+      </div>
+      <form id="shiftOverrideForm" class="modal-body stack-gap">
+        <input type="hidden" id="overrideAssignmentId">
+        
+        <div class="override-employee-badge" id="overrideEmployeeInfo">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="form-group">
+          <label for="overrideShiftSelect">New Shift Type</label>
+          <select id="overrideShiftSelect" required>
+            <option value="MORNING">MORNING (07:00 - 15:00)</option>
+            <option value="GENERAL">GENERAL (09:30 - 18:00)</option>
+            <option value="EVENING">EVENING (14:00 - 22:00)</option>
+            <option value="NIGHT">NIGHT (22:00 - 07:00)</option>
+            <option value="OFF">WEEKLY OFF</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="overrideReasonInput">Reason / Operational Justification <span class="req">*</span></label>
+          <textarea id="overrideReasonInput" placeholder="e.g. Operational requirement / Medical replacement" required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="shiftOverrideModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveOverrideBtn">Apply Override</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: Atomic Shift Swap Modal -->
+  <div id="shiftSwapModal" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Atomic Shift Swap</h3>
+        <button class="modal-close" data-close-modal="shiftSwapModal">&times;</button>
+      </div>
+      <form id="shiftSwapForm" class="modal-body stack-gap">
+        <p class="modal-desc">Select two employees on the exact same date to exchange their assigned shifts atomically.</p>
+
+        <div class="form-group">
+          <label for="swapDateFilter">Roster Date</label>
+          <select id="swapDateFilter" required>
+            <!-- Dates in active cycle -->
+          </select>
+        </div>
+
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="swapAssign1">Employee 1 & Shift <span class="req">*</span></label>
+            <select id="swapAssign1" required>
+              <option value="">Select first employee...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="swapAssign2">Employee 2 & Shift <span class="req">*</span></label>
+            <select id="swapAssign2" required>
+              <option value="">Select second employee...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="swapReasonInput">Mutual Swap Reason <span class="req">*</span></label>
+          <input type="text" id="swapReasonInput" placeholder="e.g. Mutual duty exchange agreement" required>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="shiftSwapModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="executeSwapBtn">Execute Swap</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 5: Leave Decision Modal -->
+  <div id="leaveDecisionModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3 id="leaveDecisionTitle">Leave Request Decision</h3>
+        <button class="modal-close" data-close-modal="leaveDecisionModal">&times;</button>
+      </div>
+      <form id="leaveDecisionForm" class="modal-body stack-gap">
+        <input type="hidden" id="leaveDecisionId">
+        <input type="hidden" id="leaveDecisionApprove">
+
+        <div class="override-employee-badge" id="leaveDecisionInfo"></div>
+
+        <div class="form-group">
+          <label for="leaveDecisionRemarks">Remarks / Notes</label>
+          <textarea id="leaveDecisionRemarks" placeholder="Optional comments regarding approval or rejection..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="leaveDecisionModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="leaveDecisionSubmitBtn">Confirm</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 6: Generic Confirmation Dialog -->
+  <div id="confirmModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Confirm Action</h3>
+        <button class="modal-close" data-close-modal="confirmModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMsg">Are you sure you want to proceed?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal="confirmModal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmModalAcceptBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 7: Coverage & Feasibility Shortage Report Modal -->
+  <div id="feasibilityModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:760px; width:92%;">
+      <div class="modal-header">
+        <div>
+          <h3 style="display:flex; align-items:center; gap:8px;">
+            <span>📊</span> Coverage & Feasibility Report
+          </h3>
+          <span style="font-size:0.78rem; color:var(--text-muted);">Configured target capacity vs. maximum valid assignments under safety rules</span>
+        </div>
+        <button class="modal-close" data-close-modal="feasibilityModal">&times;</button>
+      </div>
+      <div class="modal-body" id="feasibilityModalBody" style="max-height:65vh; overflow-y:auto; padding-top:14px;">
+        <!-- Populated dynamically by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close-modal="feasibilityModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 8: Delete Roster Cycle Modal -->
+  <div id="deleteCycleModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3 style="color:var(--danger); display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+          Delete Roster Cycle?
+        </h3>
+        <button class="modal-close" data-close-modal="deleteCycleModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap">
+        <input type="hidden" id="deleteCycleTargetId">
+        <p class="modal-desc" style="color:var(--text-main); font-weight:600;">
+          Are you sure you want to delete this roster cycle?
+        </p>
+        <div class="alert-info-box" style="background-color:var(--danger-light); border-color:var(--danger-border); color:#991b1b;">
+          <strong style="display:block; margin-bottom:4px;">⚠️ Permanent Deletion Notice:</strong>
+          <span>All roster assignments and related overrides associated with this cycle will also be deleted. This action cannot be undone.</span>
+        </div>
+        <div class="override-employee-badge" id="deleteCycleDetailsBox">
+          <!-- Populated with cycle start date, end date, and assignment count -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal="deleteCycleModal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteCycleBtn">
+          <span>Delete Cycle</span>
+          <div class="spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 8: Interactive Dashboard Detail Modal (For deep inspection / mobile click) -->
+  <div id="dashDetailModal" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="stat-icon" id="dashDetailIcon" style="width:34px; height:34px; font-size:1.1rem;">📊</div>
+          <div>
+            <h3 id="dashDetailTitle">Shift Details</h3>
+            <span id="dashDetailSubtitle" style="font-size:0.76rem; color:var(--text-muted);">Real-time personnel breakdown</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="dashDetailModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top:14px;">
+        <div id="dashDetailStatsBar" style="margin-bottom:14px;"></div>
+        <div class="table-wrap" id="dashDetailListWrapper" style="max-height:360px; overflow-y:auto;"></div>
+      </div>
+      <div class="modal-footer" style="margin-top:14px; justify-content:space-between;">
+        <span id="dashDetailCountBadge" style="font-size:0.82rem; font-weight:700; color:var(--text-muted);"></span>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="dashDetailViewAllBtn">View All</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-close-modal="dashDetailModal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 9: Modify Approved Leave Modal -->
+  <div id="modifyLeaveModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:520px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">✏️</span>
+          <h3>Modify Approved Leave</h3>
+        </div>
+        <button class="modal-close" data-close-modal="modifyLeaveModal">&times;</button>
+      </div>
+      <form id="modifyLeaveForm" class="modal-body stack-gap">
+        <input type="hidden" id="modLeaveId">
+        
+        <div class="current-leave-summary-box" id="modCurrentLeaveBox">
+          <!-- Populated with current start/end dates and status -->
+        </div>
+
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="modNewStartDate">New Start Date <span class="req">*</span></label>
+            <input type="date" id="modNewStartDate" required>
+          </div>
+          <div class="form-group">
+            <label for="modNewEndDate">New End Date <span class="req">*</span></label>
+            <input type="date" id="modNewEndDate" required>
+          </div>
+        </div>
+
+        <!-- Duration Comparison Bar -->
+        <div class="duration-comparison-card" id="modDurationComparison">
+          <div class="dur-col">
+            <span class="dur-label">Current Duration</span>
+            <strong class="dur-value" id="modCurrentDurVal">-</strong>
+          </div>
+          <div class="dur-arrow">&rarr;</div>
+          <div class="dur-col">
+            <span class="dur-label">New Duration</span>
+            <strong class="dur-value highlight" id="modNewDurVal">-</strong>
+          </div>
+          <div class="dur-col diff-col" id="modDiffContainer">
+            <span class="dur-label">Difference</span>
+            <strong class="dur-value" id="modDiffVal">-</strong>
+          </div>
+        </div>
+
+        <!-- Roster Impact Warning Box -->
+        <div class="alert-info-box" id="modRosterImpactBox" style="display:none; background-color:#fffbeb; border-color:#fef3c7; color:#92400e;">
+          <strong style="display:block; margin-bottom:2px;">⚠️ Roster Impact Notice:</strong>
+          <span id="modRosterImpactText"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="modReasonInput">Reason for Date Change <span class="req">*</span></label>
+          <textarea id="modReasonInput" placeholder="Explain why you are changing the leave dates..." required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="modifyLeaveModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitModLeaveBtn">
+            <span>Submit Modification Request</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 10: Cancel Approved Leave Modal -->
+  <div id="cancelLeaveModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:480px;">
+      <div class="modal-header">
+        <h3 style="color:var(--danger); display:flex; align-items:center; gap:8px;">
+          <span>🚫</span> Cancel Approved Leave
+        </h3>
+        <button class="modal-close" data-close-modal="cancelLeaveModal">&times;</button>
+      </div>
+      <form id="cancelLeaveForm" class="modal-body stack-gap">
+        <input type="hidden" id="cancelLeaveId">
+
+        <div class="alert-info-box" style="background-color:var(--danger-light); border-color:var(--danger-border); color:#991b1b;">
+          <strong>Request Leave Cancellation:</strong>
+          <span>This will submit a cancellation request to your administrator. Upon approval, all dates will be released for roster duty scheduling.</span>
+        </div>
+
+        <div class="override-employee-badge" id="cancelLeaveDetailsBox"></div>
+
+        <div class="form-group">
+          <label for="cancelLeaveReasonInput">Reason for Cancellation <span class="req">*</span></label>
+          <textarea id="cancelLeaveReasonInput" placeholder="Explain why you wish to cancel this approved leave..." required></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="cancelLeaveModal">Back</button>
+          <button type="submit" class="btn btn-danger" id="submitCancelLeaveBtn">
+            <span>Submit Cancellation Request</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 11: Conflict Warning Modal on Existing Cycle -->
+  <div id="conflictWarningModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <h3 style="color:#b45309; display:flex; align-items:center; gap:8px;">
+          <span>⚠️</span> Roster Cycle Conflict
+        </h3>
+        <button class="modal-close" data-close-modal="conflictWarningModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap">
+        <div class="alert-info-box" style="background-color:#fef3c7; border-color:#fde68a; color:#92400e;">
+          <strong>A roster already exists for this cycle period:</strong>
+          <p id="conflictModalCycleInfo" style="margin:6px 0 0 0; font-size:0.88rem;"></p>
+        </div>
+        <p style="font-size:0.85rem; color:var(--text-muted);">
+          You can view the existing generated roster schedule or choose to regenerate it. Regenerating will replace existing non-overridden assignments for this period.
+        </p>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; gap:10px;">
+        <button type="button" class="btn btn-ghost" data-close-modal="conflictWarningModal">Cancel</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary" id="conflictViewExistingBtn">View Existing Roster</button>
+          <button type="button" class="btn btn-primary" id="conflictRegenerateBtn">Regenerate Roster</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="dashboardFloatingTooltip" class="dashboard-hover-popover hidden">
+    <div class="popover-header">
+      <div class="popover-title-row">
+        <span class="popover-icon" id="popoverIcon">👥</span>
+        <div>
+          <strong id="popoverTitle">Morning Shift</strong>
+          <span id="popoverSubtitle" class="popover-sub">07:00 - 15:00</span>
+        </div>
+      </div>
+      <span class="popover-count-pill" id="popoverCount">0 Staff</span>
+    </div>
+    <div class="popover-body" id="popoverBodyList">
+      <!-- Populated with mini employee chips -->
+    </div>
+    <div class="popover-footer" id="popoverFooter">
+      <span class="popover-tip">Click card for details</span>
+      <span class="popover-view-link">View &rarr;</span>
+    </div>
+  </div>
+
+  <!-- Modal 12: Unlock Roster Modal -->
+  <div id="unlockRosterModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <h3 style="color:#b45309; display:flex; align-items:center; gap:8px;">
+          <span>🔓</span> Unlock Roster Cycle
+        </h3>
+        <button class="modal-close" data-close-modal="unlockRosterModal">&times;</button>
+      </div>
+      <form id="unlockRosterForm" class="modal-body stack-gap">
+        <input type="hidden" id="unlockCycleId" value="">
+        <div class="alert-info-box" style="background-color:#fef3c7; border-color:#fde68a; color:#92400e;">
+          <strong>Security Action Required:</strong>
+          <p style="margin:4px 0 0 0; font-size:0.85rem;">
+            Unlocking a locked roster permits administrative changes, manual overrides, and shift swaps. An authoritative audit log entry will record this action and reason.
+          </p>
+        </div>
+        <div class="form-group">
+          <label for="unlockReasonInput">Mandatory Reason for Unlocking <span class="req">*</span></label>
+          <textarea id="unlockReasonInput" class="form-control" rows="3" placeholder="State the operational reason for unlocking this roster cycle..." required></textarea>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:space-between; gap:10px;">
+          <button type="button" class="btn btn-ghost" data-close-modal="unlockRosterModal">Cancel</button>
+          <button type="submit" class="btn btn-warning" id="submitUnlockBtn" style="background:#d97706; color:#fff;">
+            <span>Authorize & Unlock</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 13: Request Profile Change Modal -->
+  <div id="profileChangeModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:480px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">📝</span>
+          <h3 id="profileChangeModalTitle">Request Profile Change</h3>
+        </div>
+        <button class="modal-close" data-close-modal="profileChangeModal">&times;</button>
+      </div>
+      <form id="profileChangeForm" class="modal-body stack-gap">
+        <input type="hidden" id="pcrFormFieldName">
+
+        <div class="alert-info-box" style="background-color:#eff6ff; border-color:#bfdbfe; color:#1e40af;">
+          <strong>Admin Approval Required:</strong>
+          <span style="display:block; margin-top:2px; font-size:0.8rem;">Changes to verified workforce master data must be reviewed and approved by an administrator before taking effect.</span>
+        </div>
+
+        <div class="form-group">
+          <label id="pcrFormCurrentLabel">Current Value</label>
+          <input type="text" id="pcrFormCurrentValue" readonly style="background:var(--bg-app); cursor:not-allowed; opacity:0.85;">
+        </div>
+
+        <div class="form-group" id="pcrFormRequestedGroup">
+          <label for="pcrFormRequestedValue" id="pcrFormRequestedLabel">Requested New Value <span class="req">*</span></label>
+          <div id="pcrFormInputContainer">
+            <input type="text" id="pcrFormRequestedValue" required placeholder="Enter new value">
+          </div>
+          <small id="pcrFormHelperText" style="font-size:0.72rem; color:var(--text-muted);"></small>
+        </div>
+
+        <div id="pcrFormAlertBox" class="alert-info-box hidden" style="background:#fee2e2; border-color:#fecaca; color:#991b1b;"></div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="profileChangeModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitProfileChangeBtn">
+            <span>Submit Change Request</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 14: Admin Profile Change Decision Modal -->
+  <div id="adminProfileDecisionModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="adminProfileDecisionIcon" style="font-size:1.2rem;">⚖️</span>
+          <h3 id="adminProfileDecisionTitle">Review Profile Change Request</h3>
+        </div>
+        <button class="modal-close" data-close-modal="adminProfileDecisionModal">&times;</button>
+      </div>
+      <form id="adminProfileDecisionForm" class="modal-body stack-gap">
+        <input type="hidden" id="adminPcrId">
+        <input type="hidden" id="adminPcrApprove">
+
+        <div class="override-employee-badge" id="adminPcrEmployeeBadge">
+          <!-- Populated dynamically -->
+        </div>
+
+        <div class="form-group">
+          <label for="adminPcrRemarks">Admin Remarks / Reason</label>
+          <textarea id="adminPcrRemarks" placeholder="Optional comments regarding approval or rejection..."></textarea>
+        </div>
+
+        <div class="modal-footer" style="display:flex; justify-content:space-between; gap:10px;">
+          <button type="button" class="btn btn-ghost" data-close-modal="adminProfileDecisionModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitAdminPcrBtn">
+            <span id="submitAdminPcrBtnText">Confirm Decision</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- App JavaScript -->
+  <script src="/app.js"></script>
+</body>
+</html>

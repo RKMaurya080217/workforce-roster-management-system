@@ -1,0 +1,171 @@
+{
+  "info": {
+    "name": "Weekly Roster Management System",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}" },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Employees",
+      "item": [
+        {
+          "name": "All Employees",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/employees" }
+        },
+        {
+          "name": "Active Employees",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/employees/active" }
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employeeCode\": \"EMP008\",\n  \"firstName\": \"Anita\",\n  \"lastName\": \"Iyer\",\n  \"email\": \"anita@example.com\",\n  \"gender\": \"FEMALE\",\n  \"username\": \"emp008\",\n  \"password\": \"password123\"\n}" },
+            "url": "{{baseUrl}}/api/employees"
+          }
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employeeCode\": \"EMP008\",\n  \"firstName\": \"Anita\",\n  \"lastName\": \"Iyer\",\n  \"email\": \"anita@example.com\",\n  \"gender\": \"FEMALE\"\n}" },
+            "url": "{{baseUrl}}/api/employees/8"
+          }
+        },
+        {
+          "name": "Deactivate Employee",
+          "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/employees/8" }
+        }
+      ]
+    },
+    {
+      "name": "Shifts",
+      "item": [
+        {
+          "name": "All Shifts",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/shifts" }
+        }
+      ]
+    },
+    {
+      "name": "Rosters",
+      "item": [
+        {
+          "name": "Generate Weekly Roster",
+          "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/rosters/generate" }
+        },
+        {
+          "name": "All Rosters",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/rosters" }
+        },
+        {
+          "name": "Roster By Cycle",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/rosters/cycle/1" }
+        },
+        {
+          "name": "Change Shift",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"shiftType\": \"GENERAL\",\n  \"reason\": \"Operational adjustment\"\n}" },
+            "url": "{{baseUrl}}/api/rosters/1/shift"
+          }
+        },
+        {
+          "name": "Mark Weekly OFF",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"shiftType\": \"OFF\",\n  \"reason\": \"Admin weekly off override\"\n}" },
+            "url": "{{baseUrl}}/api/rosters/1/off"
+          }
+        },
+        {
+          "name": "Override Shift",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"assignmentId\": 1,\n  \"shiftType\": \"MORNING\",\n  \"weeklyOff\": false,\n  \"reason\": \"Manual override\"\n}" },
+            "url": "{{baseUrl}}/api/rosters/overrides"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leaves",
+      "item": [
+        {
+          "name": "Apply Leave",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"employeeId\": 1,\n  \"startDate\": \"2026-08-05\",\n  \"endDate\": \"2026-08-05\",\n  \"reason\": \"Personal work\"\n}" },
+            "url": "{{baseUrl}}/api/leaves"
+          }
+        },
+        {
+          "name": "My Leaves",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/leaves/my/1" }
+        },
+        {
+          "name": "Pending Leaves",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/leaves/pending" }
+        },
+        {
+          "name": "Approve Leave",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"remarks\": \"Approved\"\n}" },
+            "url": "{{baseUrl}}/api/leaves/1/approve"
+          }
+        },
+        {
+          "name": "Reject Leave",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"remarks\": \"Rejected due to coverage\"\n}" },
+            "url": "{{baseUrl}}/api/leaves/1/reject"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "{{baseUrl}}/api/dashboard" }
+        }
+      ]
+    }
+  ]
+}

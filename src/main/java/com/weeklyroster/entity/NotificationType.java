@@ -1,0 +1,14 @@
+package com.weeklyroster.entity;
+
+public enum NotificationType {
+    ROSTER_PUBLISHED,
+    SHIFT_CHANGED,
+    OVERRIDE_APPLIED,
+    LEAVE_DECISION,
+    ROSTER_LOCKED,
+    ROSTER_UNLOCKED,
+    ADMIN_ALERT,
+    SWAP_EXECUTED,
+    PROFILE_CHANGE_REQUESTED,
+    PROFILE_CHANGE_DECISION
+}
