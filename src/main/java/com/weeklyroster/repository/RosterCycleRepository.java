@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 public interface RosterCycleRepository extends JpaRepository<RosterCycle, Long> {
     Optional<RosterCycle> findByStartDateAndEndDate(LocalDate startDate, LocalDate endDate);
     List<RosterCycle> findAllByOrderByStartDateDesc();
+    Optional<RosterCycle> findTopByOrderByStartDateDesc();
 
     @Query("SELECT c FROM RosterCycle c WHERE c.startDate <= :endDate AND c.endDate >= :startDate")
     List<RosterCycle> findOverlappingCycles(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);

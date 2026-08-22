@@ -107,15 +107,33 @@ const dom = {
     employeeRosterDetail: document.getElementById("viewEmployeeRosterDetail"),
     health: document.getElementById("viewHealth"),
     audit: document.getElementById("viewAudit"),
-    profileApprovals: document.getElementById("viewProfileApprovals")
+    profileApprovals: document.getElementById("viewProfileApprovals"),
+    analytics: document.getElementById("viewAnalytics"),
+    validation: document.getElementById("viewValidation"),
+    adminPreferences: document.getElementById("viewAdminPreferences"),
+    adminHolidays: document.getElementById("viewAdminHolidays"),
+    adminHandovers: document.getElementById("viewAdminHandovers"),
+    adminWorkload: document.getElementById("viewAdminWorkload"),
+    adminSkills: document.getElementById("viewAdminSkills"),
+    exportCenter: document.getElementById("viewExportCenter"),
+    rosterVersions: document.getElementById("viewRosterVersions")
   }
 };
 
 // Admin Navigation Menu Items
 const ADMIN_NAV = [
   { id: "dashboard", label: "Dashboard", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>` },
+  { id: "analytics", label: "Roster Analytics", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>` },
+  { id: "validation", label: "Conflict Validator", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>` },
   { id: "employees", label: "Employees", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>` },
   { id: "roster", label: "Weekly Roster", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
+  { id: "adminPreferences", label: "Shift Preferences", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>` },
+  { id: "adminHolidays", label: "Holiday Calendar", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
+  { id: "adminHandovers", label: "Shift Handovers", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` },
+  { id: "adminWorkload", label: "Workload Analytics", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>` },
+  { id: "adminSkills", label: "Skill Matrix", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>` },
+  { id: "exportCenter", label: "Export Center", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>` },
+  { id: "rosterVersions", label: "Roster Versions", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 8 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4"></path><polyline points="3 16 3 11 8 11"></polyline></svg>` },
   { id: "health", label: "Roster Health", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>` },
   { id: "shifts", label: "Shift Capacity", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>` },
   { id: "leaves", label: "Leave Requests", badgeKey: "pendingLeaves", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>` },
@@ -129,6 +147,10 @@ const EMPLOYEE_NAV = [
   { id: "emp_overview", tab: "overview", label: "Overview", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>` },
   { id: "emp_roster", tab: "roster", label: "My Roster", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
   { id: "emp_leaves", tab: "leaves", label: "Leave Management", badgeKey: "cachedPendingLeavesCount", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>` },
+  { id: "emp_preferences", tab: "preferences", label: "Shift Preferences", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>` },
+  { id: "emp_handovers", tab: "handovers", label: "Shift Handovers", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` },
+  { id: "emp_skills", tab: "skills", label: "My Skills", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>` },
+  { id: "emp_holidays", tab: "holidays", label: "Holidays", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
   { id: "emp_notifications", tab: "notifications", label: "Notifications", badgeKey: "unreadNotificationCount", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>` },
   { id: "emp_activity", tab: "activity", label: "Activity / Logs", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4"></path><polyline points="3 16 3 11 8 11"></polyline></svg>` },
   { id: "emp_profile", tab: "profile", label: "My Profile", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>` }
@@ -435,6 +457,18 @@ function parseRouteTarget(target) {
       "employee/leaves": "leaves",
       "employee/leave": "leaves",
       "emp_leaves": "leaves",
+      "preferences": "preferences",
+      "my-preferences": "preferences",
+      "emp_preferences": "preferences",
+      "handovers": "handovers",
+      "shift-handovers": "handovers",
+      "emp_handovers": "handovers",
+      "skills": "skills",
+      "my-skills": "skills",
+      "emp_skills": "skills",
+      "holidays": "holidays",
+      "holiday-calendar": "holidays",
+      "emp_holidays": "holidays",
       "notifications": "notifications",
       "staff/notifications": "notifications",
       "employee/notifications": "notifications",
@@ -461,10 +495,36 @@ function parseRouteTarget(target) {
       "": "dashboard",
       "dashboard": "dashboard",
       "admin/dashboard": "dashboard",
+      "analytics": "analytics",
+      "admin/analytics": "analytics",
+      "validation": "validation",
+      "conflict-detector": "validation",
+      "admin/validation": "validation",
       "employees": "employees",
       "admin/employees": "employees",
       "roster": "roster",
       "admin/roster": "roster",
+      "adminPreferences": "adminPreferences",
+      "admin/preferences": "adminPreferences",
+      "preferences": "adminPreferences",
+      "adminHolidays": "adminHolidays",
+      "admin/holidays": "adminHolidays",
+      "holidays": "adminHolidays",
+      "adminHandovers": "adminHandovers",
+      "admin/handovers": "adminHandovers",
+      "handovers": "adminHandovers",
+      "adminWorkload": "adminWorkload",
+      "admin/workload": "adminWorkload",
+      "workload": "adminWorkload",
+      "adminSkills": "adminSkills",
+      "admin/skills": "adminSkills",
+      "skills": "adminSkills",
+      "exportCenter": "exportCenter",
+      "admin/exports": "exportCenter",
+      "exports": "exportCenter",
+      "rosterVersions": "rosterVersions",
+      "admin/roster-versions": "rosterVersions",
+      "versions": "rosterVersions",
       "health": "health",
       "admin/health": "health",
       "shifts": "shifts",
@@ -624,6 +684,10 @@ function updateTopbarTitle(pageId) {
     overview: { title: "Staff Self-Service Workspace", bc: "Overview" },
     roster: { title: "My Weekly Duty Schedule", bc: "My Roster" },
     leaves: { title: "Leave Management & Requests", bc: "Leave Management" },
+    preferences: { title: "My Shift Availability & Preferences", bc: "Shift Preferences" },
+    handovers: { title: "Shift Handover Logbook", bc: "Shift Handovers" },
+    skills: { title: "My Verified Skills & Certifications", bc: "My Skills" },
+    holidays: { title: "Official Company Holiday Calendar", bc: "Holidays" },
     notifications: { title: "My Notifications & Alerts", bc: "Notifications" },
     activity: { title: "Activity & Security Logs", bc: "Activity / Logs" },
     profile: { title: "My Employee Profile", bc: "My Profile" }
@@ -631,8 +695,17 @@ function updateTopbarTitle(pageId) {
 
   const titles = {
     dashboard: { title: "Executive Operations Dashboard", bc: "Dashboard" },
+    analytics: { title: "Roster Analytics & Intelligence", bc: "Analytics" },
+    validation: { title: "Smart Roster Conflict Detector & Validator", bc: "Conflict Validator" },
     employees: { title: "Employee Directory & Workforce", bc: "Employees" },
     roster: { title: "Weekly Roster Schedule", bc: "Weekly Roster" },
+    adminPreferences: { title: "Employee Shift Preferences & Availability", bc: "Shift Preferences" },
+    adminHolidays: { title: "Official Company Holiday Calendar", bc: "Holiday Calendar" },
+    adminHandovers: { title: "Shift Handover Management", bc: "Shift Handovers" },
+    adminWorkload: { title: "Employee Workload Analytics & Duty Balance", bc: "Workload Analytics" },
+    adminSkills: { title: "Workforce Skill Matrix & Competency Catalog", bc: "Skill Matrix" },
+    exportCenter: { title: "Enterprise Export Center (PDF / Excel / CSV)", bc: "Export Center" },
+    rosterVersions: { title: "Roster Version History & Revision Comparison", bc: "Roster Versions" },
     health: { title: "Roster Conflict & Health Center", bc: "Roster Health" },
     shifts: { title: "Shift Configuration & Capacities", bc: "Shift Settings" },
     leaves: { title: "Leave Approvals & Management", bc: "Leave Requests" },
@@ -655,6 +728,33 @@ async function loadActiveView() {
   switch (state.activePage) {
     case "dashboard":
       await renderDashboardView();
+      break;
+    case "analytics":
+      if (typeof renderAnalyticsView === "function") await renderAnalyticsView();
+      break;
+    case "validation":
+      if (typeof renderValidationView === "function") await renderValidationView();
+      break;
+    case "adminPreferences":
+      if (typeof renderAdminPreferencesView === "function") await renderAdminPreferencesView();
+      break;
+    case "adminHolidays":
+      if (typeof renderAdminHolidaysView === "function") await renderAdminHolidaysView();
+      break;
+    case "adminHandovers":
+      if (typeof renderAdminHandoversView === "function") await renderAdminHandoversView();
+      break;
+    case "adminWorkload":
+      if (typeof renderAdminWorkloadView === "function") await renderAdminWorkloadView();
+      break;
+    case "adminSkills":
+      if (typeof renderAdminSkillsView === "function") await renderAdminSkillsView();
+      break;
+    case "exportCenter":
+      if (typeof renderExportCenterView === "function") await renderExportCenterView();
+      break;
+    case "rosterVersions":
+      if (typeof renderRosterVersionsView === "function") await renderRosterVersionsView();
       break;
     case "employees":
       await renderEmployeesView();
@@ -2649,6 +2749,18 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
           <span>🏖️</span> Leave Management
           <span class="subnav-badge hidden" id="leavesBadge"></span>
         </button>
+        <button class="subnav-btn ${currentTab === 'preferences' ? 'active' : ''}" id="tabBtnPreferences" role="tab" aria-selected="${currentTab === 'preferences'}">
+          <span>⚖️</span> Preferences
+        </button>
+        <button class="subnav-btn ${currentTab === 'handovers' ? 'active' : ''}" id="tabBtnHandovers" role="tab" aria-selected="${currentTab === 'handovers'}">
+          <span>🤝</span> Handovers
+        </button>
+        <button class="subnav-btn ${currentTab === 'skills' ? 'active' : ''}" id="tabBtnSkills" role="tab" aria-selected="${currentTab === 'skills'}">
+          <span>🌟</span> My Skills
+        </button>
+        <button class="subnav-btn ${currentTab === 'holidays' ? 'active' : ''}" id="tabBtnHolidays" role="tab" aria-selected="${currentTab === 'holidays'}">
+          <span>🎉</span> Holidays
+        </button>
         <button class="subnav-btn ${currentTab === 'notifications' ? 'active' : ''}" id="tabBtnNotifications" role="tab" aria-selected="${currentTab === 'notifications'}">
           <span>🔔</span> Notifications
           <span class="subnav-badge hidden" id="notifsBadge"></span>
@@ -2669,7 +2781,6 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
     `;
 
     // Bind Sub-Navigation Click Events
-    // Bind Sub-Navigation Click Events
     const bindTab = (btnId, tabKey) => {
       const btn = document.getElementById(btnId);
       if (btn) {
@@ -2685,6 +2796,10 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
     bindTab("tabBtnOverview", "overview");
     bindTab("tabBtnRoster", "roster");
     bindTab("tabBtnLeaves", "leaves");
+    bindTab("tabBtnPreferences", "preferences");
+    bindTab("tabBtnHandovers", "handovers");
+    bindTab("tabBtnSkills", "skills");
+    bindTab("tabBtnHolidays", "holidays");
     bindTab("tabBtnNotifications", "notifications");
     bindTab("tabBtnActivity", "activity");
     bindTab("tabBtnProfile", "profile");
@@ -2806,6 +2921,10 @@ function switchEmployeeWorkspaceTab(tabKey) {
     const isTarget = (tabKey === "overview" && btn.id === "tabBtnOverview") ||
                      (tabKey === "roster" && btn.id === "tabBtnRoster") ||
                      (tabKey === "leaves" && btn.id === "tabBtnLeaves") ||
+                     (tabKey === "preferences" && btn.id === "tabBtnPreferences") ||
+                     (tabKey === "handovers" && btn.id === "tabBtnHandovers") ||
+                     (tabKey === "skills" && btn.id === "tabBtnSkills") ||
+                     (tabKey === "holidays" && btn.id === "tabBtnHolidays") ||
                      (tabKey === "notifications" && btn.id === "tabBtnNotifications") ||
                      (tabKey === "activity" && btn.id === "tabBtnActivity") ||
                      (tabKey === "profile" && btn.id === "tabBtnProfile");
@@ -2816,6 +2935,27 @@ function switchEmployeeWorkspaceTab(tabKey) {
   const contentDiv = document.getElementById("workspaceTabContent");
   if (!contentDiv) {
     renderEmployeeWorkspaceView();
+    return;
+  }
+
+  if (tabKey === "preferences" && typeof renderEmployeePreferencesTabHTML === "function") {
+    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift preferences...</p></div>`;
+    renderEmployeePreferencesTabHTML().then(html => { contentDiv.innerHTML = html; });
+    return;
+  }
+  if (tabKey === "handovers" && typeof renderEmployeeHandoversTabHTML === "function") {
+    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift handovers...</p></div>`;
+    renderEmployeeHandoversTabHTML().then(html => { contentDiv.innerHTML = html; });
+    return;
+  }
+  if (tabKey === "skills" && typeof renderEmployeeSkillsTabHTML === "function") {
+    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading skills matrix...</p></div>`;
+    renderEmployeeSkillsTabHTML().then(html => { contentDiv.innerHTML = html; });
+    return;
+  }
+  if (tabKey === "holidays" && typeof renderEmployeeHolidaysTabHTML === "function") {
+    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading company holidays...</p></div>`;
+    renderEmployeeHolidaysTabHTML().then(html => { contentDiv.innerHTML = html; });
     return;
   }
 

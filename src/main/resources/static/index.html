@@ -302,6 +302,33 @@
           <!-- View 11: Employee Profile Change Approvals -->
           <section id="viewProfileApprovals" class="view-panel hidden"></section>
 
+          <!-- View 12: Analytics Dashboard -->
+          <section id="viewAnalytics" class="view-panel hidden"></section>
+
+          <!-- View 13: Smart Conflict Detector / Validator -->
+          <section id="viewValidation" class="view-panel hidden"></section>
+
+          <!-- View 14: Employee Availability & Preferences -->
+          <section id="viewAdminPreferences" class="view-panel hidden"></section>
+
+          <!-- View 15: Holiday Calendar -->
+          <section id="viewAdminHolidays" class="view-panel hidden"></section>
+
+          <!-- View 16: Shift Handover Management -->
+          <section id="viewAdminHandovers" class="view-panel hidden"></section>
+
+          <!-- View 17: Workload Analytics -->
+          <section id="viewAdminWorkload" class="view-panel hidden"></section>
+
+          <!-- View 18: Skill Matrix -->
+          <section id="viewAdminSkills" class="view-panel hidden"></section>
+
+          <!-- View 19: Export Center -->
+          <section id="viewExportCenter" class="view-panel hidden"></section>
+
+          <!-- View 20: Roster Versions & Diff -->
+          <section id="viewRosterVersions" class="view-panel hidden"></section>
+
         </div>
       </main>
 
@@ -875,7 +902,257 @@
     </div>
   </div>
 
+  <!-- Modal 15: Holiday Modal -->
+  <div id="holidayModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <h3 id="holidayModalTitle">Add Holiday</h3>
+        <button class="modal-close" data-close-modal="holidayModal">&times;</button>
+      </div>
+      <form id="holidayModalForm" class="modal-body stack-gap">
+        <input type="hidden" id="holidayFormId">
+        <div class="form-group">
+          <label for="holidayFormName">Holiday Name <span class="req">*</span></label>
+          <input type="text" id="holidayFormName" required placeholder="e.g. Republic Day">
+        </div>
+        <div class="form-group">
+          <label for="holidayFormDate">Holiday Date <span class="req">*</span></label>
+          <input type="date" id="holidayFormDate" required>
+        </div>
+        <div class="form-group">
+          <label for="holidayFormDesc">Description</label>
+          <textarea id="holidayFormDesc" placeholder="Optional holiday details or notes..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="holidayModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitHolidayBtn">Save Holiday</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 16: Preference Submission Modal -->
+  <div id="preferenceModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:560px;">
+      <div class="modal-header">
+        <h3>Submit Shift Availability & Preferences</h3>
+        <button class="modal-close" data-close-modal="preferenceModal">&times;</button>
+      </div>
+      <form id="preferenceModalForm" class="modal-body stack-gap">
+        <div class="alert-info-box" style="background:#eff6ff; border-color:#bfdbfe; color:#1e40af;">
+          <strong>Soft Optimization Notice:</strong> Preferences guide roster balance but will never override hard safety regulations (12h rest interval, female evening/night restrictions, maximum 2 nights).
+        </div>
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="prefPreferredShifts">Preferred Shift Types</label>
+            <input type="text" id="prefPreferredShifts" placeholder="e.g. MORNING, GENERAL">
+          </div>
+          <div class="form-group">
+            <label for="prefAvoidShifts">Avoid Shift Types</label>
+            <input type="text" id="prefAvoidShifts" placeholder="e.g. NIGHT">
+          </div>
+        </div>
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="prefPreferredOffDays">Preferred OFF Days</label>
+            <input type="text" id="prefPreferredOffDays" placeholder="e.g. SUNDAY, SATURDAY">
+          </div>
+          <div class="form-group">
+            <label for="prefPreferredWorkDays">Preferred Working Days</label>
+            <input type="text" id="prefPreferredWorkDays" placeholder="e.g. MONDAY to FRIDAY">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="prefRestrictions">Temporary Constraints / Notes</label>
+          <textarea id="prefRestrictions" placeholder="e.g. Need morning shifts due to evening training classes..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="preferenceModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitPrefBtn">Submit Preferences</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 17: Admin Preference Decision Modal -->
+  <div id="adminPrefDecisionModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:480px;">
+      <div class="modal-header">
+        <h3 id="adminPrefDecisionTitle">Review Shift Preference</h3>
+        <button class="modal-close" data-close-modal="adminPrefDecisionModal">&times;</button>
+      </div>
+      <form id="adminPrefDecisionForm" class="modal-body stack-gap">
+        <input type="hidden" id="adminPrefId">
+        <input type="hidden" id="adminPrefStatus">
+        <div id="adminPrefInfo" class="override-employee-badge"></div>
+        <div class="form-group">
+          <label for="adminPrefRemarks">Admin Remarks</label>
+          <textarea id="adminPrefRemarks" placeholder="Optional notes for employee..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="adminPrefDecisionModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitAdminPrefBtn">Confirm Decision</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 18: Shift Handover Modal -->
+  <div id="handoverModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:580px;">
+      <div class="modal-header">
+        <h3 id="handoverModalTitle">Create Shift Handover Note</h3>
+        <button class="modal-close" data-close-modal="handoverModal">&times;</button>
+      </div>
+      <form id="handoverModalForm" class="modal-body stack-gap">
+        <input type="hidden" id="handoverFormId">
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="handoverDate">Handover Date <span class="req">*</span></label>
+            <input type="date" id="handoverDate" required>
+          </div>
+          <div class="form-group">
+            <label for="handoverShift">Shift <span class="req">*</span></label>
+            <select id="handoverShift" required></select>
+          </div>
+        </div>
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="handoverToEmployee">Oncoming Staff / Reliever</label>
+            <select id="handoverToEmployee"></select>
+          </div>
+          <div class="form-group">
+            <label for="handoverPriority">Priority Level</label>
+            <select id="handoverPriority">
+              <option value="LOW">LOW</option>
+              <option value="MEDIUM" selected>MEDIUM</option>
+              <option value="HIGH">HIGH</option>
+              <option value="CRITICAL">CRITICAL</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="handoverSummary">Shift Executive Summary <span class="req">*</span></label>
+          <input type="text" id="handoverSummary" required placeholder="e.g. Normal operations, 1 incident handled...">
+        </div>
+        <div class="form-group">
+          <label for="handoverPendingTasks">Pending Action Items</label>
+          <textarea id="handoverPendingTasks" placeholder="Tasks that need to be continued by the next shift..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="handoverCompletedTasks">Completed Tasks</label>
+          <textarea id="handoverCompletedTasks" placeholder="Key tasks accomplished during this shift..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="handoverNotes">Important Alerts / Equipment Notes</label>
+          <textarea id="handoverNotes" placeholder="Critical observations or escalation notes..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="handoverModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitHandoverBtn">Save Handover</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 19: Skill Catalog Modal -->
+  <div id="skillModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:480px;">
+      <div class="modal-header">
+        <h3 id="skillModalTitle">Add New Skill</h3>
+        <button class="modal-close" data-close-modal="skillModal">&times;</button>
+      </div>
+      <form id="skillModalForm" class="modal-body stack-gap">
+        <input type="hidden" id="skillFormId">
+        <div class="form-group">
+          <label for="skillFormName">Skill Name <span class="req">*</span></label>
+          <input type="text" id="skillFormName" required placeholder="e.g. Mainframe Ops">
+        </div>
+        <div class="form-group">
+          <label for="skillFormCategory">Category</label>
+          <input type="text" id="skillFormCategory" placeholder="e.g. TECHNICAL, OPERATIONS">
+        </div>
+        <div class="form-group">
+          <label for="skillFormDesc">Description</label>
+          <textarea id="skillFormDesc" placeholder="Competency description..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="skillModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitSkillBtn">Save Skill</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 20: Assign Employee Skill Modal -->
+  <div id="assignSkillModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <h3>Assign Skill to Employee</h3>
+        <button class="modal-close" data-close-modal="assignSkillModal">&times;</button>
+      </div>
+      <form id="assignSkillForm" class="modal-body stack-gap">
+        <div class="form-group">
+          <label for="assignSkillEmp">Employee <span class="req">*</span></label>
+          <select id="assignSkillEmp" required></select>
+        </div>
+        <div class="form-group">
+          <label for="assignSkillId">Skill <span class="req">*</span></label>
+          <select id="assignSkillId" required></select>
+        </div>
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label for="assignSkillProficiency">Proficiency Level</label>
+            <select id="assignSkillProficiency">
+              <option value="BEGINNER">BEGINNER</option>
+              <option value="INTERMEDIATE" selected>INTERMEDIATE</option>
+              <option value="ADVANCED">ADVANCED</option>
+              <option value="EXPERT">EXPERT</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="assignSkillCertified">Certified?</label>
+            <select id="assignSkillCertified">
+              <option value="false">No</option>
+              <option value="true">Yes (Certified)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="assignSkillCertName">Certification Name</label>
+          <input type="text" id="assignSkillCertName" placeholder="e.g. CRIS Certified System Admin">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="assignSkillModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="submitAssignSkillBtn">Assign Skill</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 21: Roster Version Diff Comparison Modal -->
+  <div id="compareVersionsModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:900px; width:95%;">
+      <div class="modal-header">
+        <div>
+          <h3 style="display:flex; align-items:center; gap:8px;">
+            <span>🔄</span> Roster Version Comparison
+          </h3>
+          <span id="compareVersionsSubtitle" style="font-size:0.8rem; color:var(--text-muted);">Comparing Revisions</span>
+        </div>
+        <button class="modal-close" data-close-modal="compareVersionsModal">&times;</button>
+      </div>
+      <div class="modal-body" id="compareVersionsBody" style="max-height:70vh; overflow-y:auto;">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close-modal="compareVersionsModal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- App JavaScript -->
   <script src="/app.js"></script>
+  <script src="/enterprise-app.js"></script>
 </body>
 </html>

@@ -6,5 +6,8 @@ public enum ActivityCategory {
     LEAVE,
     NOTIFICATION,
     SECURITY,
-    PROFILE
+    PROFILE,
+    PREFERENCE,
+    HANDOVER,
+    SKILL
 }

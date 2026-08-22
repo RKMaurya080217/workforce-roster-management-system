@@ -45,4 +45,18 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findApprovedLeavesInCycle(@Param("status") LeaveStatus status,
                                                  @Param("startDate") LocalDate startDate,
                                                  @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT l FROM LeaveRequest l JOIN FETCH l.employee WHERE l.startDate <= :endDate AND l.endDate >= :startDate")
+    List<LeaveRequest> findByStartDateLessThanEqualAndEndDateGreaterThanEqual(@Param("endDate") LocalDate endDate,
+                                                                             @Param("startDate") LocalDate startDate);
+
+    default List<LeaveRequest> findPendingRequests() {
+        return findByStatusOrderByRequestedAtAsc(LeaveStatus.PENDING);
+    }
+
+    default List<LeaveRequest> findOverlappingLeaves(Long employeeId, LocalDate startDate, LocalDate endDate, LeaveStatus status) {
+        return findApprovedLeavesInCycle(status, startDate, endDate).stream()
+                .filter(l -> l.getEmployee().getId().equals(employeeId))
+                .toList();
+    }
 }

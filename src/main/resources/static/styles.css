@@ -3311,3 +3311,139 @@ input:checked + .slider:before {
   border-radius: 4px;
   font-size: 0.82rem;
 }
+
+/* ==========================================================================
+   ENTERPRISE MODULES STYLES
+   ========================================================================== */
+
+/* Conflict Validator Findings */
+.validation-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.validation-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.validation-badge-pass { background: #dcfce7; color: #166534; }
+.validation-badge-warning { background: #fef9c3; color: #854d0e; }
+.validation-badge-error { background: #fee2e2; color: #991b1b; }
+
+.severity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.severity-PASS { background: #dcfce7; color: #166534; }
+.severity-WARNING { background: #fef9c3; color: #854d0e; }
+.severity-ERROR { background: #fee2e2; color: #991b1b; }
+
+/* Workload Rating Cards */
+.workload-score-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+  font-size: 0.84rem;
+}
+.workload-OPTIMAL { background: #dcfce7; color: #166534; }
+.workload-HIGH { background: #fed7aa; color: #9a3412; }
+.workload-OVERLOADED { background: #fee2e2; color: #991b1b; font-weight: 900; }
+.workload-LIGHT { background: #e0f2fe; color: #0369a1; }
+.workload-INACTIVE { background: #f1f5f9; color: #64748b; }
+
+/* Skill Matrix */
+.proficiency-tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.prof-BEGINNER { background: #f1f5f9; color: #475569; }
+.prof-INTERMEDIATE { background: #e0f2fe; color: #0369a1; }
+.prof-ADVANCED { background: #ede9fe; color: #6d28d9; }
+.prof-EXPERT { background: #fae8ff; color: #86198f; font-weight: 800; }
+
+/* Handover Priority & Status */
+.prio-LOW { background: #f1f5f9; color: #475569; }
+.prio-MEDIUM { background: #e0f2fe; color: #0369a1; }
+.prio-HIGH { background: #fed7aa; color: #9a3412; }
+.prio-CRITICAL { background: #fee2e2; color: #991b1b; font-weight: 800; }
+
+.status-OPEN { background: #fef9c3; color: #854d0e; }
+.status-IN_PROGRESS { background: #e0f2fe; color: #0369a1; }
+.status-COMPLETED { background: #dcfce7; color: #166534; }
+.status-CARRIED_FORWARD { background: #f1f5f9; color: #475569; }
+
+/* Version Comparison Table */
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.diff-table th, .diff-table td {
+  padding: 10px 14px;
+  border: 1px solid var(--border-light);
+  font-size: 0.86rem;
+}
+.diff-row-changed {
+  background-color: #fffbeb;
+}
+.diff-val-v1 {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.diff-val-v2 {
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+/* Export Center Cards */
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+.export-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.export-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.export-card-icon {
+  font-size: 1.8rem;
+}
+.export-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}

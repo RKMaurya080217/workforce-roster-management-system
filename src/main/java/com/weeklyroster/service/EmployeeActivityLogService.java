@@ -34,6 +34,16 @@ public class EmployeeActivityLogService {
         this.employeeRepository = employeeRepository;
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public EmployeeActivityLog logActivity(Long employeeId,
+                                           String username,
+                                           ActivityCategory category,
+                                           String action,
+                                           ActivityStatus status,
+                                           String description) {
+        return logActivity(employeeId, username, category, action, status, description, "MANUAL");
+    }
+
     /**
      * Records a new activity log entry. Runs in a separate transaction to ensure activity is
      * recorded even if the calling transaction fails or rolls back (e.g. failed login).

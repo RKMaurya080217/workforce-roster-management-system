@@ -43,6 +43,13 @@ public interface RosterAssignmentRepository extends JpaRepository<RosterAssignme
     List<RosterAssignment> findByRosterDateBetweenWithDetails(@Param("startDate") LocalDate startDate,
                                                              @Param("endDate") LocalDate endDate);
 
+    @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.employee JOIN FETCH a.shift WHERE a.rosterDate BETWEEN :startDate AND :endDate ORDER BY a.rosterDate ASC, a.employee.id ASC")
+    List<RosterAssignment> findByRosterDateBetweenOrderByRosterDateAsc(@Param("startDate") LocalDate startDate,
+                                                                      @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.employee JOIN FETCH a.shift WHERE a.cycle.id = :cycleId ORDER BY a.rosterDate ASC, a.employee.id ASC")
+    List<RosterAssignment> findByCycleIdOrderByRosterDateAsc(@Param("cycleId") Long cycleId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RosterAssignment a WHERE a.cycle = :cycle")
     void deleteByCycle(@Param("cycle") RosterCycle cycle);

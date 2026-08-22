@@ -79,6 +79,9 @@ public class RosterService {
 	private final NotificationService notificationService;
 	private final RosterHealthService rosterHealthService;
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private RosterVersionService rosterVersionService;
+
 	@org.springframework.beans.factory.annotation.Autowired
 	public RosterService(EmployeeRepository employeeRepository, ShiftRepository shiftRepository,
 			RosterCycleRepository cycleRepository, RosterAssignmentRepository assignmentRepository,
@@ -274,6 +277,12 @@ public class RosterService {
 		// Comprehensive Post-Generation Validation
 		validateGeneratedRoster(cycle, generated, shifts, maxNightsAllowed);
 
+		if (rosterVersionService != null) {
+			try {
+				rosterVersionService.recordVersionSnapshot(cycle, mode == com.weeklyroster.entity.GenerationMode.AUTOMATIC ? "AUTOMATIC_GENERATION" : "GENERATED", "Roster cycle generated", "system");
+			} catch (Exception ignored) {}
+		}
+
 		CoverageReportResponse coverageReport = new CoverageReportResponse(totalConfiguredDemand,
 				totalWorkforceCapacity, totalFeasibleCapacity, totalAssigned, totalOperationalShortage,
 				totalConfiguredShortage, dailyReports, warnings);
@@ -374,6 +383,12 @@ public class RosterService {
 					NotificationType.ROSTER_PUBLISHED, "roster", cycle.getId());
 		}
 
+		if (rosterVersionService != null) {
+			try {
+				rosterVersionService.recordVersionSnapshot(cycle, "PUBLISHED", "Admin published roster cycle", actor);
+			} catch (Exception ignored) {}
+		}
+
 		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, assignments);
 		return toCycleResponse(cycle, assignments, coverageReport);
 	}
@@ -406,6 +421,12 @@ public class RosterService {
 					NotificationType.ROSTER_LOCKED, "roster", cycle.getId());
 		}
 
+		if (rosterVersionService != null) {
+			try {
+				rosterVersionService.recordVersionSnapshot(cycle, "LOCKED", "Admin locked roster cycle", actor);
+			} catch (Exception ignored) {}
+		}
+
 		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, assignments);
 		return toCycleResponse(cycle, assignments, coverageReport);
 	}
@@ -433,6 +454,12 @@ public class RosterService {
 		if (auditService != null) {
 			auditService.log(AuditAction.ROSTER_UNLOCKED, "ROSTER_CYCLE", cycle.getId(), cycle.getId(),
 					null, null, "LOCKED", "PUBLISHED", request.reason().trim(), "MANUAL");
+		}
+
+		if (rosterVersionService != null) {
+			try {
+				rosterVersionService.recordVersionSnapshot(cycle, "UNLOCKED", "Admin unlocked roster cycle: " + request.reason().trim(), actor);
+			} catch (Exception ignored) {}
 		}
 
 		if (notificationService != null) {
