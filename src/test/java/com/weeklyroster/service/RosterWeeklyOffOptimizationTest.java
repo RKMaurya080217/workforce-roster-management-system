@@ -278,6 +278,8 @@ class RosterWeeklyOffOptimizationTest {
 
         // EMP001 has approved leave on Wednesday
         when(leaveRepository.existsByEmployeeIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                anyLong(), any(), any(), any())).thenReturn(false);
+        when(leaveRepository.existsByEmployeeIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
                 eq(1L), eq(LeaveStatus.APPROVED), eq(wednesday), eq(wednesday))).thenReturn(true);
 
         RosterCycleResponse response = rosterService.generateWeeklyRoster(monday);

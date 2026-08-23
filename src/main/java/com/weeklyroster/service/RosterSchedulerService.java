@@ -6,6 +6,7 @@ import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.NotificationType;
 import com.weeklyroster.entity.RosterCycle;
 import com.weeklyroster.entity.RosterStatus;
+import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.repository.RosterCycleRepository;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -91,10 +92,10 @@ public class RosterSchedulerService {
 
     /**
      * Scheduled automatic Sunday weekly roster generator.
-     * Generates the immediate upcoming Monday to Sunday cycle.
-     * Cron expression defaults to every Sunday at 06:00 AM Asia/Kolkata timezone.
+     * Generates ONLY the immediately upcoming Monday to Sunday cycle.
+     * Cron expression defaults to every Sunday at 09:00 AM Asia/Kolkata timezone.
      */
-    @Scheduled(cron = "${roster.auto-generation.cron:0 0 6 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
+    @Scheduled(cron = "${roster.auto-generation.cron:0 0 9 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
     public void runScheduledSundayGeneration() {
         if (!autoGenerationEnabled) {
             log.info("Automatic Sunday roster generation is disabled by configuration (roster.auto-generation.enabled=false).");
@@ -115,9 +116,9 @@ public class RosterSchedulerService {
 
     /**
      * Calculates the immediate next Monday for a given base date.
-     * On Sunday (e.g. 16 Aug), returns tomorrow Monday (17 Aug).
-     * On Monday (e.g. 17 Aug), returns the current Monday (17 Aug).
-     * On Tuesday-Saturday (e.g. 18 Aug), returns next Monday (24 Aug).
+     * On Sunday (e.g. 23 Aug), returns tomorrow Monday (24 Aug).
+     * On Monday (e.g. 24 Aug), returns the current Monday (24 Aug).
+     * On Tuesday-Saturday (e.g. 25 Aug), returns next Monday (31 Aug).
      */
     public LocalDate calculateTargetMonday(LocalDate baseDate) {
         if (baseDate == null) {
@@ -130,29 +131,52 @@ public class RosterSchedulerService {
     }
 
     /**
-     * Idempotent automatic generation runner for a target Monday.
+     * Centralized Future Roster Guard / Safety Validation (Part 10).
+     * Validates that automatic generation only targets the immediately upcoming Monday.
+     * Rejects:
+     * - Next-next week or beyond
+     * - Past weeks
+     * - Multiple future cycles or arbitrary future dates
+     */
+    public boolean isAutomaticGenerationAllowed(LocalDate targetMonday, LocalDate baseDate) {
+        if (targetMonday == null) return false;
+        LocalDate immediateUpcoming = calculateTargetMonday(baseDate);
+        return targetMonday.equals(immediateUpcoming);
+    }
+
+    /**
+     * Idempotent automatic generation runner for the immediate upcoming Monday.
+     * NEVER pre-generates multiple future weeks.
+     * If a manual or existing cycle already exists, DOES NOTHING.
      */
     public RosterCycleResponse executeAutoGeneration(LocalDate targetMonday) {
+        LocalDate baseDate = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
         if (targetMonday == null) {
-            targetMonday = calculateTargetMonday(null);
+            targetMonday = calculateTargetMonday(baseDate);
         } else if (targetMonday.getDayOfWeek() != DayOfWeek.MONDAY) {
             targetMonday = targetMonday.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+        }
+
+        // Centralized Future Roster Guard:
+        if (!isAutomaticGenerationAllowed(targetMonday, baseDate)) {
+            log.warn("Automatic generation rejected by Future Roster Guard for target date {}. Only the immediate upcoming week ({}) is permitted.",
+                    targetMonday, calculateTargetMonday(baseDate));
+            throw new BusinessException("Automatic generation is strictly restricted to the immediately upcoming week (" + calculateTargetMonday(baseDate) + ")");
         }
 
         LocalDate endDate = targetMonday.plusDays(6);
         log.info("Checking automatic roster generation for cycle {} to {}...", targetMonday, endDate);
 
-        // IDEMPOTENCY & LOCK CHECK: Do not overwrite existing or locked cycles
+        // IDEMPOTENCY & MANUAL PRIORITY CHECK:
+        // If a cycle already exists for this exact week (whether MANUAL, AUTOMATIC, LOCKED, PUBLISHED, or GENERATED), DO NOTHING!
         List<RosterCycle> existingCycles = cycleRepository.findOverlappingCycles(targetMonday, endDate);
+        if (existingCycles.isEmpty()) {
+            cycleRepository.findByStartDateAndEndDate(targetMonday, endDate).ifPresent(existingCycles::add);
+        }
         if (!existingCycles.isEmpty()) {
             RosterCycle existing = existingCycles.get(0);
-            if (existing.getStatus() == RosterStatus.LOCKED) {
-                log.info("Idempotency: Roster cycle #{} is LOCKED for {} to {}. Skipping automatic generation to protect locked data.",
-                        existing.getId(), existing.getStartDate(), existing.getEndDate());
-                return rosterService.cycle(existing.getId());
-            }
-            log.info("Roster cycle already exists for {} to {}. Automatic generation skipped.",
-                    existing.getStartDate(), existing.getEndDate());
+            log.info("Roster cycle already exists (ID: #{}, Mode: {}, Status: {}) for {} to {}. Automatic generation skipped (DO NOTHING).",
+                    existing.getId(), existing.getGenerationMode(), existing.getStatus(), existing.getStartDate(), existing.getEndDate());
             return rosterService.cycle(existing.getId());
         }
 

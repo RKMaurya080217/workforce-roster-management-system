@@ -10,5 +10,8 @@ public record RosterVersionResponse(
         String actionReason,
         LocalDateTime createdTimestamp,
         String createdBy,
+        String generationMode,
+        String status,
+        Integer affectedAssignmentsCount,
         String snapshotData
 ) {}

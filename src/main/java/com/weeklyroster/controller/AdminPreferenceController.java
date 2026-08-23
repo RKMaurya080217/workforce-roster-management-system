@@ -44,4 +44,12 @@ public class AdminPreferenceController {
                                                               Authentication auth) {
         return ResponseEntity.ok(preferenceService.decidePreference(id, req, auth.getName()));
     }
+
+    @PutMapping("/{id}/decision")
+    @Operation(summary = "Approve or reject an employee preference request")
+    public ResponseEntity<PreferenceResponse> decidePreferencePut(@PathVariable Long id,
+                                                                 @Valid @RequestBody PreferenceDecisionRequest req,
+                                                                 Authentication auth) {
+        return ResponseEntity.ok(preferenceService.decidePreference(id, req, auth.getName()));
+    }
 }

@@ -18,13 +18,46 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.transaction.annotation.Transactional;
+import com.weeklyroster.repository.RosterCycleRepository;
+import com.weeklyroster.repository.RosterAssignmentRepository;
+import com.weeklyroster.repository.RosterOverrideRepository;
+import com.weeklyroster.repository.RosterVersionRepository;
+import java.time.LocalDate;
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class RosterGenerationApiTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private RosterCycleRepository cycleRepository;
+
+    @Autowired
+    private RosterAssignmentRepository assignmentRepository;
+
+    @Autowired
+    private RosterOverrideRepository overrideRepository;
+
+    @Autowired(required = false)
+    private RosterVersionRepository versionRepository;
+
+    @BeforeEach
+    void cleanCycles() {
+        LocalDate d = LocalDate.of(2026, 8, 17);
+        cycleRepository.findByStartDateAndEndDate(d, d.plusDays(6)).ifPresent(c -> {
+            if (versionRepository != null) {
+                versionRepository.deleteByCycleIdNative(c.getId());
+            }
+            overrideRepository.deleteByCycleIdNative(c.getId());
+            assignmentRepository.deleteByCycleIdNative(c.getId());
+            cycleRepository.deleteCycleByIdNative(c.getId());
+        });
+    }
 
     @Test
     @WithMockUser(username = "admin", authorities = {"ROLE_ADMIN"})

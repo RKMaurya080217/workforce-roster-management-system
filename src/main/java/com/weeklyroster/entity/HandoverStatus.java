@@ -2,7 +2,10 @@ package com.weeklyroster.entity;
 
 public enum HandoverStatus {
     OPEN,
+    PENDING,
     IN_PROGRESS,
     COMPLETED,
-    CARRIED_FORWARD
+    ACKNOWLEDGED,
+    CARRIED_FORWARD,
+    CANCELLED
 }

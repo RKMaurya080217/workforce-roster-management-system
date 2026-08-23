@@ -29,8 +29,10 @@ public class NotificationController {
     }
 
     @GetMapping("/my")
-    public ResponseEntity<List<NotificationResponse>> getMyNotifications() {
-        return ResponseEntity.ok(notificationService.getMyNotifications(getAuthenticatedUsername()));
+    public ResponseEntity<List<NotificationResponse>> getMyNotifications(
+            @RequestParam(value = "filter", defaultValue = "ALL", required = false) String filter,
+            @RequestParam(value = "limit", defaultValue = "50", required = false) int limit) {
+        return ResponseEntity.ok(notificationService.getMyNotificationsFiltered(getAuthenticatedUsername(), filter, limit));
     }
 
     @GetMapping("/unread-count")

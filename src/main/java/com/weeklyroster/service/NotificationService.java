@@ -49,6 +49,19 @@ public class NotificationService {
                                            NotificationType type,
                                            String linkPage,
                                            Long linkId) {
+        if (recipientUsername == null || title == null) return null;
+
+        // B8: Duplicate Notification Protection
+        // If an identical notification was sent to the same user in the last 15 minutes, suppress duplicate
+        if (linkId != null && type != null) {
+            LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
+            if (notificationRepository.existsByRecipientUsernameAndTypeAndLinkIdAndCreatedAtAfter(
+                    recipientUsername, type, linkId, cutoff)) {
+                log.info("Duplicate notification suppressed for user {} (event: {}, linkId: {})", recipientUsername, type, linkId);
+                return null;
+            }
+        }
+
         Notification notification = new Notification();
         notification.setRecipientUsername(recipientUsername);
         notification.setRecipientEmployeeId(recipientEmployeeId);
@@ -88,8 +101,16 @@ public class NotificationService {
                                          Long linkId) {
         List<Employee> activeEmployees = employeeRepository.findByActiveTrueOrderByIdAsc();
         List<Notification> notifications = new ArrayList<>();
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
+
         for (Employee emp : activeEmployees) {
             String username = emp.getUser() != null ? emp.getUser().getUsername() : emp.getEmployeeCode().toLowerCase();
+            
+            // B8: Duplicate protection for broadcast events
+            if (linkId != null && type != null && notificationRepository.existsByRecipientUsernameAndTypeAndLinkIdAndCreatedAtAfter(username, type, linkId, cutoff)) {
+                continue;
+            }
+
             Notification n = new Notification();
             n.setRecipientUsername(username);
             n.setRecipientEmployeeId(emp.getId());
@@ -124,7 +145,13 @@ public class NotificationService {
                              Long linkId) {
         List<User> admins = userRepository.findByRole(Role.ROLE_ADMIN);
         List<Notification> notifications = new ArrayList<>();
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(15);
+
         for (User admin : admins) {
+            if (linkId != null && type != null && notificationRepository.existsByRecipientUsernameAndTypeAndLinkIdAndCreatedAtAfter(admin.getUsername(), type, linkId, cutoff)) {
+                continue;
+            }
+
             Notification n = new Notification();
             n.setRecipientUsername(admin.getUsername());
             n.setRecipientEmployeeId(null);
@@ -157,8 +184,39 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public List<NotificationResponse> getMyNotifications(String username) {
-        return notificationRepository.findByRecipientUsernameOrderByCreatedAtDesc(username)
-                .stream().map(this::toResponse).toList();
+        return getMyNotificationsFiltered(username, "ALL", 50);
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationResponse> getMyNotificationsFiltered(String username, String filter, int limit) {
+        if (username == null) return List.of();
+        int safeLimit = (limit > 0 && limit <= 200) ? limit : 50;
+        String normFilter = filter != null ? filter.trim().toUpperCase() : "ALL";
+
+        List<Notification> list;
+        switch (normFilter) {
+            case "UNREAD" -> list = notificationRepository.findByRecipientUsernameAndReadStatusOrderByCreatedAtDesc(username, false);
+            case "READ" -> list = notificationRepository.findByRecipientUsernameAndReadStatusOrderByCreatedAtDesc(username, true);
+            case "ROSTER" -> list = notificationRepository.findByRecipientUsernameAndTypeInOrderByCreatedAtDesc(
+                    username, List.of(NotificationType.ROSTER_PUBLISHED, NotificationType.SHIFT_CHANGED,
+                            NotificationType.OVERRIDE_APPLIED, NotificationType.SWAP_EXECUTED,
+                            NotificationType.ROSTER_LOCKED, NotificationType.ROSTER_UNLOCKED,
+                            NotificationType.ROSTER_VALIDATION_ALERT));
+            case "LEAVE" -> list = notificationRepository.findByRecipientUsernameAndTypeInOrderByCreatedAtDesc(
+                    username, List.of(NotificationType.LEAVE_DECISION));
+            case "PROFILE" -> list = notificationRepository.findByRecipientUsernameAndTypeInOrderByCreatedAtDesc(
+                    username, List.of(NotificationType.PROFILE_CHANGE_REQUESTED, NotificationType.PROFILE_CHANGE_DECISION,
+                            NotificationType.PREFERENCE_SUBMITTED, NotificationType.PREFERENCE_DECISION));
+            case "SYSTEM" -> list = notificationRepository.findByRecipientUsernameAndTypeInOrderByCreatedAtDesc(
+                    username, List.of(NotificationType.ADMIN_ALERT, NotificationType.SYSTEM_ANNOUNCEMENT,
+                            NotificationType.HANDOVER_CREATED, NotificationType.HANDOVER_ASSIGNED));
+            default -> list = notificationRepository.findByRecipientUsernameOrderByCreatedAtDesc(username);
+        }
+
+        return list.stream()
+                .limit(safeLimit)
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)

@@ -74,6 +74,24 @@ public class ShiftHandoverController {
         return ResponseEntity.ok(handoverService.updateHandover(id, emp.getId(), false, req, auth.getName()));
     }
 
+    @PostMapping("/{id}/acknowledge")
+    @Operation(summary = "Acknowledge an incoming shift handover note")
+    public ResponseEntity<HandoverResponse> acknowledgeHandoverPost(@PathVariable Long id,
+                                                                   @RequestParam(required = false) String remarks,
+                                                                   Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), remarks, auth.getName()));
+    }
+
+    @PutMapping("/{id}/acknowledge")
+    @Operation(summary = "Acknowledge an incoming shift handover note")
+    public ResponseEntity<HandoverResponse> acknowledgeHandoverPut(@PathVariable Long id,
+                                                                  @RequestParam(required = false) String remarks,
+                                                                  Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), remarks, auth.getName()));
+    }
+
     private Employee resolveEmployee(Authentication auth) {
         String username = auth.getName();
         return employeeRepository.findByUserUsernameIgnoreCase(username)

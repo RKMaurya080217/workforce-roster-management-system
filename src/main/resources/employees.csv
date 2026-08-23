@@ -1,6 +1,6 @@
 employeeCode,firstName,lastName,email,gender,contactNumber,devPassword
-EMP001,Rajat,Maurya,rkmaurya080217@gmail.com,MALE,8565005534,Programer$1
-EMP002,Prachi,Mishra,prachi@cris.com,FEMALE,,password123
+EMP001,Rajat,Maurya,rkmaurya080217@gmail.com,MALE,8565005534,password123
+EMP002,Prachi,Mishra,prachi@cris.com,FEMALE,9876543210,password123
 EMP003,Shriram,IYER,sriramiyer18@gmail.com,MALE,,password123
 EMP004,Sapna,Pandey,sapna@cris.com,FEMALE,,password123
 EMP005,Tushar,Chandila,tushar@cris.com,MALE,,password123

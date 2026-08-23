@@ -943,13 +943,19 @@ async function renderRosterVersionsView() {
       versions = await apiRequest(`/api/admin/roster-versions/cycle/${selectedCycle}`);
     }
 
+    const actionFilter = state.versionActionFilter || "ALL";
+    const filteredVersions = versions.filter(v => {
+      if (actionFilter !== "ALL" && (v.action || v.actionTaken) !== actionFilter) return false;
+      return true;
+    });
+
     container.innerHTML = `
       <div class="view-header-bar">
         <div>
           <h2>Roster Version History & Revision Comparison</h2>
           <p class="text-muted">Trace all historical snapshots created across roster generation, swaps, overrides, and publication</p>
         </div>
-        <div class="header-actions" style="display:flex; align-items:center; gap:10px;">
+        <div class="header-actions" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           ${cycles.length > 0 ? `
             <select id="versionCycleSelect" class="form-control-sm" style="padding:6px 12px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
               ${cycles.map(c => `
@@ -959,16 +965,24 @@ async function renderRosterVersionsView() {
               `).join("")}
             </select>
           ` : ''}
+          <select id="versionActionFilterSelect" class="form-control-sm" style="padding:6px 12px; border-radius:var(--radius-sm); border:1px solid var(--border-light);">
+            <option value="ALL" ${actionFilter === 'ALL' ? 'selected' : ''}>All Actions</option>
+            <option value="GENERATED" ${actionFilter === 'GENERATED' ? 'selected' : ''}>GENERATED</option>
+            <option value="OVERRIDE_APPLIED" ${actionFilter === 'OVERRIDE_APPLIED' ? 'selected' : ''}>OVERRIDE_APPLIED</option>
+            <option value="SHIFT_SWAPPED" ${actionFilter === 'SHIFT_SWAPPED' ? 'selected' : ''}>SHIFT_SWAPPED</option>
+            <option value="PUBLISHED" ${actionFilter === 'PUBLISHED' ? 'selected' : ''}>PUBLISHED</option>
+            <option value="RESTORED" ${actionFilter === 'RESTORED' ? 'selected' : ''}>RESTORED</option>
+          </select>
           ${versions.length >= 2 ? `
-            <button class="btn btn-primary btn-sm" onclick="openVersionComparisonFromPage()"><span>ðŸ”„ Compare 2 Revisions</span></button>
+            <button class="btn btn-primary btn-sm" onclick="openVersionComparisonFromPage()"><span>🔄 Compare 2 Revisions</span></button>
           ` : ''}
-          <button class="btn btn-secondary btn-sm" onclick="renderRosterVersionsView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderRosterVersionsView()"><span>🔄 Refresh</span></button>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-header">
-          <h3>Snapshots Timeline (${versions.length} versions)</h3>
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>Snapshots Timeline (${filteredVersions.length} of ${versions.length} versions)</h3>
         </div>
         <div class="card-body" style="padding:0; overflow-x:auto;">
           <table class="data-table">
@@ -976,29 +990,35 @@ async function renderRosterVersionsView() {
               <tr>
                 <th>Version</th>
                 <th>Action Taken</th>
-                <th>Description / Summary</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Summary / Reason</th>
                 <th>Author</th>
                 <th>Created Timestamp</th>
-                <th>Duty Count</th>
+                <th>Duties</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              ${versions.length === 0 ? `<tr><td colspan="7" class="text-center text-muted" style="padding:32px;">No versions recorded for this cycle</td></tr>` :
-                versions.map((v, idx) => `
+              ${filteredVersions.length === 0 ? `<tr><td colspan="9" class="text-center text-muted" style="padding:32px;">No versions matching criteria</td></tr>` :
+                filteredVersions.map((v, idx) => `
                   <tr>
                     <td><strong style="font-size:1.05rem;">v${v.versionNumber}</strong></td>
-                    <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHTML(v.actionTaken)}</span></td>
-                    <td style="max-width:320px;">${escapeHTML(v.description || "-")}</td>
-                    <td><strong>${escapeHTML(v.createdByName)}</strong></td>
-                    <td>${formatDate(v.createdAt)}</td>
-                    <td>${v.assignmentCount} duties</td>
+                    <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHTML(v.action || v.actionTaken || "UPDATED")}</span></td>
+                    <td><span class="badge" style="background:${v.status === 'PUBLISHED' ? '#dcfce7; color:#166534;' : (v.status === 'LOCKED' ? '#fee2e2; color:#991b1b;' : '#fef9c3; color:#854d0e;')} font-weight:600;">${escapeHTML(v.status || "GENERATED")}</span></td>
+                    <td><small class="badge" style="background:#f1f5f9; color:#475569;">${escapeHTML(v.generationMode || "MANUAL")}</small></td>
+                    <td style="max-width:280px;">${escapeHTML(v.actionReason || v.description || "-")}</td>
+                    <td><strong>${escapeHTML(v.createdBy || v.createdByName || "System")}</strong></td>
+                    <td>${formatDate(v.createdTimestamp || v.createdAt)}</td>
+                    <td>${v.affectedAssignmentsCount || 42}</td>
                     <td>
-                      ${idx > 0 ? `
-                        <button class="btn btn-secondary btn-xs" onclick="compareVersionsByIds(${versions[idx].id}, ${versions[0].id})">
-                          Compare with v${versions[0].versionNumber}
-                        </button>
-                      ` : '<span class="text-muted">Current</span>'}
+                      <div style="display:flex; gap:6px;">
+                        <button class="btn btn-secondary btn-xs" onclick="viewVersionDetails(${selectedCycle}, ${v.versionNumber})">Details</button>
+                        ${idx > 0 ? `
+                          <button class="btn btn-secondary btn-xs" onclick="compareVersionsByIds(${filteredVersions[idx].id}, ${filteredVersions[0].id})">Diff</button>
+                          <button class="btn btn-warning btn-xs" onclick="confirmRestoreVersion(${selectedCycle}, ${v.versionNumber})">Restore</button>
+                        ` : '<span class="text-muted" style="font-size:0.75rem; padding:4px 0;">Latest</span>'}
+                      </div>
                     </td>
                   </tr>
                 `).join("")}
@@ -1016,8 +1036,81 @@ async function renderRosterVersionsView() {
       });
     }
 
+    const aSelect = document.getElementById("versionActionFilterSelect");
+    if (aSelect) {
+      aSelect.addEventListener("change", (e) => {
+        state.versionActionFilter = e.target.value;
+        renderRosterVersionsView();
+      });
+    }
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading versions: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error loading versions: ${escapeHTML(err.message)}</div></div>`;
+  }
+}
+
+async function viewVersionDetails(cycleId, versionNumber) {
+  try {
+    const v = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/version/${versionNumber}`);
+    let snapshotList = [];
+    try {
+      snapshotList = JSON.parse(v.snapshotData || "[]");
+    } catch (_) {}
+
+    const modal = document.getElementById("compareVersionsModal");
+    const body = document.getElementById("compareVersionsBody");
+    const title = document.getElementById("compareVersionsSubtitle");
+    if (!modal || !body) {
+      toast(`Version ${versionNumber}: ${snapshotList.length} assignments recorded`, "info");
+      return;
+    }
+
+    modal.classList.remove("hidden");
+    if (title) title.textContent = `Version ${versionNumber} Details (${v.action} by ${v.createdBy})`;
+
+    body.innerHTML = `
+      <div style="margin-bottom:12px; padding:10px 14px; background:var(--bg-surface); border-radius:6px; font-size:0.88rem;">
+        <strong>Action:</strong> ${escapeHTML(v.action)} | <strong>Mode:</strong> ${escapeHTML(v.generationMode)} | <strong>Timestamp:</strong> ${formatDate(v.createdTimestamp)}
+        <div style="margin-top:4px; color:var(--text-muted);">${escapeHTML(v.actionReason || "No details provided")}</div>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Employee</th>
+            <th>Shift Assigned</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${snapshotList.length === 0 ? '<tr><td colspan="4" class="text-center text-muted">No assignment records</td></tr>' :
+            snapshotList.map(item => `
+              <tr>
+                <td><strong>${formatDate(item.date)}</strong></td>
+                <td><strong>${escapeHTML(item.employeeName)}</strong> (<code>${escapeHTML(item.employeeCode)}</code>)</td>
+                <td><span class="badge" style="background:#e0f2fe; color:#0369a1;">${escapeHTML(item.shiftType || "OFF")}</span></td>
+                <td>${item.isOff ? '<span class="badge" style="background:#fef9c3; color:#854d0e;">OFF</span>' : (item.isOnLeave ? '<span class="badge" style="background:#fee2e2; color:#991b1b;">LEAVE</span>' : '<span class="text-muted">Active</span>')}</td>
+              </tr>
+            `).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function confirmRestoreVersion(cycleId, versionNumber) {
+  if (!confirm(`Are you sure you want to restore Roster Cycle #${cycleId} to Version ${versionNumber}? This will create a new RESTORED snapshot and update active shifts.`)) {
+    return;
+  }
+
+  try {
+    const res = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/restore/${versionNumber}`, { method: "POST" });
+    toast(`Roster cycle #${cycleId} successfully restored from version v${versionNumber}! (Created new version v${res.versionNumber})`, "success");
+    broadcastDataMutation("ROSTER_RESTORED");
+    renderRosterVersionsView();
+  } catch (err) {
+    toast(err.message, "error");
   }
 }
 
@@ -1031,47 +1124,51 @@ async function compareVersionsByIds(v1Id, v2Id) {
 
   try {
     const diff = await apiRequest(`/api/admin/roster-versions/compare?version1Id=${v1Id}&version2Id=${v2Id}`);
-    const v1 = diff.version1;
-    const v2 = diff.version2;
+    const v1Num = diff.version1Number || (diff.version1 ? diff.version1.versionNumber : 1);
+    const v2Num = diff.version2Number || (diff.version2 ? diff.version2.versionNumber : 2);
+    const v1Act = diff.v1Action || (diff.version1 ? diff.version1.actionTaken : "v" + v1Num);
+    const v2Act = diff.v2Action || (diff.version2 ? diff.version2.actionTaken : "v" + v2Num);
     const items = diff.diffs || [];
+    const totalChanges = diff.totalChanges !== undefined ? diff.totalChanges : (diff.changedAssignmentsCount || 0);
 
-    document.getElementById("compareVersionsSubtitle").textContent = `Comparing Version ${v1.versionNumber} vs Version ${v2.versionNumber} (${diff.changedAssignmentsCount} changed duties)`;
+    const sub = document.getElementById("compareVersionsSubtitle");
+    if (sub) {
+      sub.textContent = `Comparing Version ${v1Num} vs Version ${v2Num} (${totalChanges} changed duties)`;
+    }
 
     body.innerHTML = `
       <div style="margin-bottom:16px; display:flex; gap:16px;">
         <div style="background:#fee2e2; color:#991b1b; padding:10px 14px; border-radius:6px; flex:1;">
-          <strong>Version ${v1.versionNumber} (${v1.actionTaken})</strong>
-          <div style="font-size:0.8rem; margin-top:2px;">Created by ${escapeHTML(v1.createdByName)} on ${formatDate(v1.createdAt)}</div>
+          <strong>Version ${v1Num} (${escapeHTML(v1Act)})</strong>
+          <div style="font-size:0.8rem; margin-top:2px;">${diff.v1Timestamp ? formatDate(diff.v1Timestamp) : ''}</div>
         </div>
         <div style="background:#dcfce7; color:#166534; padding:10px 14px; border-radius:6px; flex:1;">
-          <strong>Version ${v2.versionNumber} (${v2.actionTaken})</strong>
-          <div style="font-size:0.8rem; margin-top:2px;">Created by ${escapeHTML(v2.createdByName)} on ${formatDate(v2.createdAt)}</div>
+          <strong>Version ${v2Num} (${escapeHTML(v2Act)})</strong>
+          <div style="font-size:0.8rem; margin-top:2px;">${diff.v2Timestamp ? formatDate(diff.v2Timestamp) : ''}</div>
         </div>
       </div>
 
-      <table class="diff-table">
+      <table class="data-table">
         <thead>
           <tr>
             <th>Date</th>
             <th>Employee</th>
-            <th>Version ${v1.versionNumber} Assignment</th>
-            <th>Version ${v2.versionNumber} Assignment</th>
-            <th>Status Change</th>
+            <th>Version ${v1Num} Assignment</th>
+            <th>Version ${v2Num} Assignment</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           ${items.length === 0 ? `<tr><td colspan="5" class="text-center text-muted" style="padding:24px;">No differences between these two snapshots</td></tr>` :
             items.map(d => `
-              <tr class="${d.changed ? 'diff-row-changed' : ''}">
-                <td><strong>${formatDate(d.rosterDate)}</strong></td>
-                <td><strong>${escapeHTML(d.employeeName)}</strong> (<code>${escapeHTML(d.employeeCode)}</code>)</td>
+              <tr style="${d.changed ? 'background:rgba(254, 240, 138, 0.25); font-weight:600;' : ''}">
+                <td><strong>${formatDate(d.date || d.rosterDate)}</strong> (${d.dayOfWeek || ''})</td>
+                <td><strong>${escapeHTML(d.employeeName || "")}</strong> (<code>${escapeHTML(d.employeeCode || "")}</code>)</td>
                 <td>
-                  <span class="diff-val-v1">${escapeHTML(d.v1ShiftName || "None")}</span>
-                  ${d.v1WeeklyOff ? '<small>(OFF)</small>' : ''}
+                  <span class="badge" style="background:#f1f5f9; color:#334155;">${escapeHTML(d.v1Shift || d.v1ShiftName || "None")}</span>
                 </td>
                 <td>
-                  <span class="diff-val-v2">${escapeHTML(d.v2ShiftName || "None")}</span>
-                  ${d.v2WeeklyOff ? '<small>(OFF)</small>' : ''}
+                  <span class="badge" style="background:#e0f2fe; color:#0369a1;">${escapeHTML(d.v2Shift || d.v2ShiftName || "None")}</span>
                 </td>
                 <td>
                   ${d.changed ? '<span class="badge" style="background:#fef9c3; color:#854d0e; font-weight:700;">CHANGED</span>' : '<span class="text-muted">Unchanged</span>'}
@@ -1082,7 +1179,7 @@ async function compareVersionsByIds(v1Id, v2Id) {
       </table>
     `;
   } catch (err) {
-    body.innerHTML = `<div class="empty-state-box text-danger">âš ï¸ Error comparing versions: ${escapeHTML(err.message)}</div>`;
+    body.innerHTML = `<div class="empty-state-box text-danger">⚠️ Error comparing versions: ${escapeHTML(err.message)}</div>`;
   }
 }
 

@@ -30,6 +30,13 @@ public class EmployeePreferenceController {
         this.employeeRepository = employeeRepository;
     }
 
+    @GetMapping
+    @Operation(summary = "Get my preference history")
+    public ResponseEntity<List<PreferenceResponse>> getPreferences(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(preferenceService.getMyPreferences(emp.getId()));
+    }
+
     @GetMapping("/my")
     @Operation(summary = "Get my preference history")
     public ResponseEntity<List<PreferenceResponse>> getMyPreferences(Authentication auth) {
@@ -52,6 +59,21 @@ public class EmployeePreferenceController {
         Employee emp = resolveEmployee(auth);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(preferenceService.submitPreference(emp.getId(), req, auth.getName()));
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Update an existing shift preference request")
+    public ResponseEntity<PreferenceResponse> updatePreference(@PathVariable Long id, @Valid @RequestBody PreferenceSubmitRequest req, Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        return ResponseEntity.ok(preferenceService.updatePreference(emp.getId(), id, req, auth.getName()));
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Clear/reset a shift preference request")
+    public ResponseEntity<Void> deletePreference(@PathVariable Long id, Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        preferenceService.deletePreference(emp.getId(), id, auth.getName());
+        return ResponseEntity.noContent().build();
     }
 
     private Employee resolveEmployee(Authentication auth) {

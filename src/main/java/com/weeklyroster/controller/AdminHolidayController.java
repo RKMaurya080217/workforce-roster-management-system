@@ -50,6 +50,18 @@ public class AdminHolidayController {
         return ResponseEntity.ok(holidayService.toggleActive(id, auth.getName()));
     }
 
+    @PatchMapping("/{id}/status")
+    @Operation(summary = "Set active status of a holiday")
+    public ResponseEntity<HolidayResponse> setActiveStatus(@PathVariable Long id,
+                                                           @RequestParam boolean active,
+                                                           Authentication auth) {
+        HolidayResponse current = holidayService.getHolidayById(id);
+        if (current.active() != active) {
+            return ResponseEntity.ok(holidayService.toggleActive(id, auth.getName()));
+        }
+        return ResponseEntity.ok(current);
+    }
+
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a holiday")
     public ResponseEntity<Void> deleteHoliday(@PathVariable Long id, Authentication auth) {

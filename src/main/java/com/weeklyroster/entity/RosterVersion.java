@@ -33,6 +33,15 @@ public class RosterVersion {
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
+    @Column(name = "generation_mode", length = 30)
+    private String generationMode;
+
+    @Column(name = "status", length = 30)
+    private String status;
+
+    @Column(name = "affected_assignments_count")
+    private Integer affectedAssignmentsCount = 0;
+
     @Lob
     @Column(name = "snapshot_data", columnDefinition = "LONGTEXT")
     private String snapshotData;
@@ -53,6 +62,12 @@ public class RosterVersion {
     public void setCreatedTimestamp(LocalDateTime createdTimestamp) { this.createdTimestamp = createdTimestamp; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    public String getGenerationMode() { return generationMode; }
+    public void setGenerationMode(String generationMode) { this.generationMode = generationMode; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public Integer getAffectedAssignmentsCount() { return affectedAssignmentsCount; }
+    public void setAffectedAssignmentsCount(Integer affectedAssignmentsCount) { this.affectedAssignmentsCount = affectedAssignmentsCount; }
     public String getSnapshotData() { return snapshotData; }
     public void setSnapshotData(String snapshotData) { this.snapshotData = snapshotData; }
 }

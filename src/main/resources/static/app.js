@@ -6530,6 +6530,27 @@ async function fetchPendingProfileChangesCount() {
 
 async function setupNotificationCenter() {
   if (!state.token) return;
+  state.notifFilter = state.notifFilter || "ALL";
+
+  const filterBar = document.getElementById("notifFilterBar");
+  if (filterBar) {
+    filterBar.querySelectorAll(".notif-filter-btn").forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        filterBar.querySelectorAll(".notif-filter-btn").forEach(b => {
+          b.classList.remove("active");
+          b.style.background = "";
+          b.style.color = "";
+        });
+        btn.classList.add("active");
+        btn.style.background = "var(--primary)";
+        btn.style.color = "#fff";
+        state.notifFilter = btn.getAttribute("data-filter") || "ALL";
+        fetchNotifications();
+      };
+    });
+  }
+
   await fetchUnreadNotifCount();
 }
 
@@ -6565,7 +6586,8 @@ async function fetchNotifications() {
   container.innerHTML = `<div class="empty-state-box" style="padding:16px;"><div class="spinner"></div></div>`;
 
   try {
-    const notifs = await apiRequest("/api/notifications/my");
+    const filter = state.notifFilter || "ALL";
+    const notifs = await apiRequest(`/api/notifications/my?filter=${encodeURIComponent(filter)}&limit=50`);
     renderNotificationList(notifs);
     await fetchUnreadNotifCount();
   } catch (err) {
@@ -6578,7 +6600,7 @@ function renderNotificationList(notifs) {
   if (!container) return;
 
   if (!notifs || !notifs.length) {
-    container.innerHTML = `<div class="notif-empty">No notifications yet</div>`;
+    container.innerHTML = `<div class="notif-empty">No notifications in this category</div>`;
     return;
   }
 
@@ -6587,20 +6609,42 @@ function renderNotificationList(notifs) {
     let iconChar = "🔔";
     if (n.type === "ROSTER_PUBLISHED") { iconClass = "published"; iconChar = "📢"; }
     else if (n.type === "ROSTER_LOCKED" || n.type === "ROSTER_UNLOCKED") { iconClass = "locked"; iconChar = "🔒"; }
-    else if (n.type === "ADMIN_ALERT" || n.type === "CRITICAL_CONFLICT") { iconClass = "alert"; iconChar = "⚠️"; }
+    else if (n.type === "ADMIN_ALERT" || n.type === "CRITICAL_CONFLICT" || n.type === "ROSTER_VALIDATION_ALERT") { iconClass = "alert"; iconChar = "⚠️"; }
     else if (n.type === "LEAVE_DECISION" || n.type === "LEAVE_REQUEST") { iconClass = "leave"; iconChar = "📋"; }
+    else if (n.type === "PROFILE_CHANGE_REQUESTED" || n.type === "PROFILE_CHANGE_DECISION") { iconClass = "profile"; iconChar = "👤"; }
+    else if (n.type === "HANDOVER_CREATED" || n.type === "HANDOVER_ASSIGNED") { iconClass = "handover"; iconChar = "🤝"; }
+    else if (n.type === "PREFERENCE_SUBMITTED" || n.type === "PREFERENCE_DECISION") { iconClass = "preference"; iconChar = "⭐"; }
 
     return `
-      <div class="notif-item ${!n.readStatus ? 'unread' : ''}" data-id="${n.id}" data-page="${n.linkPage || ''}" data-linkid="${n.linkId || ''}">
+      <div class="notif-item ${!n.readStatus ? 'unread' : ''}" data-id="${n.id}" data-page="${n.linkPage || ''}" data-linkid="${n.linkId || ''}" style="cursor:pointer;">
         <div class="notif-icon-circle ${iconClass}">${iconChar}</div>
-        <div class="notif-content">
-          <strong>${n.title}</strong>
-          <p>${n.message}</p>
-          <span class="notif-time">${n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : ''}</span>
+        <div class="notif-content" style="flex:1;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>${escapeHTML(n.title)}</strong>
+            ${!n.readStatus ? `<button class="btn-link-xs mark-single-read-btn" data-id="${n.id}" title="Mark as read" style="font-size:0.75rem; color:var(--primary);">Mark read</button>` : ''}
+          </div>
+          <p style="margin:2px 0 4px 0; font-size:0.83rem;">${escapeHTML(n.message)}</p>
+          <span class="notif-time" style="font-size:0.72rem; color:var(--text-muted);">${n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : ''}</span>
         </div>
       </div>
     `;
   }).join("");
+
+  container.querySelectorAll(".mark-single-read-btn").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const notifId = btn.getAttribute("data-id");
+      try {
+        await apiRequest(`/api/notifications/${notifId}/read`, { method: "PUT" });
+        const parentItem = btn.closest(".notif-item");
+        if (parentItem) parentItem.classList.remove("unread");
+        btn.remove();
+        await fetchUnreadNotifCount();
+      } catch (err) {
+        console.warn("Mark read failed", err);
+      }
+    });
+  });
 
   container.querySelectorAll(".notif-item").forEach(item => {
     item.addEventListener("click", async () => {
@@ -6608,12 +6652,15 @@ function renderNotificationList(notifs) {
       const linkPage = item.getAttribute("data-page");
       const linkId = item.getAttribute("data-linkid");
 
-      try {
-        await apiRequest(`/api/notifications/${notifId}/read`, { method: "PUT" });
-        item.classList.remove("unread");
-        await fetchUnreadNotifCount();
-      } catch (e) {
-        // ignore
+      if (item.classList.contains("unread")) {
+        try {
+          await apiRequest(`/api/notifications/${notifId}/read`, { method: "PUT" });
+          item.classList.remove("unread");
+          item.querySelector(".mark-single-read-btn")?.remove();
+          await fetchUnreadNotifCount();
+        } catch (e) {
+          // ignore
+        }
       }
 
       document.getElementById("notificationDropdown")?.classList.add("hidden");

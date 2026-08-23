@@ -184,6 +184,12 @@ public class RosterService {
 			emailDeliveryLogRepository.deleteByDateRangeNative(startDate, endDate);
 		}
 
+		if (rosterVersionService != null) {
+			for (RosterCycle existing : overlapping) {
+				rosterVersionService.deleteByCycleId(existing.getId());
+			}
+		}
+
 		for (RosterCycle existing : overlapping) {
 			cycleRepository.deleteCycleByIdNative(existing.getId());
 		}
@@ -343,7 +349,12 @@ public class RosterService {
 			emailDeliveryLogRepository.deleteByCycleIdNative(cycle.getId());
 		}
 
-		// 4. Delete the parent roster cycle entity
+		// 4. Delete version snapshots belonging to this cycle
+		if (rosterVersionService != null) {
+			rosterVersionService.deleteByCycleId(cycle.getId());
+		}
+
+		// 5. Delete the parent roster cycle entity
 		cycleRepository.deleteCycleByIdNative(cycle.getId());
 	}
 
@@ -694,6 +705,17 @@ public class RosterService {
 			notificationService.notifyEmployee(a2.getEmployee(), "Shift Swapped",
 					"Your shift on " + a2.getRosterDate() + " was swapped to " + shift1.getShiftType() + " with " + a1.getEmployee().getFirstName() + " " + a1.getEmployee().getLastName(),
 					NotificationType.SWAP_EXECUTED, "employeeWorkspace", a2.getCycle() != null ? a2.getCycle().getId() : null);
+		}
+
+		if (rosterVersionService != null && a1.getCycle() != null) {
+			String actor = SecurityContextHolder.getContext().getAuthentication() != null
+					? SecurityContextHolder.getContext().getAuthentication().getName()
+					: "admin";
+			rosterVersionService.recordVersionSnapshot(
+					a1.getCycle(),
+					"SHIFT_SWAPPED",
+					"Shift swapped on " + a1.getRosterDate() + " between " + a1.getEmployee().getEmployeeCode() + " and " + a2.getEmployee().getEmployeeCode() + (reason != null ? ": " + reason : ""),
+					actor);
 		}
 
 		return saved.stream().map(this::toAssignmentResponse).toList();
@@ -1819,6 +1841,17 @@ public class RosterService {
 					NotificationType.SHIFT_CHANGED,
 					"employeeWorkspace",
 					assignment.getCycle() != null ? assignment.getCycle().getId() : null);
+		}
+
+		if (rosterVersionService != null && assignment.getCycle() != null) {
+			String actor = SecurityContextHolder.getContext().getAuthentication() != null
+					? SecurityContextHolder.getContext().getAuthentication().getName()
+					: "admin";
+			rosterVersionService.recordVersionSnapshot(
+					assignment.getCycle(),
+					"OVERRIDE_APPLIED",
+					"Override on " + assignment.getRosterDate() + " for " + (assignment.getEmployee() != null ? assignment.getEmployee().getEmployeeCode() : "employee") + ": " + (weeklyOff ? "OFF" : shiftType.name()) + (reason != null ? " (" + reason + ")" : ""),
+					actor);
 		}
 
 		return toAssignmentResponse(assignment);

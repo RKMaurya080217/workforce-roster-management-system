@@ -100,6 +100,56 @@ public class EmployeePreferenceService {
         return toResponse(saved);
     }
 
+    public PreferenceResponse updatePreference(Long employeeId, Long preferenceId, PreferenceSubmitRequest req, String username) {
+        EmployeePreference pref = preferenceRepository.findById(preferenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Preference not found with id: " + preferenceId));
+
+        if (!pref.getEmployee().getId().equals(employeeId)) {
+            throw new BusinessException("Access denied: You can only update your own preferences.");
+        }
+
+        pref.setPreferredShiftTypes(req.preferredShiftTypes() != null ? req.preferredShiftTypes().trim() : null);
+        pref.setPreferredOffDays(req.preferredOffDays() != null ? req.preferredOffDays().trim() : null);
+        pref.setPreferredWorkingDays(req.preferredWorkingDays() != null ? req.preferredWorkingDays().trim() : null);
+        pref.setAvoidShiftTypes(req.avoidShiftTypes() != null ? req.avoidShiftTypes().trim() : null);
+        pref.setTemporaryRestrictions(req.temporaryRestrictions() != null ? req.temporaryRestrictions().trim() : null);
+        pref.setRemarks(req.remarks() != null ? req.remarks().trim() : null);
+        pref.setEffectiveFrom(req.effectiveFrom());
+        pref.setEffectiveTo(req.effectiveTo());
+        pref.setStatus(PreferenceStatus.PENDING);
+
+        EmployeePreference saved = preferenceRepository.save(pref);
+
+        activityLogService.logActivity(employeeId, username, ActivityCategory.PREFERENCE,
+                "PREFERENCE_UPDATED", ActivityStatus.PENDING,
+                "Updated shift preference request #" + saved.getId());
+
+        auditService.log(AuditAction.PREFERENCE_SUBMITTED, "EMPLOYEE_PREFERENCE", saved.getId(), null,
+                employeeId, pref.getEmployee().getFirstName() + " " + pref.getEmployee().getLastName(),
+                null, "UPDATED", "Updated shift preferences", "MANUAL");
+
+        return toResponse(saved);
+    }
+
+    public void deletePreference(Long employeeId, Long preferenceId, String username) {
+        EmployeePreference pref = preferenceRepository.findById(preferenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Preference not found with id: " + preferenceId));
+
+        if (!pref.getEmployee().getId().equals(employeeId)) {
+            throw new BusinessException("Access denied: You can only clear/reset your own preferences.");
+        }
+
+        preferenceRepository.delete(pref);
+
+        activityLogService.logActivity(employeeId, username, ActivityCategory.PREFERENCE,
+                "PREFERENCE_CLEARED", ActivityStatus.SUCCESS,
+                "Cleared shift preference #" + preferenceId);
+
+        auditService.log(AuditAction.PREFERENCE_SUBMITTED, "EMPLOYEE_PREFERENCE", preferenceId, null,
+                employeeId, pref.getEmployee().getFirstName() + " " + pref.getEmployee().getLastName(),
+                "ACTIVE", "CLEARED", "Cleared shift preferences", "MANUAL");
+    }
+
     public PreferenceResponse decidePreference(Long preferenceId, PreferenceDecisionRequest req, String adminUsername) {
         EmployeePreference pref = preferenceRepository.findById(preferenceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Preference not found with id: " + preferenceId));

@@ -90,6 +90,9 @@ public class ShiftHandoverService {
 
         Employee toEmp = null;
         if (req.toEmployeeId() != null) {
+            if (req.toEmployeeId().equals(fromEmployeeId)) {
+                throw new BusinessException("An employee cannot handover a shift to themselves.");
+            }
             toEmp = employeeRepository.findById(req.toEmployeeId())
                     .orElseThrow(() -> new ResourceNotFoundException("Target Employee not found with id: " + req.toEmployeeId()));
         }
@@ -124,6 +127,39 @@ public class ShiftHandoverService {
             notificationService.createNotification(toEmp.getEmployeeCode().toLowerCase(), toEmp.getId(),
                     "Shift Handover Received",
                     fromEmp.getFirstName() + " " + fromEmp.getLastName() + " created a handover note for " + shift.getShiftType().name() + " shift.",
+                    NotificationType.HANDOVER_ASSIGNED, "handovers", saved.getId());
+        }
+
+        return toResponse(saved);
+    }
+
+    public HandoverResponse acknowledgeHandover(Long id, Long employeeId, String remarks, String username) {
+        ShiftHandover h = handoverRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Handover not found with id: " + id));
+
+        if (h.getToEmployee() != null && !h.getToEmployee().getId().equals(employeeId)) {
+            throw new BusinessException("Only the designated incoming employee can acknowledge this handover.");
+        }
+
+        h.setStatus(HandoverStatus.ACKNOWLEDGED);
+        if (remarks != null && !remarks.isBlank()) {
+            String currentNotes = h.getImportantNotes() != null ? h.getImportantNotes() + " | " : "";
+            h.setImportantNotes(currentNotes + "Ack: " + remarks.trim());
+        }
+        h.setUpdatedAt(LocalDateTime.now());
+        ShiftHandover saved = handoverRepository.save(h);
+
+        activityLogService.logActivity(employeeId, username, ActivityCategory.HANDOVER,
+                "HANDOVER_ACKNOWLEDGED", ActivityStatus.SUCCESS,
+                "Acknowledged shift handover note #" + saved.getId());
+
+        auditService.log(AuditAction.HANDOVER_UPDATED, "SHIFT_HANDOVER", saved.getId(), null,
+                employeeId, null, "OPEN", "ACKNOWLEDGED", "Acknowledged handover note #" + saved.getId(), "MANUAL");
+
+        if (h.getFromEmployee() != null) {
+            notificationService.createNotification(h.getFromEmployee().getEmployeeCode().toLowerCase(), h.getFromEmployee().getId(),
+                    "Shift Handover Acknowledged",
+                    username + " acknowledged your shift handover note.",
                     NotificationType.HANDOVER_ASSIGNED, "handovers", saved.getId());
         }
 

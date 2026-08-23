@@ -109,6 +109,9 @@ public class DataInitializer {
 				user.setEnabled(true);
 				user = userRepository.save(user);
 				emp.setUser(user);
+				if (emp.getEmail() != null && emp.getEmail().contains("rajat.b13.")) {
+					emp.setEmail("rkmaurya080217@gmail.com");
+				}
 				if (emp.getLastName() == null) {
 					emp.setLastName("");
 				}

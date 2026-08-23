@@ -249,6 +249,14 @@
                   </div>
                   <button id="notifMarkAllReadBtn" class="btn-link-xs">Mark all read</button>
                 </div>
+                <div class="notif-filters" id="notifFilterBar" style="display:flex; gap:4px; padding:6px 12px; border-bottom:1px solid var(--border-light); background:var(--bg-surface); overflow-x:auto;">
+                  <button class="btn-xs notif-filter-btn active" data-filter="ALL" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">All</button>
+                  <button class="btn-xs notif-filter-btn" data-filter="UNREAD" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">Unread</button>
+                  <button class="btn-xs notif-filter-btn" data-filter="ROSTER" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">Roster</button>
+                  <button class="btn-xs notif-filter-btn" data-filter="LEAVE" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">Leave</button>
+                  <button class="btn-xs notif-filter-btn" data-filter="PROFILE" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">Profile</button>
+                  <button class="btn-xs notif-filter-btn" data-filter="SYSTEM" style="border-radius:12px; font-size:0.75rem; padding:2px 8px;">System</button>
+                </div>
                 <div id="notifListContainer" class="notif-list-body">
                   <div class="notif-empty">No notifications yet</div>
                 </div>
