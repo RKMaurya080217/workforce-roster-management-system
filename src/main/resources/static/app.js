@@ -120,40 +120,91 @@ const dom = {
   }
 };
 
-// Admin Navigation Menu Items
-const ADMIN_NAV = [
-  { id: "dashboard", label: "Dashboard", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>` },
-  { id: "analytics", label: "Roster Analytics", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>` },
-  { id: "validation", label: "Conflict Validator", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>` },
-  { id: "employees", label: "Employees", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>` },
-  { id: "roster", label: "Weekly Roster", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
-  { id: "adminPreferences", label: "Shift Preferences", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>` },
-  { id: "adminHolidays", label: "Holiday Calendar", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
-  { id: "adminHandovers", label: "Shift Handovers", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` },
-  { id: "adminWorkload", label: "Workload Analytics", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>` },
-  { id: "adminSkills", label: "Skill Matrix", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>` },
-  { id: "exportCenter", label: "Export Center", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>` },
-  { id: "rosterVersions", label: "Roster Versions", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 8 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4"></path><polyline points="3 16 3 11 8 11"></polyline></svg>` },
-  { id: "health", label: "Roster Health", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>` },
-  { id: "shifts", label: "Shift Capacity", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>` },
-  { id: "leaves", label: "Leave Requests", badgeKey: "pendingLeaves", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>` },
-  { id: "profileApprovals", label: "Profile Approvals", badgeKey: "pendingProfileChangesCount", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>` },
-  { id: "history", label: "Roster History", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 8 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4"></path><polyline points="3 16 3 11 8 11"></polyline></svg>` },
-  { id: "audit", label: "Audit Trail", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>` }
+// ==========================================================================
+// UNIFIED PROFESSIONAL LOCAL SVG ICON SYSTEM
+// ==========================================================================
+const WRMS_ICONS = {
+  // Navigation & Core View Icons
+  dashboard: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
+  roster: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`,
+  employees: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  leaves: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
+  profileApprovals: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>`,
+  more: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>`,
+  chevronDown: `<svg class="wrms-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  chevronUp: `<svg class="wrms-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`,
+
+  // Secondary Tools (More Group) Icons
+  analytics: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`,
+  validation: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  preferences: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>`,
+  holidays: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14c-1.5-1.5-3-.5-3 1 0 1.5 3 3.5 3 3.5s3-2 3-3.5c0-1.5-1.5-2.5-3-1z"/></svg>`,
+  handovers: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
+  workload: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 10"/></svg>`,
+  skills: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  exports: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  versions: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
+  health: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
+  shifts: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  history: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 8 14"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><polyline points="3 16 3 11 8 11"/></svg>`,
+  audit: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>`,
+
+  // Employee Specific / General Action Icons
+  notifications: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  activity: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="M3.05 11a9 9 0 1 1 .5 4"/></svg>`,
+  profile: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  refresh: `<svg class="wrms-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>`,
+  logout: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+  check: `<svg class="wrms-icon-sm" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  alert: `<svg class="wrms-icon-sm" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  info: `<svg class="wrms-icon-sm" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  fileExcel: `<svg class="wrms-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>`,
+  filePdf: `<svg class="wrms-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  fileCsv: `<svg class="wrms-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>`
+};
+window.WRMS_ICONS = WRMS_ICONS;
+
+// Admin Primary Navigation Menu Items (Directly Visible)
+const ADMIN_PRIMARY_NAV = [
+  { id: "dashboard", route: "dashboard", label: "Dashboard", icon: WRMS_ICONS.dashboard },
+  { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
+  { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
+  { id: "leaves", route: "leave-requests", label: "Leave Requests", badgeKey: "pendingLeaves", icon: WRMS_ICONS.leaves },
+  { id: "profileApprovals", route: "profile-approvals", label: "Profile Approvals", badgeKey: "pendingProfileChangesCount", icon: WRMS_ICONS.profileApprovals }
 ];
+
+// Admin Secondary Navigation Menu Items (Inside Collapsible More Menu)
+const ADMIN_MORE_NAV = [
+  { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
+  { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
+  { id: "adminPreferences", route: "shift-preferences", label: "Shift Preferences", icon: WRMS_ICONS.preferences },
+  { id: "adminHolidays", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays },
+  { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
+  { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
+  { id: "adminSkills", route: "skill-matrix", label: "Skill Matrix", icon: WRMS_ICONS.skills },
+  { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
+  { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions },
+  { id: "health", route: "roster-health", label: "Roster Health", icon: WRMS_ICONS.health },
+  { id: "shifts", route: "shift-capacity", label: "Shift Capacity", icon: WRMS_ICONS.shifts },
+  { id: "history", route: "roster-history", label: "Roster History", icon: WRMS_ICONS.history },
+  { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
+];
+
+// Flat Admin Navigation Compatibility Reference
+const ADMIN_NAV = [...ADMIN_PRIMARY_NAV, ...ADMIN_MORE_NAV];
 
 // Employee Navigation Menu Items
 const EMPLOYEE_NAV = [
-  { id: "emp_overview", tab: "overview", label: "Overview", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>` },
-  { id: "emp_roster", tab: "roster", label: "My Roster", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
-  { id: "emp_leaves", tab: "leaves", label: "Leave Management", badgeKey: "cachedPendingLeavesCount", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>` },
-  { id: "emp_preferences", tab: "preferences", label: "Shift Preferences", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>` },
-  { id: "emp_handovers", tab: "handovers", label: "Shift Handovers", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>` },
-  { id: "emp_skills", tab: "skills", label: "My Skills", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>` },
-  { id: "emp_holidays", tab: "holidays", label: "Holidays", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>` },
-  { id: "emp_notifications", tab: "notifications", label: "Notifications", badgeKey: "unreadNotificationCount", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>` },
-  { id: "emp_activity", tab: "activity", label: "Activity / Logs", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4"></path><polyline points="3 16 3 11 8 11"></polyline></svg>` },
-  { id: "emp_profile", tab: "profile", label: "My Profile", icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>` }
+  { id: "emp_overview", tab: "overview", label: "Overview", icon: WRMS_ICONS.dashboard },
+  { id: "emp_roster", tab: "roster", label: "My Roster", icon: WRMS_ICONS.roster },
+  { id: "emp_leaves", tab: "leaves", label: "Leave Management", badgeKey: "cachedPendingLeavesCount", icon: WRMS_ICONS.leaves },
+  { id: "emp_preferences", tab: "preferences", label: "Shift Preferences", icon: WRMS_ICONS.preferences },
+  { id: "emp_handovers", tab: "handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
+  { id: "emp_skills", tab: "skills", label: "My Skills", icon: WRMS_ICONS.skills },
+  { id: "emp_holidays", tab: "holidays", label: "Holidays", icon: WRMS_ICONS.holidays },
+  { id: "emp_notifications", tab: "notifications", label: "Notifications", badgeKey: "unreadNotificationCount", icon: WRMS_ICONS.notifications },
+  { id: "emp_activity", tab: "activity", label: "Activity / Logs", icon: WRMS_ICONS.activity },
+  { id: "emp_profile", tab: "profile", label: "My Profile", icon: WRMS_ICONS.profile }
 ];
 
 // Initialize Application
@@ -495,58 +546,144 @@ function parseRouteTarget(target) {
       "": "dashboard",
       "dashboard": "dashboard",
       "admin/dashboard": "dashboard",
-      "analytics": "analytics",
-      "admin/analytics": "analytics",
-      "validation": "validation",
-      "conflict-detector": "validation",
-      "admin/validation": "validation",
+      
+      "roster": "roster",
+      "weekly-roster": "roster",
+      "weekly_roster": "roster",
+      "admin/roster": "roster",
+      "admin/weekly-roster": "roster",
+      
       "employees": "employees",
       "admin/employees": "employees",
-      "roster": "roster",
-      "admin/roster": "roster",
-      "adminPreferences": "adminPreferences",
-      "admin/preferences": "adminPreferences",
-      "preferences": "adminPreferences",
-      "adminHolidays": "adminHolidays",
-      "admin/holidays": "adminHolidays",
-      "holidays": "adminHolidays",
-      "adminHandovers": "adminHandovers",
-      "admin/handovers": "adminHandovers",
-      "handovers": "adminHandovers",
-      "adminWorkload": "adminWorkload",
-      "admin/workload": "adminWorkload",
-      "workload": "adminWorkload",
-      "adminSkills": "adminSkills",
-      "admin/skills": "adminSkills",
-      "skills": "adminSkills",
-      "exportCenter": "exportCenter",
-      "admin/exports": "exportCenter",
-      "exports": "exportCenter",
-      "rosterVersions": "rosterVersions",
-      "admin/roster-versions": "rosterVersions",
-      "versions": "rosterVersions",
-      "health": "health",
-      "admin/health": "health",
-      "shifts": "shifts",
-      "admin/shifts": "shifts",
+      
       "leaves": "leaves",
+      "leave-requests": "leaves",
+      "leave_requests": "leaves",
       "admin/leaves": "leaves",
-      "history": "history",
-      "admin/history": "history",
-      "audit": "audit",
-      "admin/audit": "audit",
+      "admin/leave-requests": "leaves",
+      
       "profileApprovals": "profileApprovals",
       "profile-approvals": "profileApprovals",
+      "profile_approvals": "profileApprovals",
       "admin/profile-approvals": "profileApprovals",
       "admin/profileApprovals": "profileApprovals",
       "profile-changes": "profileApprovals",
       "approvals": "profileApprovals",
+      
+      "analytics": "analytics",
+      "roster-analytics": "analytics",
+      "roster_analytics": "analytics",
+      "admin/analytics": "analytics",
+      "admin/roster-analytics": "analytics",
+      
+      "validation": "validation",
+      "conflict-validator": "validation",
+      "conflict_validator": "validation",
+      "conflict-detector": "validation",
+      "admin/validation": "validation",
+      "admin/conflict-validator": "validation",
+      
+      "adminPreferences": "adminPreferences",
+      "shift-preferences": "adminPreferences",
+      "shift_preferences": "adminPreferences",
+      "preferences": "adminPreferences",
+      "admin/preferences": "adminPreferences",
+      "admin/shift-preferences": "adminPreferences",
+      
+      "adminHolidays": "adminHolidays",
+      "holiday-calendar": "adminHolidays",
+      "holiday_calendar": "adminHolidays",
+      "holidays": "adminHolidays",
+      "admin/holidays": "adminHolidays",
+      "admin/holiday-calendar": "adminHolidays",
+      
+      "adminHandovers": "adminHandovers",
+      "shift-handovers": "adminHandovers",
+      "shift_handovers": "adminHandovers",
+      "handovers": "adminHandovers",
+      "admin/handovers": "adminHandovers",
+      "admin/shift-handovers": "adminHandovers",
+      
+      "adminWorkload": "adminWorkload",
+      "workload-analytics": "adminWorkload",
+      "workload_analytics": "adminWorkload",
+      "workload": "adminWorkload",
+      "admin/workload": "adminWorkload",
+      "admin/workload-analytics": "adminWorkload",
+      
+      "adminSkills": "adminSkills",
+      "skill-matrix": "adminSkills",
+      "skill_matrix": "adminSkills",
+      "skills": "adminSkills",
+      "admin/skills": "adminSkills",
+      "admin/skill-matrix": "adminSkills",
+      
+      "exportCenter": "exportCenter",
+      "export-center": "exportCenter",
+      "export_center": "exportCenter",
+      "exports": "exportCenter",
+      "admin/exports": "exportCenter",
+      "admin/export-center": "exportCenter",
+      
+      "rosterVersions": "rosterVersions",
+      "roster-versions": "rosterVersions",
+      "roster_versions": "rosterVersions",
+      "versions": "rosterVersions",
+      "admin/roster-versions": "rosterVersions",
+      
+      "health": "health",
+      "roster-health": "health",
+      "roster_health": "health",
+      "admin/health": "health",
+      "admin/roster-health": "health",
+      
+      "shifts": "shifts",
+      "shift-capacity": "shifts",
+      "shift_capacity": "shifts",
+      "admin/shifts": "shifts",
+      "admin/shift-capacity": "shifts",
+      
+      "history": "history",
+      "roster-history": "history",
+      "roster_history": "history",
+      "admin/history": "history",
+      "admin/roster-history": "history",
+      
+      "audit": "audit",
+      "audit-trail": "audit",
+      "audit_trail": "audit",
+      "admin/audit": "audit",
+      "admin/audit-trail": "audit",
+      
       "employeeRosterDetail": "employeeRosterDetail",
       "employee-roster": "employeeRosterDetail"
     };
 
+    const adminCanonicalHashes = {
+      dashboard: "#/dashboard",
+      roster: "#/weekly-roster",
+      employees: "#/employees",
+      leaves: "#/leave-requests",
+      profileApprovals: "#/profile-approvals",
+      analytics: "#/roster-analytics",
+      validation: "#/conflict-validator",
+      adminPreferences: "#/shift-preferences",
+      adminHolidays: "#/holiday-calendar",
+      adminHandovers: "#/shift-handovers",
+      adminWorkload: "#/workload-analytics",
+      adminSkills: "#/skill-matrix",
+      exportCenter: "#/export-center",
+      rosterVersions: "#/roster-versions",
+      health: "#/roster-health",
+      shifts: "#/shift-capacity",
+      history: "#/roster-history",
+      audit: "#/audit-trail",
+      employeeRosterDetail: "#/employee-roster"
+    };
+
     const page = adminRoutes[clean] || "dashboard";
-    return { pageId: page, tabKey: null, canonicalHash: `#/${page}` };
+    const canonical = adminCanonicalHashes[page] || `#/${page}`;
+    return { pageId: page, tabKey: null, canonicalHash: canonical };
   }
 }
 
@@ -581,14 +718,50 @@ function setupRouter() {
 
 function renderNavigation() {
   const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
-  const items = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
-  const currentTab = state.workspaceTab || "overview";
+  
+  if (isEmployee) {
+    const currentTab = state.workspaceTab || "overview";
+    dom.sidebarNav.innerHTML = EMPLOYEE_NAV.map(item => {
+      const isActive = (state.activePage === "employeeWorkspace" && item.tab === currentTab);
+      let badgeHtml = "";
+      if (item.badgeKey && state[item.badgeKey]) {
+        const val = state[item.badgeKey];
+        const count = typeof val === "number" ? val : Array.isArray(val) ? val.length : 0;
+        if (count > 0) {
+          badgeHtml = `<span class="nav-badge">${count}</span>`;
+        }
+      }
+      return `
+        <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-tab="${item.tab || ''}" title="${item.label}" aria-label="${item.label}">
+          ${item.icon}
+          <span>${item.label}</span>
+          ${badgeHtml}
+        </button>
+      `;
+    }).join("");
 
-  dom.sidebarNav.innerHTML = items.map(item => {
-    const isActive = isEmployee
-      ? (state.activePage === "employeeWorkspace" && item.tab === currentTab)
-      : (state.activePage === item.id);
+    dom.sidebarNav.querySelectorAll(".nav-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const targetTab = btn.getAttribute("data-tab");
+        if (targetTab === "roster") {
+          apiRequest("/api/activities/view-roster", { method: "POST" }).catch(() => {});
+        }
+        navigateTo(targetTab);
+        dom.appSidebar.classList.remove("mobile-open");
+      });
+    });
+    return;
+  }
 
+  // Admin Navigation Rendering
+  const isMorePageActive = ADMIN_MORE_NAV.some(item => item.id === state.activePage);
+  if (isMorePageActive) {
+    state.adminMoreExpanded = true;
+  }
+  const isExpanded = state.adminMoreExpanded === true;
+
+  const primaryHtml = ADMIN_PRIMARY_NAV.map(item => {
+    const isActive = state.activePage === item.id;
     let badgeHtml = "";
     if (item.badgeKey && state[item.badgeKey]) {
       const val = state[item.badgeKey];
@@ -597,9 +770,8 @@ function renderNavigation() {
         badgeHtml = `<span class="nav-badge">${count}</span>`;
       }
     }
-
     return `
-      <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-tab="${item.tab || ''}" title="${item.label}">
+      <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label}" aria-label="${item.label}">
         ${item.icon}
         <span>${item.label}</span>
         ${badgeHtml}
@@ -607,21 +779,49 @@ function renderNavigation() {
     `;
   }).join("");
 
-  dom.sidebarNav.querySelectorAll(".nav-item").forEach(btn => {
+  const moreSubItemsHtml = ADMIN_MORE_NAV.map(item => {
+    const isActive = state.activePage === item.id;
+    return `
+      <button class="nav-sub-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label}" aria-label="${item.label}">
+        ${item.icon}
+        <span>${item.label}</span>
+      </button>
+    `;
+  }).join("");
+
+  const moreToggleHtml = `
+    <div class="nav-more-group">
+      <button id="adminMoreToggleBtn" class="nav-more-toggle ${isMorePageActive ? 'has-active-child' : ''} ${isExpanded ? 'expanded' : ''}" title="More Administration Tools" aria-expanded="${isExpanded}" aria-label="Toggle More Admin Tools">
+        ${WRMS_ICONS.more}
+        <span>More</span>
+        <span class="more-chevron">${isExpanded ? WRMS_ICONS.chevronUp : WRMS_ICONS.chevronDown}</span>
+      </button>
+      <div id="adminMoreSubMenu" class="nav-sub-menu ${isExpanded ? 'expanded' : 'collapsed'}" role="region" aria-label="Secondary Admin Tools">
+        ${moreSubItemsHtml}
+      </div>
+    </div>
+  `;
+
+  dom.sidebarNav.innerHTML = primaryHtml + moreToggleHtml;
+
+  // Bind Primary & Sub-item Clicks
+  dom.sidebarNav.querySelectorAll(".nav-item, .nav-sub-item").forEach(btn => {
     btn.addEventListener("click", () => {
-      const targetId = btn.getAttribute("data-nav-id");
-      const targetTab = btn.getAttribute("data-tab");
-      if (isEmployee && targetTab) {
-        if (targetTab === "roster") {
-          apiRequest("/api/activities/view-roster", { method: "POST" }).catch(() => {});
-        }
-        navigateTo(targetTab);
-      } else {
-        navigateTo(targetId);
-      }
+      const targetRoute = btn.getAttribute("data-route") || btn.getAttribute("data-nav-id");
+      navigateTo(targetRoute);
       dom.appSidebar.classList.remove("mobile-open");
     });
   });
+
+  // Bind More Toggle Click
+  const moreToggleBtn = document.getElementById("adminMoreToggleBtn");
+  if (moreToggleBtn) {
+    moreToggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.adminMoreExpanded = !state.adminMoreExpanded;
+      renderNavigation();
+    });
+  }
 }
 
 function navigateTo(target, options = {}) {

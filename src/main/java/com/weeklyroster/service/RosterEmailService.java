@@ -86,8 +86,37 @@ public class RosterEmailService {
 
     @Transactional
     public List<EmailDeliveryLogResponse> distributeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
-        log.info("Distributing weekly roster emails for cycle {} ({} to {})...",
-                cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
+        if (cycle == null || cycle.getStartDate() == null || cycle.getEndDate() == null) {
+            log.warn("[WRMS Scheduler] Cannot distribute roster emails for null or incomplete cycle.");
+            return List.of();
+        }
+
+        // When mode is AUTOMATIC, enforce strict Upcoming Week Guard & Idempotency:
+        if (mode == GenerationMode.AUTOMATIC) {
+            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+            LocalDate currentStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+            LocalDate upcomingStart = currentStart.plusDays(7);
+            LocalDate upcomingEnd = upcomingStart.plusDays(6);
+
+            if (!cycle.getStartDate().equals(upcomingStart) || !cycle.getEndDate().equals(upcomingEnd)) {
+                log.warn("[WRMS Scheduler] Skipping automatic email distribution for cycle: {} -> {}. Reason: Not the immediate upcoming week (expected {} -> {}).",
+                        cycle.getStartDate(), cycle.getEndDate(), upcomingStart, upcomingEnd);
+                return List.of();
+            }
+
+            // Check if automated emails were already sent for this cycle
+            List<EmailDeliveryLog> sentLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
+            if (!sentLogs.isEmpty()) {
+                log.info("[WRMS Scheduler] Automated roster emails for upcoming cycle #{} ({} to {}) have already been sent ({} logs). Skipping duplicate dispatch.",
+                        cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), sentLogs.size());
+                return sentLogs.stream().map(this::toResponse).toList();
+            }
+
+            log.info("[WRMS Scheduler] Sending roster email ONLY for upcoming cycle: {} -> {}", cycle.getStartDate(), cycle.getEndDate());
+        } else {
+            log.info("Distributing weekly roster emails for cycle #{} ({} to {}) in mode {}...",
+                    cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), mode);
+        }
 
         List<Employee> activeEmployees = employeeRepository.findByActiveTrueOrderByIdAsc();
         List<Shift> shifts = shiftRepository.findByActiveTrueOrderByIdAsc();

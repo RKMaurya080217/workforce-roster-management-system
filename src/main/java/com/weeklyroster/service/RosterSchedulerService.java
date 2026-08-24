@@ -98,13 +98,13 @@ public class RosterSchedulerService {
     @Scheduled(cron = "${roster.auto-generation.cron:0 0 9 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
     public void runScheduledSundayGeneration() {
         if (!autoGenerationEnabled) {
-            log.info("Automatic Sunday roster generation is disabled by configuration (roster.auto-generation.enabled=false).");
+            log.info("[WRMS Scheduler] Automatic Sunday roster generation is disabled by configuration (roster.auto-generation.enabled=false).");
             return;
         }
 
         LocalDate today = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
-        LocalDate targetMonday = calculateTargetMonday(today);
-        executeAutoGeneration(targetMonday);
+        LocalDate upcomingMonday = calculateUpcomingWeekStart(today);
+        executeAutoGeneration(upcomingMonday);
     }
 
     /**
@@ -115,32 +115,58 @@ public class RosterSchedulerService {
     }
 
     /**
-     * Calculates the immediate next Monday for a given base date.
-     * On Sunday (e.g. 23 Aug), returns tomorrow Monday (24 Aug).
-     * On Monday (e.g. 24 Aug), returns the current Monday (24 Aug).
-     * On Tuesday-Saturday (e.g. 25 Aug), returns next Monday (31 Aug).
+     * Calculates the Monday of the current week for a given base date.
+     * Monday to Sunday are in the same current week.
      */
-    public LocalDate calculateTargetMonday(LocalDate baseDate) {
+    public LocalDate calculateCurrentWeekStart(LocalDate baseDate) {
         if (baseDate == null) {
             baseDate = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
         }
-        if (baseDate.getDayOfWeek() == DayOfWeek.MONDAY) {
-            return baseDate;
-        }
-        return baseDate.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+        return baseDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
     }
 
     /**
-     * Centralized Future Roster Guard / Safety Validation (Part 10).
+     * Calculates the Sunday of the current week for a given base date.
+     */
+    public LocalDate calculateCurrentWeekEnd(LocalDate baseDate) {
+        return calculateCurrentWeekStart(baseDate).plusDays(6);
+    }
+
+    /**
+     * Calculates the Monday of the immediate upcoming week for a given base date.
+     * Formula: currentWeekStart + 7 days
+     */
+    public LocalDate calculateUpcomingWeekStart(LocalDate baseDate) {
+        return calculateCurrentWeekStart(baseDate).plusDays(7);
+    }
+
+    /**
+     * Calculates the Sunday of the immediate upcoming week for a given base date.
+     * Formula: upcomingWeekStart + 6 days
+     */
+    public LocalDate calculateUpcomingWeekEnd(LocalDate baseDate) {
+        return calculateUpcomingWeekStart(baseDate).plusDays(6);
+    }
+
+    /**
+     * Target Monday for automatic generation: Always the immediately upcoming Monday.
+     */
+    public LocalDate calculateTargetMonday(LocalDate baseDate) {
+        return calculateUpcomingWeekStart(baseDate);
+    }
+
+    /**
+     * Centralized Future Roster Guard / Safety Validation.
      * Validates that automatic generation only targets the immediately upcoming Monday.
      * Rejects:
+     * - Current week
      * - Next-next week or beyond
      * - Past weeks
      * - Multiple future cycles or arbitrary future dates
      */
     public boolean isAutomaticGenerationAllowed(LocalDate targetMonday, LocalDate baseDate) {
         if (targetMonday == null) return false;
-        LocalDate immediateUpcoming = calculateTargetMonday(baseDate);
+        LocalDate immediateUpcoming = calculateUpcomingWeekStart(baseDate);
         return targetMonday.equals(immediateUpcoming);
     }
 
@@ -151,39 +177,52 @@ public class RosterSchedulerService {
      */
     public RosterCycleResponse executeAutoGeneration(LocalDate targetMonday) {
         LocalDate baseDate = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
+        LocalDate currentStart = calculateCurrentWeekStart(baseDate);
+        LocalDate currentEnd = calculateCurrentWeekEnd(baseDate);
+        LocalDate upcomingStart = calculateUpcomingWeekStart(baseDate);
+        LocalDate upcomingEnd = calculateUpcomingWeekEnd(baseDate);
+
         if (targetMonday == null) {
-            targetMonday = calculateTargetMonday(baseDate);
-        } else if (targetMonday.getDayOfWeek() != DayOfWeek.MONDAY) {
-            targetMonday = targetMonday.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+            targetMonday = upcomingStart;
         }
+
+        log.info("[WRMS Scheduler]");
+        log.info("[WRMS Scheduler] Today: {}", baseDate);
+        log.info("[WRMS Scheduler] Current Week: {} -> {}", currentStart, currentEnd);
+        log.info("[WRMS Scheduler] Upcoming Week: {} -> {}", upcomingStart, upcomingEnd);
 
         // Centralized Future Roster Guard:
         if (!isAutomaticGenerationAllowed(targetMonday, baseDate)) {
-            log.warn("Automatic generation rejected by Future Roster Guard for target date {}. Only the immediate upcoming week ({}) is permitted.",
-                    targetMonday, calculateTargetMonday(baseDate));
-            throw new BusinessException("Automatic generation is strictly restricted to the immediately upcoming week (" + calculateTargetMonday(baseDate) + ")");
+            log.warn("[WRMS Scheduler] Skipping cycle: {} -> {}. Reason: Not the immediate upcoming week (expected {} -> {}).",
+                    targetMonday, targetMonday.plusDays(6), upcomingStart, upcomingEnd);
+            throw new BusinessException("Automatic generation is strictly restricted to the immediately upcoming week (" + upcomingStart + " to " + upcomingEnd + ")");
         }
 
-        LocalDate endDate = targetMonday.plusDays(6);
-        log.info("Checking automatic roster generation for cycle {} to {}...", targetMonday, endDate);
+        log.info("[WRMS Scheduler] Processing ONLY upcoming cycle: {} -> {}", upcomingStart, upcomingEnd);
 
-        // IDEMPOTENCY & MANUAL PRIORITY CHECK:
-        // If a cycle already exists for this exact week (whether MANUAL, AUTOMATIC, LOCKED, PUBLISHED, or GENERATED), DO NOTHING!
-        List<RosterCycle> existingCycles = cycleRepository.findOverlappingCycles(targetMonday, endDate);
-        if (existingCycles.isEmpty()) {
-            cycleRepository.findByStartDateAndEndDate(targetMonday, endDate).ifPresent(existingCycles::add);
-        }
+        // IDEMPOTENCY & EXACT DATABASE QUERY:
+        // Query exact target (startDate = upcomingWeekStart AND endDate = upcomingWeekEnd)
+        List<RosterCycle> existingCycles = cycleRepository.findByStartDateAndEndDate(upcomingStart, upcomingEnd)
+                .map(List::of)
+                .orElseGet(() -> cycleRepository.findOverlappingCycles(upcomingStart, upcomingEnd));
+
         if (!existingCycles.isEmpty()) {
             RosterCycle existing = existingCycles.get(0);
-            log.info("Roster cycle already exists (ID: #{}, Mode: {}, Status: {}) for {} to {}. Automatic generation skipped (DO NOTHING).",
+            log.info("[WRMS Scheduler] Roster cycle already exists (ID: #{}, Mode: {}, Status: {}) for {} to {}. Automatic generation skipped (DO NOTHING).",
                     existing.getId(), existing.getGenerationMode(), existing.getStatus(), existing.getStartDate(), existing.getEndDate());
+            
+            // If already published and auto-email is enabled, check idempotency and email
+            if (autoEmailEnabled && existing.getStatus() == RosterStatus.PUBLISHED) {
+                RosterCycleResponse cycleResp = rosterService.cycle(existing.getId());
+                rosterEmailService.distributeRosterEmails(existing, cycleResp, GenerationMode.AUTOMATIC);
+            }
             return rosterService.cycle(existing.getId());
         }
 
         try {
-            log.info("Starting automatic Sunday generation for {} to {}...", targetMonday, endDate);
-            RosterCycleResponse response = rosterService.generateWeeklyRoster(targetMonday, GenerationMode.AUTOMATIC);
-            log.info("Automatic Sunday roster generation SUCCESSFUL for cycle #{} ({} to {})",
+            log.info("[WRMS Scheduler] Starting automatic generation for {} to {}...", upcomingStart, upcomingEnd);
+            RosterCycleResponse response = rosterService.generateWeeklyRoster(upcomingStart, GenerationMode.AUTOMATIC);
+            log.info("[WRMS Scheduler] Automatic roster generation SUCCESSFUL for cycle #{} ({} to {})",
                     response.id(), response.startDate(), response.endDate());
 
             // Health Validation and Lifecycle Decision
@@ -192,7 +231,7 @@ public class RosterSchedulerService {
                 RosterHealthReport health = rosterHealthService.getCycleHealth(response.id());
                 healthPassed = health.readyToPublish();
                 if (!healthPassed) {
-                    log.warn("Automatic Sunday roster #{} has {} critical conflict(s). Status kept as GENERATED.",
+                    log.warn("[WRMS Scheduler] Automatic roster #{} has {} critical conflict(s). Status kept as GENERATED.",
                             response.id(), health.criticalConflictsCount());
                     if (notificationService != null) {
                         notificationService.notifyAdmins(
@@ -211,7 +250,7 @@ public class RosterSchedulerService {
                     cycle.setPublishedBy("SYSTEM");
                     cycleRepository.save(cycle);
                 });
-                log.info("Automatic Sunday roster #{} marked PUBLISHED.", response.id());
+                log.info("[WRMS Scheduler] Automatic roster #{} marked PUBLISHED.", response.id());
 
                 if (notificationService != null) {
                     notificationService.notifyAllActiveEmployees(
@@ -236,11 +275,11 @@ public class RosterSchedulerService {
             }
             return updated != null ? updated : response;
         } catch (Exception e) {
-            log.error("Automatic roster generation FAILED for {}. Reason: {}", targetMonday, e.getMessage(), e);
+            log.error("[WRMS Scheduler] Automatic roster generation FAILED for {}. Reason: {}", upcomingStart, e.getMessage(), e);
             if (notificationService != null) {
                 notificationService.notifyAdmins(
                         "Automatic Generation Failed",
-                        "Automatic roster generation for " + targetMonday + " failed: " + e.getMessage(),
+                        "Automatic roster generation for " + upcomingStart + " failed: " + e.getMessage(),
                         NotificationType.ADMIN_ALERT, "roster", null);
             }
             throw e;

@@ -52,10 +52,10 @@ public class RosterAnalyticsService {
             endDate = cycle.getEndDate();
         } else {
             if (startDate == null) {
-                startDate = LocalDate.now().minusWeeks(1);
+                startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).minusWeeks(1);
             }
             if (endDate == null) {
-                endDate = LocalDate.now().plusWeeks(1);
+                endDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).plusWeeks(1);
             }
         }
 
@@ -64,7 +64,7 @@ public class RosterAnalyticsService {
         int totalEmpCount = allEmployees.size();
         int activeEmpCount = activeEmployees.size();
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         List<RosterAssignment> todayAssignments = assignmentRepository.findByRosterDate(today);
 
         int workingToday = 0;

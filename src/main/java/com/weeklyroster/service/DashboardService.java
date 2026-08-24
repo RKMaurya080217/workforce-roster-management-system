@@ -55,7 +55,7 @@ public class DashboardService {
     }
 
     public DashboardResponse dashboard() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         return new DashboardResponse(
                 employeeRepository.count(),
                 employeeRepository.countByActiveTrue(),
@@ -71,7 +71,7 @@ public class DashboardService {
     }
 
     public DashboardDetailResponse dashboardDetails() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         DashboardResponse summary = dashboard();
 
         List<RosterAssignmentResponse> todaysAssignments = assignmentRepository.findByRosterDate(today)

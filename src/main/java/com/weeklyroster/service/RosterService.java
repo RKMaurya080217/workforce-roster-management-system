@@ -1959,18 +1959,18 @@ public class RosterService {
 		Employee employee = employeeRepository.findByUserUsername(username)
 				.orElseThrow(() -> new ResourceNotFoundException("Employee profile not found for user: " + username));
 
-		LocalDate today = LocalDate.now();
-		LocalDateTime now = LocalDateTime.now();
+		LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+		LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
 		return getTodayEffectiveDuty(employee.getId(), today, now);
 	}
 
 	@Transactional(readOnly = true)
 	public TodayDutyResponse getTodayEffectiveDuty(Long employeeId, LocalDate queryDate, LocalDateTime currentDateTime) {
 		if (queryDate == null) {
-			queryDate = LocalDate.now();
+			queryDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
 		}
 		if (currentDateTime == null) {
-			currentDateTime = LocalDateTime.now();
+			currentDateTime = LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
 		}
 
 		Employee employee = employeeRepository.findById(employeeId)

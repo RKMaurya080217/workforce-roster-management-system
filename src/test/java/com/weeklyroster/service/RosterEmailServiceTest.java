@@ -89,7 +89,8 @@ class RosterEmailServiceTest {
     @Test
     @DisplayName("Should distribute emails to all active employees and record delivery logs")
     void testDistributeRosterEmails() {
-        LocalDate start = LocalDate.of(2026, 8, 24);
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        LocalDate start = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).plusDays(7);
         LocalDate end = start.plusDays(6);
 
         RosterCycle cycle = new RosterCycle();

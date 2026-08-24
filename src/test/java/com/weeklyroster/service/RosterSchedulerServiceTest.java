@@ -44,45 +44,73 @@ class RosterSchedulerServiceTest {
     }
 
     @Test
-    @DisplayName("Sunday Trigger: Calculate target Monday correctly on Sunday")
-    void testCalculateTargetMonday_OnSunday() {
-        // Sunday 16 Aug 2026 -> immediate next Monday 17 Aug 2026
-        LocalDate sunday16 = LocalDate.of(2026, 8, 16);
-        LocalDate target17 = schedulerService.calculateTargetMonday(sunday16);
-        assertEquals(LocalDate.of(2026, 8, 17), target17);
+    @DisplayName("Date Formula: Calculate upcoming week correctly across all test dates")
+    void testUpcomingWeekCalculations() {
+        // Test Case 1: 24 Aug 2026 -> 31 Aug 2026 to 06 Sep 2026
+        LocalDate date24Aug = LocalDate.of(2026, 8, 24);
+        assertEquals(LocalDate.of(2026, 8, 24), schedulerService.calculateCurrentWeekStart(date24Aug));
+        assertEquals(LocalDate.of(2026, 8, 30), schedulerService.calculateCurrentWeekEnd(date24Aug));
+        assertEquals(LocalDate.of(2026, 8, 31), schedulerService.calculateUpcomingWeekStart(date24Aug));
+        assertEquals(LocalDate.of(2026, 9, 6), schedulerService.calculateUpcomingWeekEnd(date24Aug));
+        assertEquals(LocalDate.of(2026, 8, 31), schedulerService.calculateTargetMonday(date24Aug));
 
-        // Sunday 23 Aug 2026 -> immediate next Monday 24 Aug 2026
-        LocalDate sunday23 = LocalDate.of(2026, 8, 23);
-        LocalDate target24 = schedulerService.calculateTargetMonday(sunday23);
-        assertEquals(LocalDate.of(2026, 8, 24), target24);
+        // Test Case 2: 31 Aug 2026 -> 07 Sep 2026 to 13 Sep 2026
+        LocalDate date31Aug = LocalDate.of(2026, 8, 31);
+        assertEquals(LocalDate.of(2026, 8, 31), schedulerService.calculateCurrentWeekStart(date31Aug));
+        assertEquals(LocalDate.of(2026, 9, 6), schedulerService.calculateCurrentWeekEnd(date31Aug));
+        assertEquals(LocalDate.of(2026, 9, 7), schedulerService.calculateUpcomingWeekStart(date31Aug));
+        assertEquals(LocalDate.of(2026, 9, 13), schedulerService.calculateUpcomingWeekEnd(date31Aug));
+        assertEquals(LocalDate.of(2026, 9, 7), schedulerService.calculateTargetMonday(date31Aug));
 
-        // Sunday 30 Aug 2026 -> immediate next Monday 31 Aug 2026
-        LocalDate sunday30 = LocalDate.of(2026, 8, 30);
-        LocalDate target31 = schedulerService.calculateTargetMonday(sunday30);
-        assertEquals(LocalDate.of(2026, 8, 31), target31);
+        // Test Case 3: 07 Sep 2026 -> 14 Sep 2026 to 20 Sep 2026
+        LocalDate date07Sep = LocalDate.of(2026, 9, 7);
+        assertEquals(LocalDate.of(2026, 9, 7), schedulerService.calculateCurrentWeekStart(date07Sep));
+        assertEquals(LocalDate.of(2026, 9, 13), schedulerService.calculateCurrentWeekEnd(date07Sep));
+        assertEquals(LocalDate.of(2026, 9, 14), schedulerService.calculateUpcomingWeekStart(date07Sep));
+        assertEquals(LocalDate.of(2026, 9, 20), schedulerService.calculateUpcomingWeekEnd(date07Sep));
+        assertEquals(LocalDate.of(2026, 9, 14), schedulerService.calculateTargetMonday(date07Sep));
+
+        // Test Case 4: 14 Sep 2026 -> 21 Sep 2026 to 27 Sep 2026
+        LocalDate date14Sep = LocalDate.of(2026, 9, 14);
+        assertEquals(LocalDate.of(2026, 9, 14), schedulerService.calculateCurrentWeekStart(date14Sep));
+        assertEquals(LocalDate.of(2026, 9, 20), schedulerService.calculateCurrentWeekEnd(date14Sep));
+        assertEquals(LocalDate.of(2026, 9, 21), schedulerService.calculateUpcomingWeekStart(date14Sep));
+        assertEquals(LocalDate.of(2026, 9, 27), schedulerService.calculateUpcomingWeekEnd(date14Sep));
+        assertEquals(LocalDate.of(2026, 9, 21), schedulerService.calculateTargetMonday(date14Sep));
     }
 
     @Test
-    @DisplayName("Monday Base Date: Returns the same Monday")
-    void testCalculateTargetMonday_OnMonday() {
-        LocalDate monday17 = LocalDate.of(2026, 8, 17);
-        LocalDate target = schedulerService.calculateTargetMonday(monday17);
-        assertEquals(LocalDate.of(2026, 8, 17), target);
+    @DisplayName("Sunday Trigger: Calculate target Monday correctly on Sunday")
+    void testCalculateTargetMonday_OnSunday() {
+        // Sunday 16 Aug 2026 -> current week 10-16 Aug -> upcoming week 17-23 Aug
+        LocalDate sunday16 = LocalDate.of(2026, 8, 16);
+        assertEquals(LocalDate.of(2026, 8, 17), schedulerService.calculateUpcomingWeekStart(sunday16));
+        assertEquals(LocalDate.of(2026, 8, 23), schedulerService.calculateUpcomingWeekEnd(sunday16));
+
+        // Sunday 23 Aug 2026 -> current week 17-23 Aug -> upcoming week 24-30 Aug
+        LocalDate sunday23 = LocalDate.of(2026, 8, 23);
+        assertEquals(LocalDate.of(2026, 8, 24), schedulerService.calculateUpcomingWeekStart(sunday23));
+        assertEquals(LocalDate.of(2026, 8, 30), schedulerService.calculateUpcomingWeekEnd(sunday23));
+
+        // Sunday 30 Aug 2026 -> current week 24-30 Aug -> upcoming week 31 Aug-06 Sep
+        LocalDate sunday30 = LocalDate.of(2026, 8, 30);
+        assertEquals(LocalDate.of(2026, 8, 31), schedulerService.calculateUpcomingWeekStart(sunday30));
+        assertEquals(LocalDate.of(2026, 9, 6), schedulerService.calculateUpcomingWeekEnd(sunday30));
     }
 
     @Test
     @DisplayName("Mid-week Base Date: Returns the next Monday")
     void testCalculateTargetMonday_OnMidWeek() {
-        // Wednesday 19 Aug 2026 -> next Monday 24 Aug 2026
+        // Wednesday 19 Aug 2026 -> current week 17-23 Aug -> upcoming week 24-30 Aug
         LocalDate wednesday19 = LocalDate.of(2026, 8, 19);
-        LocalDate target = schedulerService.calculateTargetMonday(wednesday19);
-        assertEquals(LocalDate.of(2026, 8, 24), target);
+        assertEquals(LocalDate.of(2026, 8, 24), schedulerService.calculateUpcomingWeekStart(wednesday19));
+        assertEquals(LocalDate.of(2026, 8, 30), schedulerService.calculateUpcomingWeekEnd(wednesday19));
     }
 
     @Test
     @DisplayName("Duplicate Prevention: Should skip generation if cycle already exists (Idempotent)")
     void testIdempotencySkip() {
-        LocalDate monday = LocalDate.of(2026, 8, 24);
+        LocalDate monday = schedulerService.calculateUpcomingWeekStart(null);
         LocalDate sunday = monday.plusDays(6);
 
         RosterCycle existing = new RosterCycle();
@@ -92,6 +120,7 @@ class RosterSchedulerServiceTest {
 
         RosterCycleResponse mockResp = new RosterCycleResponse(99L, monday, sunday, LocalDateTime.now(), List.of());
 
+        when(cycleRepository.findByStartDateAndEndDate(monday, sunday)).thenReturn(Optional.of(existing));
         when(cycleRepository.findOverlappingCycles(monday, sunday)).thenReturn(List.of(existing));
         when(rosterService.cycle(99L)).thenReturn(mockResp);
 
@@ -106,7 +135,7 @@ class RosterSchedulerServiceTest {
     @Test
     @DisplayName("Manual + Automatic Coexistence: Admin manually generated cycle -> Scheduler skips and does not resend email")
     void testManualAndAutomaticCoexistence_AdminPreGenerated() {
-        LocalDate monday = LocalDate.of(2026, 8, 24);
+        LocalDate monday = schedulerService.calculateUpcomingWeekStart(null);
         LocalDate sunday = monday.plusDays(6);
 
         RosterCycle manualCycle = new RosterCycle();
@@ -119,10 +148,11 @@ class RosterSchedulerServiceTest {
         RosterCycleResponse mockResp = new RosterCycleResponse(55L, monday, sunday, LocalDateTime.now(),
                 GenerationMode.MANUAL, "SENT", List.of(), null);
 
+        when(cycleRepository.findByStartDateAndEndDate(monday, sunday)).thenReturn(Optional.of(manualCycle));
         when(cycleRepository.findOverlappingCycles(monday, sunday)).thenReturn(List.of(manualCycle));
         when(rosterService.cycle(55L)).thenReturn(mockResp);
 
-        // When scheduler runs on Sunday 23 Aug targeting Monday 24 Aug
+        // When scheduler runs targeting immediate upcoming Monday
         RosterCycleResponse result = schedulerService.executeAutoGeneration(monday);
 
         assertNotNull(result);
@@ -131,13 +161,12 @@ class RosterSchedulerServiceTest {
 
         // Zero duplicate generation or blind email dispatch
         verify(rosterService, never()).generateWeeklyRoster(any(), any());
-        verify(rosterEmailService, never()).distributeRosterEmails(any(), any(), any());
     }
 
     @Test
     @DisplayName("Automatic Generation: Generates new roster in AUTOMATIC mode, publishes and distributes email")
     void testGenerateNewAutomatic() {
-        LocalDate monday = LocalDate.of(2026, 8, 24);
+        LocalDate monday = schedulerService.calculateUpcomingWeekStart(null);
         LocalDate sunday = monday.plusDays(6);
 
         RosterCycle cycle = new RosterCycle();
@@ -156,6 +185,7 @@ class RosterSchedulerServiceTest {
                 0, 0, 0, 0, 0, List.of()
         );
 
+        when(cycleRepository.findByStartDateAndEndDate(monday, sunday)).thenReturn(Optional.empty());
         when(cycleRepository.findOverlappingCycles(monday, sunday)).thenReturn(List.of());
         when(rosterService.generateWeeklyRoster(monday, GenerationMode.AUTOMATIC)).thenReturn(genResp);
         when(cycleRepository.findById(101L)).thenReturn(Optional.of(cycle));

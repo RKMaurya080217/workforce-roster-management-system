@@ -228,20 +228,22 @@ class Batch17VersioningAndNotificationsTest {
 
         // Sunday 23-Aug-2026 -> Target Monday 24-Aug-2026
         LocalDate sunday23 = LocalDate.of(2026, 8, 23);
-        LocalDate targetMonday = schedulerService.calculateTargetMonday(sunday23);
+        LocalDate targetMonday = schedulerService.calculateUpcomingWeekStart(sunday23);
         assertEquals(LocalDate.of(2026, 8, 24), targetMonday, "Target Monday on Sunday 23-Aug must be 24-Aug-2026");
 
-        // Centralized Guard Check: target Monday 24-Aug is allowed, next-next Monday 31-Aug is rejected
+        // Centralized Guard Check: target Monday 24-Aug is allowed for Sunday 23-Aug base date, next-next Monday 31-Aug is rejected
         assertTrue(schedulerService.isAutomaticGenerationAllowed(LocalDate.of(2026, 8, 24), sunday23));
         assertFalse(schedulerService.isAutomaticGenerationAllowed(LocalDate.of(2026, 8, 31), sunday23));
 
-        // Execute automatic generation for immediate week
-        RosterCycleResponse autoCycle = schedulerService.executeAutoGeneration(targetMonday);
+        // Execute automatic generation for immediate upcoming week (today is 24-Aug -> upcoming week is 31-Aug to 06-Sep)
+        LocalDate upcomingMonday = schedulerService.calculateUpcomingWeekStart(null);
+        RosterCycleResponse autoCycle = schedulerService.executeAutoGeneration(upcomingMonday);
         assertNotNull(autoCycle);
-        assertEquals(LocalDate.of(2026, 8, 24), autoCycle.startDate());
-        assertEquals(LocalDate.of(2026, 8, 30), autoCycle.endDate());
+        assertEquals(upcomingMonday, autoCycle.startDate());
+        assertEquals(upcomingMonday.plusDays(6), autoCycle.endDate());
 
-        // Attempting to auto-generate next-next week throws BusinessException
-        assertThrows(BusinessException.class, () -> schedulerService.executeAutoGeneration(LocalDate.of(2026, 8, 31)));
+        // Attempting to auto-generate next-next week or current week throws BusinessException
+        assertThrows(BusinessException.class, () -> schedulerService.executeAutoGeneration(upcomingMonday.plusWeeks(1)));
+        assertThrows(BusinessException.class, () -> schedulerService.executeAutoGeneration(upcomingMonday.minusWeeks(1)));
     }
 }

@@ -67,7 +67,7 @@
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••" required value="Admin@123">
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="********" required value="Admin@123">
                 <button type="button" id="togglePasswordBtn" class="password-toggle" title="Show/Hide Password">
                   <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -110,28 +110,36 @@
             
             <div class="hero-feature-grid">
               <div class="feature-item">
-                <div class="feature-icon">🛡️</div>
+                <div class="feature-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
                 <div>
                   <strong>Female Staff Protection</strong>
                   <span>Automatic enforcement of day-only shifts</span>
                 </div>
               </div>
               <div class="feature-item">
-                <div class="feature-icon">⚖️</div>
+                <div class="feature-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+                </div>
                 <div>
                   <strong>Fair Rotation Scoring</strong>
                   <span>Intelligent intra-week continuity & balanced offs</span>
                 </div>
               </div>
               <div class="feature-item">
-                <div class="feature-icon">⚡</div>
+                <div class="feature-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
                 <div>
                   <strong>Atomic Shift Swaps</strong>
                   <span>Instant two-way mutual shift exchanges</span>
                 </div>
               </div>
               <div class="feature-item">
-                <div class="feature-icon">📊</div>
+                <div class="feature-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+                </div>
                 <div>
                   <strong>Leave Synchronization</strong>
                   <span>Real-time roster auto-adjustment on leave approval</span>
@@ -576,7 +584,8 @@
       <div class="modal-header">
         <div>
           <h3 style="display:flex; align-items:center; gap:8px;">
-            <span>📊</span> Coverage & Feasibility Report
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            Coverage & Feasibility Report
           </h3>
           <span style="font-size:0.78rem; color:var(--text-muted);">Configured target capacity vs. maximum valid assignments under safety rules</span>
         </div>
@@ -607,7 +616,7 @@
           Are you sure you want to delete this roster cycle?
         </p>
         <div class="alert-info-box" style="background-color:var(--danger-light); border-color:var(--danger-border); color:#991b1b;">
-          <strong style="display:block; margin-bottom:4px;">⚠️ Permanent Deletion Notice:</strong>
+          <strong style="display:block; margin-bottom:4px;">Permanent Deletion Notice:</strong>
           <span>All roster assignments and related overrides associated with this cycle will also be deleted. This action cannot be undone.</span>
         </div>
         <div class="override-employee-badge" id="deleteCycleDetailsBox">
@@ -629,7 +638,9 @@
     <div class="modal-box">
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:10px;">
-          <div class="stat-icon" id="dashDetailIcon" style="width:34px; height:34px; font-size:1.1rem;">📊</div>
+          <div class="stat-icon" id="dashDetailIcon" style="width:34px; height:34px; display:grid; place-items:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </div>
           <div>
             <h3 id="dashDetailTitle">Shift Details</h3>
             <span id="dashDetailSubtitle" style="font-size:0.76rem; color:var(--text-muted);">Real-time personnel breakdown</span>
@@ -656,7 +667,7 @@
     <div class="modal-box modal-sm" style="max-width:520px;">
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:1.2rem;">✏️</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           <h3>Modify Approved Leave</h3>
         </div>
         <button class="modal-close" data-close-modal="modifyLeaveModal">&times;</button>
@@ -698,7 +709,7 @@
 
         <!-- Roster Impact Warning Box -->
         <div class="alert-info-box" id="modRosterImpactBox" style="display:none; background-color:#fffbeb; border-color:#fef3c7; color:#92400e;">
-          <strong style="display:block; margin-bottom:2px;">⚠️ Roster Impact Notice:</strong>
+          <strong style="display:block; margin-bottom:2px;">Roster Impact Notice:</strong>
           <span id="modRosterImpactText"></span>
         </div>
 
@@ -723,7 +734,8 @@
     <div class="modal-box modal-sm" style="max-width:480px;">
       <div class="modal-header">
         <h3 style="color:var(--danger); display:flex; align-items:center; gap:8px;">
-          <span>🚫</span> Cancel Approved Leave
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Cancel Approved Leave
         </h3>
         <button class="modal-close" data-close-modal="cancelLeaveModal">&times;</button>
       </div>
@@ -758,7 +770,8 @@
     <div class="modal-box modal-sm" style="max-width:500px;">
       <div class="modal-header">
         <h3 style="color:#b45309; display:flex; align-items:center; gap:8px;">
-          <span>⚠️</span> Roster Cycle Conflict
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Roster Cycle Conflict
         </h3>
         <button class="modal-close" data-close-modal="conflictWarningModal">&times;</button>
       </div>
@@ -783,7 +796,9 @@
   <div id="dashboardFloatingTooltip" class="dashboard-hover-popover hidden">
     <div class="popover-header">
       <div class="popover-title-row">
-        <span class="popover-icon" id="popoverIcon">👥</span>
+        <span class="popover-icon" id="popoverIcon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
         <div>
           <strong id="popoverTitle">Morning Shift</strong>
           <span id="popoverSubtitle" class="popover-sub">07:00 - 15:00</span>
@@ -805,7 +820,8 @@
     <div class="modal-box modal-sm" style="max-width:500px;">
       <div class="modal-header">
         <h3 style="color:#b45309; display:flex; align-items:center; gap:8px;">
-          <span>🔓</span> Unlock Roster Cycle
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          Unlock Roster Cycle
         </h3>
         <button class="modal-close" data-close-modal="unlockRosterModal">&times;</button>
       </div>
@@ -837,7 +853,7 @@
     <div class="modal-box modal-sm" style="max-width:480px;">
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:1.2rem;">📝</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
           <h3 id="profileChangeModalTitle">Request Profile Change</h3>
         </div>
         <button class="modal-close" data-close-modal="profileChangeModal">&times;</button>
@@ -881,7 +897,9 @@
     <div class="modal-box modal-sm" style="max-width:500px;">
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span id="adminProfileDecisionIcon" style="font-size:1.2rem;">⚖️</span>
+          <span id="adminProfileDecisionIcon" style="display:flex; align-items:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+          </span>
           <h3 id="adminProfileDecisionTitle">Review Profile Change Request</h3>
         </div>
         <button class="modal-close" data-close-modal="adminProfileDecisionModal">&times;</button>
@@ -1144,7 +1162,8 @@
       <div class="modal-header">
         <div>
           <h3 style="display:flex; align-items:center; gap:8px;">
-            <span>🔄</span> Roster Version Comparison
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            Roster Version Comparison
           </h3>
           <span id="compareVersionsSubtitle" style="font-size:0.8rem; color:var(--text-muted);">Comparing Revisions</span>
         </div>

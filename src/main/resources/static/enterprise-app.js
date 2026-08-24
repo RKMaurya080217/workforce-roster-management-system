@@ -34,14 +34,17 @@ async function renderAnalyticsView() {
           <p class="text-muted">Real-time duty distribution, shift balance metrics, and daily coverage heatmaps</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" onclick="renderAnalyticsView()"><span>ðŸ”„ Refresh Analytics</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAnalyticsView()">
+            ${WRMS_ICONS.refresh}
+            <span>Refresh Analytics</span>
+          </button>
         </div>
       </div>
 
       <!-- KPI Summary Cards -->
       <div class="metric-cards-grid" style="margin-bottom:24px;">
         <div class="metric-card">
-          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">ðŸ“Š</div>
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">${WRMS_ICONS.analytics}</div>
           <div class="metric-details">
             <span class="metric-label">Total Assigned Duties</span>
             <strong class="metric-value">${summary.totalAssignments || 0}</strong>
@@ -49,7 +52,7 @@ async function renderAnalyticsView() {
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">âš–ï¸</div>
+          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">${WRMS_ICONS.shifts}</div>
           <div class="metric-details">
             <span class="metric-label">Shift Balance Score</span>
             <strong class="metric-value">${summary.shiftBalanceScore || 100}%</strong>
@@ -57,7 +60,7 @@ async function renderAnalyticsView() {
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#fef3c7; color:#d97706;">ðŸ–ï¸</div>
+          <div class="metric-icon" style="background:#fef3c7; color:#d97706;">${WRMS_ICONS.holidays}</div>
           <div class="metric-details">
             <span class="metric-label">Weekly Offs & Leaves</span>
             <strong class="metric-value">${(summary.weeklyOffs || 0) + (summary.leaves || 0)}</strong>
@@ -65,7 +68,7 @@ async function renderAnalyticsView() {
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#ede9fe; color:#7c3aed;">â±ï¸</div>
+          <div class="metric-icon" style="background:#ede9fe; color:#7c3aed;">${WRMS_ICONS.shifts}</div>
           <div class="metric-details">
             <span class="metric-label">Total Rest Interval</span>
             <strong class="metric-value">${summary.totalRestHours || 0} hrs</strong>
@@ -233,46 +236,49 @@ async function renderValidationView() {
               `).join("")}
             </select>
           ` : ''}
-          <button class="btn btn-primary btn-sm" onclick="triggerValidationAudit()"><span>âš¡ Re-Run Audit</span></button>
+          <button class="btn btn-primary btn-sm" onclick="triggerValidationAudit()">
+            ${WRMS_ICONS.refresh}
+            <span>Re-Run Audit</span>
+          </button>
         </div>
       </div>
 
       <!-- Audit Status Banner -->
       <div class="alert-info-box" style="background:${isCompliant ? '#dcfce7' : '#fee2e2'}; border-color:${isCompliant ? '#86efac' : '#fca5a5'}; color:${isCompliant ? '#14532d' : '#7f1d1d'}; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
         <div>
-          <strong style="font-size:1.05rem;">${isCompliant ? 'âœ… Roster 100% Valid & Safe' : 'âš ï¸ Rule Violations or Warnings Detected'}</strong>
+          <strong style="font-size:1.05rem;">${isCompliant ? 'Roster 100% Valid & Safe' : 'Rule Violations or Warnings Detected'}</strong>
           <p style="margin-top:4px; font-size:0.86rem; margin-bottom:0;">
             ${isCompliant ? 'All mandatory safety constraints, rest intervals, and statutory gender protections are fully satisfied.' : 'Action required: Review findings below before publishing or locking this schedule.'}
           </p>
         </div>
-        <div style="font-size:1.8rem;">${isCompliant ? 'ðŸ›¡ï¸' : 'ðŸš¨'}</div>
+        <div style="display:flex; align-items:center;">${isCompliant ? WRMS_ICONS.check : WRMS_ICONS.alert}</div>
       </div>
 
       <!-- Summary KPI Bar -->
       <div class="validation-kpi-bar">
         <div class="validation-card">
-          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">ðŸ”</div>
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">${WRMS_ICONS.validation}</div>
           <div>
             <span class="text-muted" style="font-size:0.8rem; font-weight:700;">TOTAL RULES AUDITED</span>
             <h3 style="margin:2px 0 0;">${summary.totalRulesChecked || 13} Rules</h3>
           </div>
         </div>
         <div class="validation-card">
-          <div class="metric-icon validation-badge-pass">âœ”ï¸</div>
+          <div class="metric-icon validation-badge-pass">${WRMS_ICONS.check}</div>
           <div>
             <span class="text-muted" style="font-size:0.8rem; font-weight:700;">PASSED RULES</span>
             <h3 style="margin:2px 0 0; color:#166534;">${summary.passedRules || 0}</h3>
           </div>
         </div>
         <div class="validation-card">
-          <div class="metric-icon validation-badge-warning">âš ï¸</div>
+          <div class="metric-icon validation-badge-warning">${WRMS_ICONS.alert}</div>
           <div>
             <span class="text-muted" style="font-size:0.8rem; font-weight:700;">WARNINGS</span>
             <h3 style="margin:2px 0 0; color:#854d0e;">${summary.warningCount || 0}</h3>
           </div>
         </div>
         <div class="validation-card">
-          <div class="metric-icon validation-badge-error">âŒ</div>
+          <div class="metric-icon validation-badge-error">${WRMS_ICONS.alert}</div>
           <div>
             <span class="text-muted" style="font-size:0.8rem; font-weight:700;">HARD ERRORS</span>
             <h3 style="margin:2px 0 0; color:#991b1b;">${summary.errorCount || 0}</h3>
@@ -302,7 +308,7 @@ async function renderValidationView() {
               ${findings.length === 0 ? `
                 <tr>
                   <td colspan="7" class="text-center" style="padding:32px 16px;">
-                    <div style="font-size:2rem; margin-bottom:8px;">ðŸŽ‰</div>
+                    <div style="display:flex; justify-content:center; margin-bottom:8px;">${WRMS_ICONS.check}</div>
                     <strong>Zero Conflict Violations!</strong>
                     <p class="text-muted" style="font-size:0.84rem;">No rest violations, leave clashes, or statutory restrictions breached.</p>
                   </td>
@@ -317,7 +323,7 @@ async function renderValidationView() {
                   <td>${f.shiftType ? `<span class="badge" style="background:#e0f2fe; color:#0369a1;">${f.shiftType}</span>` : '-'}</td>
                   <td style="max-width:350px;">
                     <div style="font-size:0.86rem; color:var(--text-main);">${escapeHTML(f.description)}</div>
-                    ${f.recommendation ? `<div style="font-size:0.78rem; color:var(--primary); margin-top:2px;">ðŸ’¡ <strong>Fix:</strong> ${escapeHTML(f.recommendation)}</div>` : ''}
+                    ${f.recommendation ? `<div style="font-size:0.78rem; color:var(--primary); margin-top:2px;"><strong>Fix:</strong> ${escapeHTML(f.recommendation)}</div>` : ''}
                   </td>
                 </tr>
               `).join("")}
@@ -335,7 +341,7 @@ async function renderValidationView() {
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error running validator: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error running validator: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -604,35 +610,38 @@ async function renderAdminWorkloadView() {
           <p class="text-muted">Transparent scoring algorithm (0-100) combining duty hours, night shifts, consecutive days, and weekly off fairness</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminWorkloadView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminWorkloadView()">
+            ${WRMS_ICONS.refresh}
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
       <!-- Workload Summary Cards -->
       <div class="metric-cards-grid" style="margin-bottom:20px;">
         <div class="metric-card">
-          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">ðŸ‘¥</div>
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">${WRMS_ICONS.employees}</div>
           <div class="metric-details">
             <span class="metric-label">Analyzed Workforce</span>
             <strong class="metric-value">${data.totalEmployeesAnalyzed || 0} Staff</strong>
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">âš¡</div>
+          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">${WRMS_ICONS.shifts}</div>
           <div class="metric-details">
             <span class="metric-label">Average Workload Score</span>
             <strong class="metric-value">${data.averageWorkloadScore || 0} / 100</strong>
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">âš ï¸</div>
+          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">${WRMS_ICONS.alert}</div>
           <div class="metric-details">
             <span class="metric-label">Overloaded Staff</span>
             <strong class="metric-value">${data.overloadedCount || 0}</strong>
           </div>
         </div>
         <div class="metric-card">
-          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">âš–ï¸</div>
+          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">${WRMS_ICONS.workload}</div>
           <div class="metric-details">
             <span class="metric-label">Balanced / Optimal</span>
             <strong class="metric-value">${data.balancedCount || 0}</strong>
@@ -677,7 +686,7 @@ async function renderAdminWorkloadView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading workload analytics: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸  Error loading workload analytics: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -688,14 +697,14 @@ async function renderExportCenterView() {
   if (!container) return;
 
   const reports = [
-    { type: "WEEKLY_ROSTER", title: "Weekly Roster Schedule", icon: "ðŸ“…", desc: "Detailed duty assignments, shifts, timing, and working/off status for the selected schedule." },
-    { type: "EMPLOYEE_MASTER", title: "Employee Master Directory", icon: "ðŸ‘¥", desc: "Complete workforce directory with employee codes, emails, designations, contact numbers, and status." },
-    { type: "LEAVE_REGISTER", title: "Leave Register & History", icon: "ðŸ–ï¸", desc: "Comprehensive log of all approved, pending, and past employee leave requests." },
-    { type: "WORKLOAD_REPORT", title: "Employee Workload Analytics", icon: "âš–ï¸", desc: "Duty hours, night shift counts, consecutive work days, and composite workload scores." },
-    { type: "AUDIT_REPORT", title: "System Audit Trail", icon: "ðŸ“œ", desc: "Complete security and operation audit trail of all manual overrides, swaps, and roster lifecycle events." },
-    { type: "HOLIDAY_CALENDAR", title: "Official Holiday Calendar", icon: "ðŸŽ‰", desc: "List of recognized organization and public holidays across scheduling cycles." },
-    { type: "SKILL_MATRIX", title: "Employee Skill Matrix", icon: "ðŸŒŸ", desc: "Workforce competency catalog with verified employee proficiency ratings and certifications." },
-    { type: "SHIFT_CAPACITY", title: "Shift Capacities & Timings", icon: "âš™ï¸", desc: "Shift configuration data, required headcounts, timing ranges, and operational windows." }
+    { type: "WEEKLY_ROSTER", title: "Weekly Roster Schedule", icon: WRMS_ICONS.roster, desc: "Detailed duty assignments, shifts, timing, and working/off status for the selected schedule." },
+    { type: "EMPLOYEE_MASTER", title: "Employee Master Directory", icon: WRMS_ICONS.employees, desc: "Complete workforce directory with employee codes, emails, designations, contact numbers, and status." },
+    { type: "LEAVE_REGISTER", title: "Leave Register & History", icon: WRMS_ICONS.leaves, desc: "Comprehensive log of all approved, pending, and past employee leave requests." },
+    { type: "WORKLOAD_REPORT", title: "Employee Workload Analytics", icon: WRMS_ICONS.workload, desc: "Duty hours, night shift counts, consecutive work days, and composite workload scores." },
+    { type: "AUDIT_REPORT", title: "System Audit Trail", icon: WRMS_ICONS.audit, desc: "Complete security and operation audit trail of all manual overrides, swaps, and roster lifecycle events." },
+    { type: "HOLIDAY_CALENDAR", title: "Official Holiday Calendar", icon: WRMS_ICONS.holidays, desc: "List of recognized organization and public holidays across scheduling cycles." },
+    { type: "SKILL_MATRIX", title: "Employee Skill Matrix", icon: WRMS_ICONS.skills, desc: "Workforce competency catalog with verified employee proficiency ratings and certifications." },
+    { type: "SHIFT_CAPACITY", title: "Shift Capacities & Timings", icon: WRMS_ICONS.shifts, desc: "Shift configuration data, required headcounts, timing ranges, and operational windows." }
   ];
 
   container.innerHTML = `
@@ -721,13 +730,16 @@ async function renderExportCenterView() {
           </div>
           <div class="export-actions">
             <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'XLSX')">
-              <span>ðŸ“Š Excel (.xlsx)</span>
+              ${WRMS_ICONS.fileExcel}
+              <span>Excel (.xlsx)</span>
             </button>
             <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PDF')">
-              <span>ðŸ“„ PDF</span>
+              ${WRMS_ICONS.filePdf}
+              <span>PDF</span>
             </button>
             <button class="btn btn-ghost btn-sm" onclick="triggerDownload('${r.type}', 'CSV')">
-              <span>ðŸ“‘ CSV</span>
+              ${WRMS_ICONS.fileCsv}
+              <span>CSV</span>
             </button>
           </div>
         </div>
@@ -794,9 +806,18 @@ async function renderAdminSkillsView() {
           <p class="text-muted">Track verified workforce competencies, certifications, and operational proficiency levels</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-primary btn-sm" onclick="openAssignSkillModal()"><span>âž• Assign Skill to Employee</span></button>
-          <button class="btn btn-secondary btn-sm" onclick="openSkillModal()"><span>âž• New Skill</span></button>
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminSkillsView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-primary btn-sm" onclick="openAssignSkillModal()">
+            ${WRMS_ICONS.skills}
+            <span>Assign Skill to Employee</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="openSkillModal()">
+            ${WRMS_ICONS.skills}
+            <span>New Skill</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminSkillsView()">
+            ${WRMS_ICONS.refresh}
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
@@ -826,7 +847,7 @@ async function renderAdminSkillsView() {
                     <td><strong>${escapeHTML(m.skillName)}</strong></td>
                     <td>${escapeHTML(m.category || "GENERAL")}</td>
                     <td><span class="proficiency-tag prof-${m.proficiencyLevel}">${m.proficiencyLevel}</span></td>
-                    <td>${m.certified ? 'âœ… Yes' : 'No'}</td>
+                    <td>${m.certified ? 'Yes' : 'No'}</td>
                     <td>${escapeHTML(m.certificationName || "-")}</td>
                     <td>
                       <button class="btn btn-danger btn-xs" onclick="deleteEmployeeSkill(${m.id})">Remove</button>
