@@ -1853,13 +1853,24 @@ async function renderRosterView() {
         <!-- Roster Top Toolbar -->
         <div class="table-toolbar" style="flex-wrap:wrap; gap:12px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <select id="cycleSelector" style="font-weight:700; min-width:220px; max-width:100%;">
-              ${state.cycles.map(c => `
+            <select id="cycleSelector" style="font-weight:700; min-width:260px; max-width:100%;">
+              ${state.cycles.map(c => {
+                const cls = c.classification || "CYCLE";
+                const src = c.source === "AUTOMATIC" ? "Auto" : "Manual";
+                return `
                 <option value="${c.id}" ${c.id === currentCycle.id ? 'selected' : ''}>
-                  Cycle: ${formatDate(c.startDate)} - ${formatDate(c.endDate)}
+                  [${cls}] ${formatDate(c.startDate)} - ${formatDate(c.endDate)} (${src}) - ${c.status || 'GENERATED'}
                 </option>
-              `).join("")}
+              `}).join("")}
             </select>
+
+            <span class="roster-lifecycle-badge badge-${(currentCycle.classification || 'future').toLowerCase()}">
+              ${currentCycle.classification || 'CYCLE'}
+            </span>
+
+            <span class="roster-lifecycle-badge badge-${(currentCycle.source === 'AUTOMATIC' || currentCycle.generationMode === 'AUTOMATIC') ? 'automatic' : 'manual'}">
+              ${(currentCycle.source === 'AUTOMATIC' || currentCycle.generationMode === 'AUTOMATIC') ? '⚡ AUTOMATIC' : '👤 MANUAL'}
+            </span>
 
             <span class="roster-lifecycle-badge badge-${status.toLowerCase()}">
               ${isLocked ? '🔒 ' : isPublished ? '📢 ' : '⚙️ '}${status}
@@ -1910,6 +1921,13 @@ async function renderRosterView() {
             <button class="btn btn-secondary btn-sm" id="rosterRetryEmailBtn" title="Retry Failed Email Deliveries">
               🔄 Retry Email
             </button>
+
+            ${(currentCycle.deletable || status === 'DRAFT' || status === 'GENERATED') && !isLocked && !isPublished ? `
+              <button class="btn btn-secondary btn-sm" id="rosterDeleteCycleBtn" title="Delete Un-Published Roster Cycle" style="border-color:#ef4444; color:#dc2626;">
+                🗑️ Delete
+              </button>
+            ` : ''}
+
             ${!isLocked ? `
               <button class="btn btn-secondary btn-sm" id="openSwapModalBtn">
                 🔄 Swap Shifts
@@ -2037,6 +2055,23 @@ async function renderRosterView() {
     const rosterRetryEmailBtn = document.getElementById("rosterRetryEmailBtn");
     if (rosterRetryEmailBtn) {
       rosterRetryEmailBtn.addEventListener("click", () => retryRosterEmail(currentCycle.id));
+    }
+
+    const rosterDeleteBtn = document.getElementById("rosterDeleteCycleBtn");
+    if (rosterDeleteBtn) {
+      rosterDeleteBtn.addEventListener("click", async () => {
+        if (confirm(`Are you sure you want to delete roster cycle #${currentCycle.id} (${formatDate(currentCycle.startDate)} to ${formatDate(currentCycle.endDate)})? This action will remove un-published shift assignments safely.`)) {
+          try {
+            showToast("Deleting roster cycle...", "info");
+            await apiRequest(`/api/rosters/cycle/${currentCycle.id}`, "DELETE");
+            showToast("Roster cycle deleted successfully", "success");
+            state.selectedCycleId = null;
+            await renderRosterView();
+          } catch (err) {
+            showToast("Failed to delete roster cycle: " + (err.message || err), "error");
+          }
+        }
+      });
     }
 
     const viewFeasibilityBtn = document.getElementById("viewFeasibilityDetailsBtn");
@@ -6143,13 +6178,22 @@ async function renderHealthView() {
         <!-- Health Top Bar -->
         <div class="table-toolbar" style="flex-wrap:wrap; gap:12px;">
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <select id="healthCycleSelector" style="font-weight:700; min-width:220px;">
-              ${state.cycles.map(c => `
+            <select id="healthCycleSelector" style="font-weight:700; min-width:260px;">
+              ${state.cycles.map(c => {
+                const cls = c.classification || "CYCLE";
+                const src = c.source === "AUTOMATIC" ? "Auto" : "Manual";
+                return `
                 <option value="${c.id}" ${c.id === currentCycle.id ? 'selected' : ''}>
-                  Cycle: ${formatDate(c.startDate)} - ${formatDate(c.endDate)} (#${c.id})
+                  [${cls}] ${formatDate(c.startDate)} - ${formatDate(c.endDate)} (${src}) - #${c.id}
                 </option>
-              `).join("")}
+              `}).join("")}
             </select>
+            <span class="roster-lifecycle-badge badge-${(currentCycle.classification || 'future').toLowerCase()}">
+              ${currentCycle.classification || 'CYCLE'}
+            </span>
+            <span class="roster-lifecycle-badge badge-${(currentCycle.source === 'AUTOMATIC' || currentCycle.generationMode === 'AUTOMATIC') ? 'automatic' : 'manual'}">
+              ${(currentCycle.source === 'AUTOMATIC' || currentCycle.generationMode === 'AUTOMATIC') ? '⚡ AUTOMATIC' : '👤 MANUAL'}
+            </span>
             <span class="roster-lifecycle-badge badge-${status.toLowerCase()}">
               ${isLocked ? '🔒 ' : isPublished ? '📢 ' : '⚙️ '}${status}
             </span>
