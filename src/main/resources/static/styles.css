@@ -3602,3 +3602,49 @@ input:checked + .slider:before {
   gap: 8px;
   margin-top: 16px;
 }
+
+/* Shift Preferences Interactive Chip Controls */
+.pref-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.pref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background-color: var(--bg-card, #ffffff);
+  color: var(--text-main, #334155);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.pref-chip:hover {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+  color: #1d4ed8;
+}
+
+.pref-chip.selected {
+  background-color: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+}
+
+.pref-chip.selected-avoid {
+  background-color: #dc2626;
+  border-color: #b91c1c;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.35);
+}

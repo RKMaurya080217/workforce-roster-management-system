@@ -53,7 +53,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> notReadable(org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
-        return error(HttpStatus.BAD_REQUEST, "Malformed request body", request, null);
+        String detail = "Malformed request body: Please verify payload field types and format.";
+        if (ex.getMostSpecificCause() != null && ex.getMostSpecificCause().getMessage() != null) {
+            String msg = ex.getMostSpecificCause().getMessage();
+            if (msg.contains("Cannot deserialize")) {
+                detail = "Invalid data format or field type mismatch in request payload.";
+            }
+        }
+        log.warn("Malformed request on {}: {}", request.getRequestURI(), ex.getMessage());
+        return error(HttpStatus.BAD_REQUEST, detail, request, null);
     }
 
     @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)

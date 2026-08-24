@@ -397,11 +397,11 @@ async function renderAdminPreferencesView() {
                   <tr>
                     <td>#${p.id}</td>
                     <td><strong>${escapeHTML(p.employeeName)}</strong><br><small class="text-muted">${escapeHTML(p.employeeCode)}</small></td>
-                    <td>${escapeHTML(p.preferredShifts || "-")}</td>
-                    <td>${escapeHTML(p.avoidShifts || "-")}</td>
+                    <td>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</td>
+                    <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
                     <td>${escapeHTML(p.preferredOffDays || "-")}</td>
                     <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
-                    <td style="max-width:200px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || "-")}</td>
+                    <td style="max-width:200px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
                     <td>
                       <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
                         ${p.status}
@@ -1232,8 +1232,9 @@ async function renderEmployeePreferencesTabHTML() {
             <h3>My Shift Availability & Preferences</h3>
             <p class="text-muted" style="margin:0; font-size:0.84rem;">Submit preferred working shifts and avoid days for upcoming roster cycles</p>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="document.getElementById('preferenceModal').classList.remove('hidden')">
-            <span>âž• Submit New Preference</span>
+          <button class="btn btn-primary btn-sm" onclick="openPreferenceModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Submit New Preference</span>
           </button>
         </div>
         <div class="card-body" style="padding:0; overflow-x:auto;">
@@ -1244,20 +1245,22 @@ async function renderEmployeePreferencesTabHTML() {
                 <th>Preferred Shifts</th>
                 <th>Avoid Shifts</th>
                 <th>Preferred OFF Days</th>
+                <th>Working Days</th>
                 <th>Restrictions</th>
                 <th>Status</th>
                 <th>Admin Remarks</th>
               </tr>
             </thead>
             <tbody>
-              ${list.length === 0 ? `<tr><td colspan="7" class="text-center text-muted" style="padding:32px;">No shift preferences submitted yet</td></tr>` :
+              ${list.length === 0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">No shift preferences submitted yet</td></tr>` :
                 list.map(p => `
                   <tr>
                     <td>${formatDate(p.createdAt)}</td>
-                    <td><strong>${escapeHTML(p.preferredShifts || "-")}</strong></td>
-                    <td>${escapeHTML(p.avoidShifts || "-")}</td>
+                    <td><strong>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</strong></td>
+                    <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
                     <td>${escapeHTML(p.preferredOffDays || "-")}</td>
-                    <td style="max-width:180px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || "-")}</td>
+                    <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
+                    <td style="max-width:180px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
                     <td>
                       <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
                         ${p.status}
@@ -1579,26 +1582,176 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // --- Shift Preferences Chip & Modal Logic ---
+  window.openPreferenceModal = function() {
+    const modal = document.getElementById("preferenceModal");
+    if (!modal) return;
+    
+    // Clear all chip active states
+    document.querySelectorAll("#preferenceModal .pref-chip").forEach(btn => {
+      btn.classList.remove("selected", "selected-avoid");
+    });
+    
+    const alertBox = document.getElementById("prefFormAlert");
+    if (alertBox) {
+      alertBox.textContent = "";
+      alertBox.classList.add("hidden");
+    }
+    
+    const restrInput = document.getElementById("prefRestrictions");
+    if (restrInput) restrInput.value = "";
+
+    modal.classList.remove("hidden");
+  };
+
+  function initPreferenceChipControls() {
+    document.querySelectorAll("#preferenceModal .pref-chip").forEach(chip => {
+      // Remove any previously attached click listeners
+      const newChip = chip.cloneNode(true);
+      chip.parentNode.replaceChild(newChip, chip);
+    });
+
+    document.querySelectorAll("#preferenceModal .pref-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const type = chip.getAttribute("data-type");
+        const val = chip.getAttribute("data-value");
+        const isSelected = chip.classList.contains("selected") || chip.classList.contains("selected-avoid");
+        
+        const alertBox = document.getElementById("prefFormAlert");
+        if (alertBox) alertBox.classList.add("hidden");
+
+        if (type === "pref-shift") {
+          if (!isSelected) {
+            chip.classList.add("selected");
+            const avoidMatch = document.querySelector(`#prefGroupAvoidShifts .pref-chip[data-value="${val}"]`);
+            if (avoidMatch) avoidMatch.classList.remove("selected-avoid", "selected");
+          } else {
+            chip.classList.remove("selected");
+          }
+        } else if (type === "avoid-shift") {
+          if (!isSelected) {
+            chip.classList.add("selected-avoid");
+            const prefMatch = document.querySelector(`#prefGroupPreferredShifts .pref-chip[data-value="${val}"]`);
+            if (prefMatch) prefMatch.classList.remove("selected");
+          } else {
+            chip.classList.remove("selected-avoid", "selected");
+          }
+        } else if (type === "off-day") {
+          if (!isSelected) {
+            chip.classList.add("selected");
+            const workMatch = document.querySelector(`#prefGroupWorkDays .pref-chip[data-value="${val}"]`);
+            if (workMatch) workMatch.classList.remove("selected");
+          } else {
+            chip.classList.remove("selected");
+          }
+        } else if (type === "work-day") {
+          if (!isSelected) {
+            chip.classList.add("selected");
+            const offMatch = document.querySelector(`#prefGroupOffDays .pref-chip[data-value="${val}"]`);
+            if (offMatch) offMatch.classList.remove("selected");
+          } else {
+            chip.classList.remove("selected");
+          }
+        }
+      });
+    });
+  }
+
   const prefForm = document.getElementById("preferenceModalForm");
   if (prefForm) {
+    initPreferenceChipControls();
+
     prefForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const preferredShifts = document.getElementById("prefPreferredShifts").value;
-      const avoidShifts = document.getElementById("prefAvoidShifts").value;
-      const preferredOffDays = document.getElementById("prefPreferredOffDays").value;
-      const preferredWorkingDays = document.getElementById("prefPreferredWorkDays").value;
-      const temporaryRestrictions = document.getElementById("prefRestrictions").value;
+
+      const alertBox = document.getElementById("prefFormAlert");
+      if (alertBox) {
+        alertBox.textContent = "";
+        alertBox.classList.add("hidden");
+      }
+
+      // Collect selected arrays from chips
+      const preferredShiftTypes = Array.from(document.querySelectorAll("#prefGroupPreferredShifts .pref-chip.selected"))
+        .map(c => c.getAttribute("data-value"));
+      
+      const avoidShiftTypes = Array.from(document.querySelectorAll("#prefGroupAvoidShifts .pref-chip.selected-avoid"))
+        .map(c => c.getAttribute("data-value"));
+
+      const preferredOffDays = Array.from(document.querySelectorAll("#prefGroupOffDays .pref-chip.selected"))
+        .map(c => c.getAttribute("data-value"));
+
+      const preferredWorkingDays = Array.from(document.querySelectorAll("#prefGroupWorkDays .pref-chip.selected"))
+        .map(c => c.getAttribute("data-value"));
+
+      const temporaryRestrictions = (document.getElementById("prefRestrictions").value || "").trim();
+
+      // Validate conflicting shifts
+      const shiftConflict = preferredShiftTypes.filter(s => avoidShiftTypes.includes(s));
+      if (shiftConflict.length > 0) {
+        const msg = `${shiftConflict.join(", ")} cannot be both preferred and avoided.`;
+        if (alertBox) {
+          alertBox.textContent = msg;
+          alertBox.classList.remove("hidden");
+        }
+        toast(msg, "warning");
+        return;
+      }
+
+      // Validate conflicting days
+      const dayConflict = preferredOffDays.filter(d => preferredWorkingDays.includes(d));
+      if (dayConflict.length > 0) {
+        const msg = `${dayConflict.join(", ")} cannot be selected as both a preferred OFF day and preferred working day.`;
+        if (alertBox) {
+          alertBox.textContent = msg;
+          alertBox.classList.remove("hidden");
+        }
+        toast(msg, "warning");
+        return;
+      }
+
+      const payload = {
+        preferredShiftTypes,
+        avoidShiftTypes,
+        preferredOffDays,
+        preferredWorkingDays,
+        temporaryRestrictions
+      };
+
+      const submitBtn = document.getElementById("submitPrefBtn");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        const spinner = submitBtn.querySelector(".spinner");
+        if (spinner) spinner.classList.remove("hidden");
+      }
 
       try {
         await apiRequest("/api/preferences", {
           method: "POST",
-          body: { preferredShifts, avoidShifts, preferredOffDays, preferredWorkingDays, temporaryRestrictions }
+          body: payload
         });
         toast("Shift preferences submitted successfully!", "success");
         document.getElementById("preferenceModal").classList.add("hidden");
-        switchEmployeeWorkspaceTab("preferences");
+        
+        // Refresh preferences tab/view
+        if (typeof switchEmployeeWorkspaceTab === "function") {
+          switchEmployeeWorkspaceTab("preferences");
+        }
+        if (typeof renderAdminPreferencesView === "function" && document.getElementById("viewAdminPreferences")) {
+          renderAdminPreferencesView();
+        }
       } catch (err) {
-        toast(err.message, "error");
+        const errorMsg = err.message || "Failed to submit shift preferences";
+        if (alertBox) {
+          alertBox.textContent = errorMsg;
+          alertBox.classList.remove("hidden");
+        }
+        toast(errorMsg, "error");
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          const spinner = submitBtn.querySelector(".spinner");
+          if (spinner) spinner.classList.add("hidden");
+        }
       }
     });
   }

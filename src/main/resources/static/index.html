@@ -959,42 +959,99 @@
 
   <!-- Modal 16: Preference Submission Modal -->
   <div id="preferenceModal" class="modal-backdrop hidden">
-    <div class="modal-box" style="max-width:560px;">
+    <div class="modal-box" style="max-width:580px;">
       <div class="modal-header">
-        <h3>Submit Shift Availability & Preferences</h3>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <h3>Submit Shift Availability & Preferences</h3>
+        </div>
         <button class="modal-close" data-close-modal="preferenceModal">&times;</button>
       </div>
       <form id="preferenceModalForm" class="modal-body stack-gap">
         <div class="alert-info-box" style="background:#eff6ff; border-color:#bfdbfe; color:#1e40af;">
           <strong>Soft Optimization Notice:</strong> Preferences guide roster balance but will never override hard safety regulations (12h rest interval, female evening/night restrictions, maximum 2 nights).
         </div>
-        <div class="form-row two-col">
-          <div class="form-group">
-            <label for="prefPreferredShifts">Preferred Shift Types</label>
-            <input type="text" id="prefPreferredShifts" placeholder="e.g. MORNING, GENERAL">
+
+        <!-- Preferred Shift Types -->
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Preferred Shift Types</span>
+            <small class="text-muted">Select desired shifts</small>
+          </label>
+          <div class="pref-chip-group" id="prefGroupPreferredShifts">
+            <button type="button" class="pref-chip" data-type="pref-shift" data-value="MORNING">Morning</button>
+            <button type="button" class="pref-chip" data-type="pref-shift" data-value="GENERAL">General</button>
+            <button type="button" class="pref-chip" data-type="pref-shift" data-value="EVENING">Evening</button>
+            <button type="button" class="pref-chip" data-type="pref-shift" data-value="NIGHT">Night</button>
           </div>
-          <div class="form-group">
-            <label for="prefAvoidShifts">Avoid Shift Types</label>
-            <input type="text" id="prefAvoidShifts" placeholder="e.g. NIGHT">
-          </div>
+          <input type="hidden" id="prefPreferredShifts" value="">
         </div>
-        <div class="form-row two-col">
-          <div class="form-group">
-            <label for="prefPreferredOffDays">Preferred OFF Days</label>
-            <input type="text" id="prefPreferredOffDays" placeholder="e.g. SUNDAY, SATURDAY">
+
+        <!-- Avoid Shift Types -->
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Avoid Shift Types</span>
+            <small class="text-muted">Select shifts to avoid</small>
+          </label>
+          <div class="pref-chip-group" id="prefGroupAvoidShifts">
+            <button type="button" class="pref-chip" data-type="avoid-shift" data-value="MORNING">Morning</button>
+            <button type="button" class="pref-chip" data-type="avoid-shift" data-value="GENERAL">General</button>
+            <button type="button" class="pref-chip" data-type="avoid-shift" data-value="EVENING">Evening</button>
+            <button type="button" class="pref-chip" data-type="avoid-shift" data-value="NIGHT">Night</button>
           </div>
-          <div class="form-group">
-            <label for="prefPreferredWorkDays">Preferred Working Days</label>
-            <input type="text" id="prefPreferredWorkDays" placeholder="e.g. MONDAY to FRIDAY">
-          </div>
+          <input type="hidden" id="prefAvoidShifts" value="">
         </div>
+
+        <!-- Preferred OFF Days -->
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Preferred OFF Days</span>
+            <small class="text-muted">Select preferred rest days</small>
+          </label>
+          <div class="pref-chip-group" id="prefGroupOffDays">
+            <button type="button" class="pref-chip" data-type="off-day" data-value="MONDAY">Mon</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="TUESDAY">Tue</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="WEDNESDAY">Wed</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="THURSDAY">Thu</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="FRIDAY">Fri</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="SATURDAY">Sat</button>
+            <button type="button" class="pref-chip" data-type="off-day" data-value="SUNDAY">Sun</button>
+          </div>
+          <input type="hidden" id="prefPreferredOffDays" value="">
+        </div>
+
+        <!-- Preferred Working Days -->
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Preferred Working Days</span>
+            <small class="text-muted">Select preferred duty days</small>
+          </label>
+          <div class="pref-chip-group" id="prefGroupWorkDays">
+            <button type="button" class="pref-chip" data-type="work-day" data-value="MONDAY">Mon</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="TUESDAY">Tue</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="WEDNESDAY">Wed</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="THURSDAY">Thu</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="FRIDAY">Fri</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="SATURDAY">Sat</button>
+            <button type="button" class="pref-chip" data-type="work-day" data-value="SUNDAY">Sun</button>
+          </div>
+          <input type="hidden" id="prefPreferredWorkDays" value="">
+        </div>
+
+        <!-- Temporary Constraints / Notes -->
         <div class="form-group">
           <label for="prefRestrictions">Temporary Constraints / Notes</label>
-          <textarea id="prefRestrictions" placeholder="e.g. Need morning shifts due to evening training classes..."></textarea>
+          <textarea id="prefRestrictions" rows="3" placeholder="e.g. For checking purpose / Need morning shifts due to evening training classes..."></textarea>
         </div>
+
+        <div id="prefFormAlert" class="alert-info-box hidden" style="background:#fee2e2; border-color:#fecaca; color:#991b1b;"></div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="preferenceModal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="submitPrefBtn">Submit Preferences</button>
+          <button type="submit" class="btn btn-primary" id="submitPrefBtn">
+            <span>Submit Preferences</span>
+            <div class="spinner hidden"></div>
+          </button>
         </div>
       </form>
     </div>

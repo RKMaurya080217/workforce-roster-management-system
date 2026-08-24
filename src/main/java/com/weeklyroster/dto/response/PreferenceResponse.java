@@ -1,5 +1,6 @@
 package com.weeklyroster.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.weeklyroster.entity.PreferenceStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,4 +23,20 @@ public record PreferenceResponse(
         LocalDateTime createdAt,
         LocalDateTime reviewedAt,
         String reviewedBy
-) {}
+) {
+    @JsonProperty("preferredShifts")
+    public String preferredShifts() {
+        return preferredShiftTypes;
+    }
+
+    @JsonProperty("avoidShifts")
+    public String avoidShifts() {
+        return avoidShiftTypes;
+    }
+
+    @JsonProperty("temporaryConstraints")
+    public String temporaryConstraints() {
+        return temporaryRestrictions;
+    }
+}
+

@@ -30,10 +30,35 @@ import org.springframework.web.bind.annotation.RestController;
 public class RosterController {
     private final RosterService rosterService;
     private final RosterEmailService rosterEmailService;
+    private final com.weeklyroster.service.RosterSchedulerService rosterSchedulerService;
 
-    public RosterController(RosterService rosterService, RosterEmailService rosterEmailService) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public RosterController(RosterService rosterService,
+                            RosterEmailService rosterEmailService,
+                            @org.springframework.beans.factory.annotation.Autowired(required = false) com.weeklyroster.service.RosterSchedulerService rosterSchedulerService) {
         this.rosterService = rosterService;
         this.rosterEmailService = rosterEmailService;
+        this.rosterSchedulerService = rosterSchedulerService;
+    }
+
+    public RosterController(RosterService rosterService, RosterEmailService rosterEmailService) {
+        this(rosterService, rosterEmailService, null);
+    }
+
+    @GetMapping(value = "/scheduler/status", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> schedulerStatus() {
+        if (rosterSchedulerService != null) {
+            return ResponseEntity.ok(rosterSchedulerService.getSchedulerStatus());
+        }
+        return ResponseEntity.ok(Map.of("status", "UNAVAILABLE"));
+    }
+
+    @GetMapping(value = "/scheduler/preview", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> schedulerPreview() {
+        if (rosterSchedulerService != null) {
+            return ResponseEntity.ok(rosterSchedulerService.previewUpcomingCycle());
+        }
+        return ResponseEntity.ok(Map.of("status", "UNAVAILABLE"));
     }
 
     @PostMapping(value = "/generate", produces = MediaType.APPLICATION_JSON_VALUE)

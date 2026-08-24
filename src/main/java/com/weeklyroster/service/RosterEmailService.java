@@ -61,6 +61,14 @@ public class RosterEmailService {
     @Value("${spring.mail.password:${MAIL_APP_PASSWORD:}}")
     private String mailPassword;
 
+    private volatile boolean isShuttingDown = false;
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        this.isShuttingDown = true;
+        log.info("[WRMS EMAIL] System shutting down. Stopping all background and scheduled email operations.");
+    }
+
     @Autowired
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
                               EmployeeRepository employeeRepository,
@@ -84,22 +92,48 @@ public class RosterEmailService {
         this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, null);
     }
 
+    /**
+     * Global validation: Checks if given cycle dates match the immediate upcoming Monday to Sunday cycle.
+     */
+    public boolean isImmediateUpcomingWeek(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) return false;
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        LocalDate currentStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+        LocalDate upcomingStart = currentStart.plusDays(7);
+        LocalDate upcomingEnd = upcomingStart.plusDays(6);
+        return startDate.equals(upcomingStart) && endDate.equals(upcomingEnd);
+    }
+
     @Transactional
     public List<EmailDeliveryLogResponse> distributeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        if (isShuttingDown) {
+            log.warn("[WRMS EMAIL] Email distribution skipped due to application shutdown in progress.");
+            return List.of();
+        }
+
         if (cycle == null || cycle.getStartDate() == null || cycle.getEndDate() == null) {
-            log.warn("[WRMS Scheduler] Cannot distribute roster emails for null or incomplete cycle.");
+            log.warn("[WRMS EMAIL] Cannot distribute roster emails for null or incomplete cycle.");
             return List.of();
         }
 
         // When mode is AUTOMATIC, enforce strict Upcoming Week Guard & Idempotency:
         if (mode == GenerationMode.AUTOMATIC) {
-            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+            java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
+            java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+            java.time.ZonedDateTime nowUtc = nowIst.withZoneSameInstant(java.time.ZoneId.of("UTC"));
+            LocalDate today = nowIst.toLocalDate();
             LocalDate currentStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
             LocalDate upcomingStart = currentStart.plusDays(7);
             LocalDate upcomingEnd = upcomingStart.plusDays(6);
 
-            if (!cycle.getStartDate().equals(upcomingStart) || !cycle.getEndDate().equals(upcomingEnd)) {
-                log.warn("[WRMS Scheduler] Skipping automatic email distribution for cycle: {} -> {}. Reason: Not the immediate upcoming week (expected {} -> {}).",
+            if (!isImmediateUpcomingWeek(cycle.getStartDate(), cycle.getEndDate())) {
+                log.warn("[WRMS EMAIL]\n" +
+                         "  Time: {} IST (UTC: {})\n" +
+                         "  Cycle: {} -> {}\n" +
+                         "  Status: SKIPPED\n" +
+                         "  Reason: Not immediate upcoming week (expected {} -> {})",
+                        nowIst.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                        nowUtc.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
                         cycle.getStartDate(), cycle.getEndDate(), upcomingStart, upcomingEnd);
                 return List.of();
             }
@@ -107,14 +141,15 @@ public class RosterEmailService {
             // Check if automated emails were already sent for this cycle
             List<EmailDeliveryLog> sentLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
             if (!sentLogs.isEmpty()) {
-                log.info("[WRMS Scheduler] Automated roster emails for upcoming cycle #{} ({} to {}) have already been sent ({} logs). Skipping duplicate dispatch.",
+                log.info("[WRMS EMAIL] Automated roster emails for upcoming cycle #{} ({} to {}) have already been sent ({} logs). Skipping duplicate dispatch.",
                         cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), sentLogs.size());
                 return sentLogs.stream().map(this::toResponse).toList();
             }
 
-            log.info("[WRMS Scheduler] Sending roster email ONLY for upcoming cycle: {} -> {}", cycle.getStartDate(), cycle.getEndDate());
+            log.info("[WRMS EMAIL] Starting automated roster email distribution ONLY for upcoming cycle: {} -> {}",
+                    cycle.getStartDate(), cycle.getEndDate());
         } else {
-            log.info("Distributing weekly roster emails for cycle #{} ({} to {}) in mode {}...",
+            log.info("[WRMS EMAIL] Distributing weekly roster emails for cycle #{} ({} to {}) in mode {}...",
                     cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), mode);
         }
 
@@ -139,9 +174,15 @@ public class RosterEmailService {
         List<EmailDeliveryLog> logs = new ArrayList<>();
 
         for (Employee emp : activeEmployees) {
+            if (isShuttingDown) {
+                log.warn("[WRMS EMAIL] Distribution interrupted by application shutdown.");
+                break;
+            }
             List<RosterAssignmentResponse> myShifts = empAssignments.getOrDefault(emp.getId(), List.of());
             EmailDeliveryLog entry = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode);
-            logs.add(emailLogRepository.save(entry));
+            if (entry != null) {
+                logs.add(emailLogRepository.save(entry));
+            }
         }
 
         return logs.stream().map(this::toResponse).toList();
@@ -205,6 +246,18 @@ public class RosterEmailService {
                                            byte[] excelBytes,
                                            byte[] imageBytes,
                                            GenerationMode mode) {
+        if (mode == GenerationMode.AUTOMATIC) {
+            List<EmailDeliveryLog> sentForEmp = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT)
+                    .stream()
+                    .filter(l -> l.getEmployee() != null && l.getEmployee().getId().equals(emp.getId()))
+                    .toList();
+            if (!sentForEmp.isEmpty()) {
+                log.info("[WRMS EMAIL] Employee {} <{}> already received email for cycle #{} ({} -> {}). Skipping duplicate dispatch.",
+                        emp.getEmployeeCode(), emp.getEmail(), cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
+                return sentForEmp.get(0);
+            }
+        }
+
         EmailDeliveryLog deliveryLog = new EmailDeliveryLog();
         deliveryLog.setCycle(cycle);
         deliveryLog.setEmployee(emp);
@@ -269,6 +322,27 @@ public class RosterEmailService {
             deliveryLog.setStatus(EmailDeliveryStatus.SENT);
             deliveryLog.setErrorMessage(null);
         }
+
+        java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
+        java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+        java.time.ZonedDateTime nowUtc = nowIst.withZoneSameInstant(java.time.ZoneId.of("UTC"));
+        String instanceInfo = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+
+        log.info("[WRMS EMAIL]\n" +
+                 "  Time: {} IST (UTC: {})\n" +
+                 "  Trigger: {}\n" +
+                 "  Instance: {}\n" +
+                 "  Cycle: {} -> {}\n" +
+                 "  Recipient: {}\n" +
+                 "  Email Type: WEEKLY_ROSTER_DISTRIBUTION\n" +
+                 "  Status: {}",
+                nowIst.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                nowUtc.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                mode == GenerationMode.AUTOMATIC ? "WeeklyRosterScheduler" : "AdminManual",
+                instanceInfo,
+                cycle.getStartDate(), cycle.getEndDate(),
+                deliveryLog.getRecipientEmail(),
+                deliveryLog.getStatus());
 
         return deliveryLog;
     }

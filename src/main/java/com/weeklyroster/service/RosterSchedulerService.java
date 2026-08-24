@@ -39,6 +39,18 @@ public class RosterSchedulerService {
     @Value("${roster.auto-generation.timezone:Asia/Kolkata}")
     private String autoGenerationTimezone = "Asia/Kolkata";
 
+    private volatile boolean isShuttingDown = false;
+    private volatile LocalDateTime lastRunAt;
+    private volatile String lastResult = "INITIALIZED";
+    private volatile String lastAutomaticCycle = "NONE";
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        this.isShuttingDown = true;
+        this.lastResult = "STOPPED";
+        log.info("[WRMS Scheduler] System shutting down. Stopping all scheduled roster generation jobs.");
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     public RosterSchedulerService(RosterService rosterService,
                                   RosterEmailService rosterEmailService,
@@ -97,6 +109,11 @@ public class RosterSchedulerService {
      */
     @Scheduled(cron = "${roster.auto-generation.cron:0 0 9 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
     public void runScheduledSundayGeneration() {
+        if (isShuttingDown) {
+            log.warn("[WRMS Scheduler] Automatic generation aborted: System shutdown in progress.");
+            return;
+        }
+
         if (!autoGenerationEnabled) {
             log.info("[WRMS Scheduler] Automatic Sunday roster generation is disabled by configuration (roster.auto-generation.enabled=false).");
             return;
@@ -171,12 +188,90 @@ public class RosterSchedulerService {
     }
 
     /**
+     * Global automation guard for both generation and email distribution.
+     * Verifies if a given date range is strictly the immediate upcoming Monday to Sunday cycle.
+     */
+    public boolean isImmediateUpcomingWeek(LocalDate startDate, LocalDate endDate) {
+        if (startDate == null || endDate == null) return false;
+        LocalDate today = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
+        LocalDate upcomingStart = calculateUpcomingWeekStart(today);
+        LocalDate upcomingEnd = calculateUpcomingWeekEnd(today);
+        return startDate.equals(upcomingStart) && endDate.equals(upcomingEnd);
+    }
+
+    /**
+     * Diagnostic and health status for Admin visibility.
+     */
+    public java.util.Map<String, Object> getSchedulerStatus() {
+        java.time.ZoneId istZone = java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+        java.time.ZonedDateTime nowUtc = nowIst.withZoneSameInstant(java.time.ZoneId.of("UTC"));
+        LocalDate today = nowIst.toLocalDate();
+
+        LocalDate currentStart = calculateCurrentWeekStart(today);
+        LocalDate currentEnd = calculateCurrentWeekEnd(today);
+        LocalDate upcomingStart = calculateUpcomingWeekStart(today);
+        LocalDate upcomingEnd = calculateUpcomingWeekEnd(today);
+
+        String host = "localhost";
+        try { host = java.net.InetAddress.getLocalHost().getHostName(); } catch (Exception ignored) {}
+
+        java.util.Map<String, Object> statusMap = new java.util.LinkedHashMap<>();
+        statusMap.put("status", isShuttingDown ? "STOPPED" : (autoGenerationEnabled ? "ACTIVE" : "DISABLED"));
+        statusMap.put("autoGenerationEnabled", autoGenerationEnabled);
+        statusMap.put("autoEmailEnabled", autoEmailEnabled);
+        statusMap.put("timezone", autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        statusMap.put("currentTimeIst", nowIst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        statusMap.put("currentTimeUtc", nowUtc.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        statusMap.put("currentWeek", currentStart + " -> " + currentEnd);
+        statusMap.put("upcomingWeek", upcomingStart + " -> " + upcomingEnd);
+        statusMap.put("cron", "0 0 9 * * SUN");
+        statusMap.put("instance", java.lang.management.ManagementFactory.getRuntimeMXBean().getName());
+        statusMap.put("hostname", host);
+        statusMap.put("lastRunAt", lastRunAt != null ? lastRunAt.toString() : "NONE");
+        statusMap.put("lastAutomaticCycle", lastAutomaticCycle);
+        statusMap.put("lastResult", lastResult);
+        return statusMap;
+    }
+
+    /**
+     * Safe dry-run preview: calculates the upcoming week cycle that WOULD be generated.
+     */
+    public java.util.Map<String, Object> previewUpcomingCycle() {
+        java.time.ZoneId istZone = java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        LocalDate today = LocalDate.now(istZone);
+        LocalDate upcomingStart = calculateUpcomingWeekStart(today);
+        LocalDate upcomingEnd = calculateUpcomingWeekEnd(today);
+
+        boolean exists = cycleRepository.findByStartDateAndEndDate(upcomingStart, upcomingEnd).isPresent();
+        return java.util.Map.of(
+                "today", today.toString(),
+                "targetUpcomingStart", upcomingStart.toString(),
+                "targetUpcomingEnd", upcomingEnd.toString(),
+                "cycleAlreadyExists", exists,
+                "action", exists ? "DO_NOTHING" : "GENERATE_AND_PUBLISH"
+        );
+    }
+
+    /**
      * Idempotent automatic generation runner for the immediate upcoming Monday.
      * NEVER pre-generates multiple future weeks.
      * If a manual or existing cycle already exists, DOES NOTHING.
      */
     public RosterCycleResponse executeAutoGeneration(LocalDate targetMonday) {
-        LocalDate baseDate = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
+        this.lastRunAt = LocalDateTime.now();
+        if (isShuttingDown) {
+            log.warn("[WRMS Scheduler] Automatic generation aborted: System shutdown in progress.");
+            this.lastResult = "ABORTED_SHUTDOWN";
+            return null;
+        }
+
+        java.time.ZoneId istZone = java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+        java.time.ZonedDateTime nowUtc = nowIst.withZoneSameInstant(java.time.ZoneId.of("UTC"));
+        String instanceInfo = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+
+        LocalDate baseDate = nowIst.toLocalDate();
         LocalDate currentStart = calculateCurrentWeekStart(baseDate);
         LocalDate currentEnd = calculateCurrentWeekEnd(baseDate);
         LocalDate upcomingStart = calculateUpcomingWeekStart(baseDate);
@@ -187,14 +282,21 @@ public class RosterSchedulerService {
         }
 
         log.info("[WRMS Scheduler]");
+        log.info("[WRMS Scheduler] Time: {} IST (UTC: {})",
+                nowIst.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
+                nowUtc.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        log.info("[WRMS Scheduler] Instance: {}", instanceInfo);
         log.info("[WRMS Scheduler] Today: {}", baseDate);
         log.info("[WRMS Scheduler] Current Week: {} -> {}", currentStart, currentEnd);
         log.info("[WRMS Scheduler] Upcoming Week: {} -> {}", upcomingStart, upcomingEnd);
+
+        this.lastAutomaticCycle = upcomingStart + " -> " + upcomingEnd;
 
         // Centralized Future Roster Guard:
         if (!isAutomaticGenerationAllowed(targetMonday, baseDate)) {
             log.warn("[WRMS Scheduler] Skipping cycle: {} -> {}. Reason: Not the immediate upcoming week (expected {} -> {}).",
                     targetMonday, targetMonday.plusDays(6), upcomingStart, upcomingEnd);
+            this.lastResult = "SKIPPED_NOT_UPCOMING";
             throw new BusinessException("Automatic generation is strictly restricted to the immediately upcoming week (" + upcomingStart + " to " + upcomingEnd + ")");
         }
 
@@ -211,6 +313,8 @@ public class RosterSchedulerService {
             log.info("[WRMS Scheduler] Roster cycle already exists (ID: #{}, Mode: {}, Status: {}) for {} to {}. Automatic generation skipped (DO NOTHING).",
                     existing.getId(), existing.getGenerationMode(), existing.getStatus(), existing.getStartDate(), existing.getEndDate());
             
+            this.lastResult = "SKIPPED_ALREADY_EXISTS";
+
             // If already published and auto-email is enabled, check idempotency and email
             if (autoEmailEnabled && existing.getStatus() == RosterStatus.PUBLISHED) {
                 RosterCycleResponse cycleResp = rosterService.cycle(existing.getId());
@@ -267,6 +371,8 @@ public class RosterSchedulerService {
                 }
             }
 
+            this.lastResult = "SUCCESS";
+
             RosterCycleResponse updated = null;
             if (response.id() != null) {
                 try {
@@ -275,6 +381,7 @@ public class RosterSchedulerService {
             }
             return updated != null ? updated : response;
         } catch (Exception e) {
+            this.lastResult = "FAILED: " + e.getMessage();
             log.error("[WRMS Scheduler] Automatic roster generation FAILED for {}. Reason: {}", upcomingStart, e.getMessage(), e);
             if (notificationService != null) {
                 notificationService.notifyAdmins(

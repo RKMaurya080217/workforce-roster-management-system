@@ -65,16 +65,149 @@ public class EmployeePreferenceService {
                 .toList();
     }
 
+    private static final java.util.Set<String> VALID_SHIFTS = java.util.Set.of("MORNING", "GENERAL", "EVENING", "NIGHT", "OFF");
+    private static final java.util.List<String> ORDERED_DAYS = java.util.List.of("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY");
+    private static final java.util.Set<String> VALID_DAYS = new java.util.HashSet<>(ORDERED_DAYS);
+
+    private String normalizeAndValidateShifts(String input, String fieldName) {
+        if (input == null || input.isBlank()) return null;
+        String[] parts = input.split("[,;\\s]+");
+        java.util.Set<String> clean = new java.util.LinkedHashSet<>();
+        for (String p : parts) {
+            String trimmed = p.trim().toUpperCase();
+            if (!trimmed.isEmpty()) {
+                if (trimmed.equals("AND") || trimmed.equals("&")) continue;
+                if (!VALID_SHIFTS.contains(trimmed)) {
+                    // Check if 3-letter prefix match (e.g. MORN -> MORNING, GEN -> GENERAL, EVE -> EVENING)
+                    String matched = null;
+                    for (String s : VALID_SHIFTS) {
+                        if (s.startsWith(trimmed) || (trimmed.length() >= 3 && trimmed.startsWith(s.substring(0, 3)))) {
+                            matched = s;
+                            break;
+                        }
+                    }
+                    if (matched != null) {
+                        clean.add(matched);
+                    } else {
+                        throw new BusinessException("Invalid shift type '" + p + "' in " + fieldName + ". Supported shifts: MORNING, GENERAL, EVENING, NIGHT.");
+                    }
+                } else {
+                    clean.add(trimmed);
+                }
+            }
+        }
+        return clean.isEmpty() ? null : String.join(", ", clean);
+    }
+
+    private String normalizeAndValidateDays(String input, String fieldName) {
+        if (input == null || input.isBlank()) return null;
+        String cleanInput = input.toUpperCase().replaceAll("\\s*-\\s*", " TO ");
+        String[] tokens = cleanInput.split("[,;\\s]+");
+        java.util.Set<String> resultDays = new java.util.LinkedHashSet<>();
+
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i].trim();
+            if (token.isEmpty()) continue;
+
+            if (token.equals("TO") || token.equals("THRU") || token.equals("THROUGH") || token.equals("AND") || token.equals("&")) {
+                if (i > 0 && i + 1 < tokens.length) {
+                    String prev = tokens[i - 1].trim();
+                    String next = tokens[i + 1].trim();
+                    int startIdx = findDayIndex(prev);
+                    int endIdx = findDayIndex(next);
+                    if (startIdx != -1 && endIdx != -1) {
+                        if (startIdx <= endIdx) {
+                            for (int d = startIdx; d <= endIdx; d++) {
+                                resultDays.add(ORDERED_DAYS.get(d));
+                            }
+                        } else {
+                            for (int d = startIdx; d < ORDERED_DAYS.size(); d++) {
+                                resultDays.add(ORDERED_DAYS.get(d));
+                            }
+                            for (int d = 0; d <= endIdx; d++) {
+                                resultDays.add(ORDERED_DAYS.get(d));
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (!VALID_DAYS.contains(token)) {
+                int idx = findDayIndex(token);
+                if (idx != -1) {
+                    resultDays.add(ORDERED_DAYS.get(idx));
+                } else {
+                    throw new BusinessException("Invalid day '" + token + "' in " + fieldName + ". Supported days: MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY.");
+                }
+            } else {
+                resultDays.add(token);
+            }
+        }
+
+        return resultDays.isEmpty() ? null : String.join(", ", resultDays);
+    }
+
+    private int findDayIndex(String token) {
+        if (token == null || token.isBlank()) return -1;
+        String upper = token.trim().toUpperCase();
+        for (int i = 0; i < ORDERED_DAYS.size(); i++) {
+            String d = ORDERED_DAYS.get(i);
+            if (d.equals(upper) || d.startsWith(upper) || (upper.length() >= 3 && upper.startsWith(d.substring(0, 3)))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private java.util.Set<String> parseSet(String input) {
+        if (input == null || input.isBlank()) return java.util.Set.of();
+        String[] parts = input.split("[,;\\s]+");
+        java.util.Set<String> set = new java.util.HashSet<>();
+        for (String p : parts) {
+            String t = p.trim().toUpperCase();
+            if (!t.isEmpty()) {
+                set.add(t);
+            }
+        }
+        return set;
+    }
+
+    private void validateConflicts(String preferredShifts, String avoidShifts, String preferredOffDays, String preferredWorkDays) {
+        java.util.Set<String> prefS = parseSet(preferredShifts);
+        java.util.Set<String> avoidS = parseSet(avoidShifts);
+        java.util.Set<String> shiftConflict = new java.util.HashSet<>(prefS);
+        shiftConflict.retainAll(avoidS);
+        if (!shiftConflict.isEmpty()) {
+            throw new BusinessException("Shift conflict: " + String.join(", ", shiftConflict) + " cannot be both preferred and avoided.");
+        }
+
+        java.util.Set<String> offD = parseSet(preferredOffDays);
+        java.util.Set<String> workD = parseSet(preferredWorkDays);
+        java.util.Set<String> dayConflict = new java.util.HashSet<>(offD);
+        dayConflict.retainAll(workD);
+        if (!dayConflict.isEmpty()) {
+            throw new BusinessException("Day conflict: " + String.join(", ", dayConflict) + " cannot be selected as both a preferred OFF day and preferred working day.");
+        }
+    }
+
     public PreferenceResponse submitPreference(Long employeeId, PreferenceSubmitRequest req, String username) {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + employeeId));
 
+        String prefShifts = normalizeAndValidateShifts(req.preferredShiftTypes(), "Preferred Shift Types");
+        String avoidShifts = normalizeAndValidateShifts(req.avoidShiftTypes(), "Avoid Shift Types");
+        String prefOff = normalizeAndValidateDays(req.preferredOffDays(), "Preferred OFF Days");
+        String prefWork = normalizeAndValidateDays(req.preferredWorkingDays(), "Preferred Working Days");
+
+        validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+
         EmployeePreference pref = new EmployeePreference();
         pref.setEmployee(employee);
-        pref.setPreferredShiftTypes(req.preferredShiftTypes() != null ? req.preferredShiftTypes().trim() : null);
-        pref.setPreferredOffDays(req.preferredOffDays() != null ? req.preferredOffDays().trim() : null);
-        pref.setPreferredWorkingDays(req.preferredWorkingDays() != null ? req.preferredWorkingDays().trim() : null);
-        pref.setAvoidShiftTypes(req.avoidShiftTypes() != null ? req.avoidShiftTypes().trim() : null);
+        pref.setPreferredShiftTypes(prefShifts);
+        pref.setPreferredOffDays(prefOff);
+        pref.setPreferredWorkingDays(prefWork);
+        pref.setAvoidShiftTypes(avoidShifts);
         pref.setTemporaryRestrictions(req.temporaryRestrictions() != null ? req.temporaryRestrictions().trim() : null);
         pref.setRemarks(req.remarks() != null ? req.remarks().trim() : null);
         pref.setEffectiveFrom(req.effectiveFrom());
@@ -108,10 +241,17 @@ public class EmployeePreferenceService {
             throw new BusinessException("Access denied: You can only update your own preferences.");
         }
 
-        pref.setPreferredShiftTypes(req.preferredShiftTypes() != null ? req.preferredShiftTypes().trim() : null);
-        pref.setPreferredOffDays(req.preferredOffDays() != null ? req.preferredOffDays().trim() : null);
-        pref.setPreferredWorkingDays(req.preferredWorkingDays() != null ? req.preferredWorkingDays().trim() : null);
-        pref.setAvoidShiftTypes(req.avoidShiftTypes() != null ? req.avoidShiftTypes().trim() : null);
+        String prefShifts = normalizeAndValidateShifts(req.preferredShiftTypes(), "Preferred Shift Types");
+        String avoidShifts = normalizeAndValidateShifts(req.avoidShiftTypes(), "Avoid Shift Types");
+        String prefOff = normalizeAndValidateDays(req.preferredOffDays(), "Preferred OFF Days");
+        String prefWork = normalizeAndValidateDays(req.preferredWorkingDays(), "Preferred Working Days");
+
+        validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+
+        pref.setPreferredShiftTypes(prefShifts);
+        pref.setPreferredOffDays(prefOff);
+        pref.setPreferredWorkingDays(prefWork);
+        pref.setAvoidShiftTypes(avoidShifts);
         pref.setTemporaryRestrictions(req.temporaryRestrictions() != null ? req.temporaryRestrictions().trim() : null);
         pref.setRemarks(req.remarks() != null ? req.remarks().trim() : null);
         pref.setEffectiveFrom(req.effectiveFrom());
