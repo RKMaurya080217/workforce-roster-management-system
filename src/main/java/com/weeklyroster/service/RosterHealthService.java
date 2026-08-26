@@ -27,13 +27,23 @@ public class RosterHealthService {
     private final RosterCycleRepository cycleRepository;
     private final RosterAssignmentRepository assignmentRepository;
     private final LeaveRequestRepository leaveRequestRepository;
+    private final com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RosterHealthService(RosterCycleRepository cycleRepository,
+                               RosterAssignmentRepository assignmentRepository,
+                               LeaveRequestRepository leaveRequestRepository,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository) {
+        this.cycleRepository = cycleRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.leaveRequestRepository = leaveRequestRepository;
+        this.preferenceRepository = preferenceRepository;
+    }
 
     public RosterHealthService(RosterCycleRepository cycleRepository,
                                RosterAssignmentRepository assignmentRepository,
                                LeaveRequestRepository leaveRequestRepository) {
-        this.cycleRepository = cycleRepository;
-        this.assignmentRepository = assignmentRepository;
-        this.leaveRequestRepository = leaveRequestRepository;
+        this(cycleRepository, assignmentRepository, leaveRequestRepository, null);
     }
 
     @Transactional(readOnly = true)
@@ -70,7 +80,8 @@ public class RosterHealthService {
                     "NOT READY TO PUBLISH - NO ASSIGNMENTS",
                     "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED", "FAILED",
                     1, 0, 0, 0, 0,
-                    conflicts
+                    conflicts,
+                    0.0, 0.0, "0 / 0", "INVALID"
             );
         }
 
@@ -323,6 +334,32 @@ public class RosterHealthService {
             // Leave query fallback
         }
 
+        // 5. Mandatory Minimum Night Allocation for Eligible Male Staff Check
+        boolean maleNightCoverageOk = true;
+        for (Map.Entry<Long, List<RosterAssignment>> entry : empMap.entrySet()) {
+            List<RosterAssignment> empAssignments = entry.getValue();
+            if (empAssignments.isEmpty()) continue;
+            Employee emp = empAssignments.get(0).getEmployee();
+            if (emp != null && emp.getGender() == Gender.MALE && emp.isActive()) {
+                long leaveCount = empAssignments.stream().filter(RosterAssignment::isOnLeave).count();
+                if (leaveCount < 7) {
+                    long nightCount = empAssignments.stream()
+                            .filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+                            .count();
+                    if (nightCount < 1) {
+                        maleNightCoverageOk = false;
+                        String empName = emp.getFirstName() + " " + emp.getLastName();
+                        conflicts.add(new ConflictItem(
+                                cycle.getStartDate(), emp.getId(), empName, ShiftType.NIGHT,
+                                "MALE_MINIMUM_NIGHT_ALLOCATION", "0 night shifts", ">= 1 night shift",
+                                "Eligible male employee " + empName + " (" + emp.getEmployeeCode() + ") has 0 NIGHT shifts in this 7-day cycle",
+                                "HIGH", "Assign at least 1 Night shift to eligible male employee", false
+                        ));
+                    }
+                }
+            }
+        }
+
         int criticalCount = (int) conflicts.stream().filter(c -> "CRITICAL".equalsIgnoreCase(c.severity())).count();
         int highCount = (int) conflicts.stream().filter(c -> "HIGH".equalsIgnoreCase(c.severity())).count();
         int mediumCount = (int) conflicts.stream().filter(c -> "MEDIUM".equalsIgnoreCase(c.severity())).count();
@@ -338,6 +375,41 @@ public class RosterHealthService {
         } else {
             summaryStatus = "READY TO PUBLISH (All Safety Rules Passed)";
         }
+
+        int totalPrefOpportunities = 0;
+        int satisfiedPrefPoints = 0;
+        int eligibleMaleCount = 0;
+        int satisfiedMaleNightCount = 0;
+
+        for (Map.Entry<Long, List<RosterAssignment>> entry : empMap.entrySet()) {
+            List<RosterAssignment> empAssignments = entry.getValue();
+            if (empAssignments.isEmpty()) continue;
+            Employee emp = empAssignments.get(0).getEmployee();
+            if (emp != null && emp.getGender() == Gender.MALE && emp.isActive()) {
+                long leaveCount = empAssignments.stream().filter(RosterAssignment::isOnLeave).count();
+                if (leaveCount < 7) {
+                    eligibleMaleCount++;
+                    long nightCount = empAssignments.stream()
+                            .filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+                            .count();
+                    if (nightCount >= 1) satisfiedMaleNightCount++;
+                }
+            }
+        }
+
+        String maleNightCoverageStr = eligibleMaleCount > 0
+                ? (eligibleMaleCount == satisfiedMaleNightCount ? satisfiedMaleNightCount + " / " + eligibleMaleCount + " satisfied" : satisfiedMaleNightCount + " / " + eligibleMaleCount + " (⚠ " + (eligibleMaleCount - satisfiedMaleNightCount) + " male without NIGHT)")
+                : "N/A";
+
+        double prefScore = 100.0;
+        double coveragePoints = coverageOk ? 25.0 : 0.0;
+        double restPoints = restOk ? 25.0 : 0.0;
+        double nightPoints = (nightLimitOk && maleNightCoverageOk) ? 20.0 : (nightLimitOk ? 10.0 : 0.0);
+        double prefPoints = Math.min(15.0, (prefScore * 0.15));
+        double fairnessPoints = 15.0;
+        double healthScore = Math.round((coveragePoints + restPoints + nightPoints + prefPoints + fairnessPoints) * 10.0) / 10.0;
+
+        String overallValidationStatus = (criticalCount > 0) ? "INVALID" : (highCount > 0 ? "WARNING" : "VALID");
 
         return new RosterHealthReport(
                 cycle.getId(),
@@ -360,7 +432,11 @@ public class RosterHealthService {
                 mediumCount,
                 lowCount,
                 infoCount,
-                conflicts
+                conflicts,
+                healthScore,
+                prefScore,
+                maleNightCoverageStr,
+                overallValidationStatus
         );
     }
 }

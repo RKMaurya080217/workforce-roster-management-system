@@ -4,6 +4,7 @@ import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.RosterStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 
 public record RosterCycleResponse(
@@ -25,8 +26,44 @@ public record RosterCycleResponse(
         CoverageReportResponse coverageReport,
         String classification,
         String source,
-        boolean deletable
+        boolean deletable,
+        String generationStatus,
+        Double preferenceComplianceScore,
+        String maleNightCoverage,
+        Integer criticalConflicts,
+        Integer warnings,
+        Double healthScore,
+        List<ConflictItem> conflicts,
+        List<EmployeeWorkloadMetric> workloadMetrics
 ) {
+    public RosterCycleResponse(
+            Long id,
+            LocalDate startDate,
+            LocalDate endDate,
+            LocalDateTime generatedAt,
+            GenerationMode generationMode,
+            RosterStatus status,
+            LocalDateTime publishedAt,
+            String publishedBy,
+            LocalDateTime lockedAt,
+            String lockedBy,
+            LocalDateTime unlockedAt,
+            String unlockedBy,
+            String unlockReason,
+            String emailStatus,
+            List<RosterAssignmentResponse> assignments,
+            CoverageReportResponse coverageReport,
+            String classification,
+            String source,
+            boolean deletable
+    ) {
+        this(id, startDate, endDate, generatedAt, generationMode, status,
+                publishedAt, publishedBy, lockedAt, lockedBy, unlockedAt, unlockedBy, unlockReason,
+                emailStatus, assignments, coverageReport,
+                classification, source, deletable,
+                "VALID", 100.0, "N/A", 0, 0, 100.0, Collections.emptyList(), Collections.emptyList());
+    }
+
     public RosterCycleResponse(
             Long id,
             LocalDate startDate,
@@ -50,7 +87,8 @@ public record RosterCycleResponse(
                 emailStatus, assignments, coverageReport,
                 com.weeklyroster.util.RosterLifecycleUtil.classifyCycle(startDate, endDate),
                 com.weeklyroster.util.RosterLifecycleUtil.resolveSource(generationMode),
-                status == RosterStatus.DRAFT || status == RosterStatus.GENERATED);
+                status == RosterStatus.DRAFT || status == RosterStatus.GENERATED,
+                "VALID", 100.0, "N/A", 0, 0, 100.0, Collections.emptyList(), Collections.emptyList());
     }
 
     public RosterCycleResponse(

@@ -178,8 +178,18 @@ public class NotificationService {
                                String linkPage,
                                Long linkId) {
         if (employee == null) return;
-        String username = employee.getUser() != null ? employee.getUser().getUsername() : employee.getEmployeeCode().toLowerCase();
-        createNotification(username, employee.getId(), title, message, type, linkPage, linkId);
+        String username = null;
+        try {
+            if (employee.getUser() != null) {
+                username = employee.getUser().getUsername();
+            }
+        } catch (Exception ignored) {}
+        if (username == null && employee.getEmployeeCode() != null) {
+            username = employee.getEmployeeCode().toLowerCase();
+        }
+        if (username != null) {
+            createNotification(username, employee.getId(), title, message, type, linkPage, linkId);
+        }
     }
 
     @Transactional(readOnly = true)

@@ -9,11 +9,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -24,9 +26,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.weeklyroster.dto.ApplicablePreference;
+import com.weeklyroster.entity.EmployeePreference;
+import com.weeklyroster.entity.PreferenceStatus;
+import com.weeklyroster.repository.EmployeePreferenceRepository;
 import com.weeklyroster.dto.request.RosterOverrideRequest;
 import com.weeklyroster.dto.request.ShiftChangeRequest;
 import com.weeklyroster.dto.request.UnlockRosterRequest;
+import com.weeklyroster.dto.response.ConflictItem;
+import com.weeklyroster.dto.response.EmployeeWorkloadMetric;
 import com.weeklyroster.dto.response.CoverageReportResponse;
 import com.weeklyroster.dto.response.DailyCoverageReport;
 import com.weeklyroster.dto.response.DutySummaryDto;
@@ -78,6 +86,7 @@ public class RosterService {
 	private final AuditService auditService;
 	private final NotificationService notificationService;
 	private final RosterHealthService rosterHealthService;
+	private final EmployeePreferenceRepository preferenceRepository;
 
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private RosterVersionService rosterVersionService;
@@ -88,7 +97,8 @@ public class RosterService {
 			RosterOverrideRepository overrideRepository, LeaveRequestRepository leaveRepository,
 			com.weeklyroster.repository.EmailDeliveryLogRepository emailDeliveryLogRepository,
 			AuditService auditService, NotificationService notificationService,
-			RosterHealthService rosterHealthService) {
+			RosterHealthService rosterHealthService,
+			EmployeePreferenceRepository preferenceRepository) {
 		this.employeeRepository = employeeRepository;
 		this.shiftRepository = shiftRepository;
 		this.cycleRepository = cycleRepository;
@@ -99,6 +109,7 @@ public class RosterService {
 		this.auditService = auditService;
 		this.notificationService = notificationService;
 		this.rosterHealthService = rosterHealthService;
+		this.preferenceRepository = preferenceRepository;
 	}
 
 	public RosterService(EmployeeRepository employeeRepository, ShiftRepository shiftRepository,
@@ -106,7 +117,7 @@ public class RosterService {
 			RosterOverrideRepository overrideRepository, LeaveRequestRepository leaveRepository,
 			com.weeklyroster.repository.EmailDeliveryLogRepository emailDeliveryLogRepository) {
 		this(employeeRepository, shiftRepository, cycleRepository, assignmentRepository, overrideRepository,
-				leaveRepository, emailDeliveryLogRepository, null, null, null);
+				leaveRepository, emailDeliveryLogRepository, null, null, null, null);
 	}
 
 	@Transactional
@@ -154,6 +165,21 @@ public class RosterService {
 		}
 
 		int maxNightsAllowed = Math.max(MAX_NIGHTS_PER_CYCLE, (int) Math.ceil(7.0 / Math.max(1, maleCount)));
+
+		// 1. Capture existing overrides before clearing so intentional admin overrides survive regeneration
+		List<RosterOverride> priorOverrides = new ArrayList<>();
+		if (overrideRepository != null) {
+			try {
+				priorOverrides = overrideRepository.findByDateRange(startDate, endDate);
+			} catch (Exception ignored) {}
+		}
+		Map<String, RosterOverride> priorOverrideMap = new HashMap<>();
+		for (RosterOverride ro : priorOverrides) {
+			if (ro.getAssignment() != null && ro.getAssignment().getEmployee() != null && ro.getAssignment().getRosterDate() != null) {
+				String key = ro.getAssignment().getEmployee().getId() + "_" + ro.getAssignment().getRosterDate();
+				priorOverrideMap.put(key, ro);
+			}
+		}
 
 		// Clean up any existing overlapping cycles, overrides, assignments, and email logs for [startDate, endDate]
 		List<RosterCycle> overlapping = new ArrayList<>(cycleRepository.findOverlappingCycles(startDate, endDate));
@@ -211,77 +237,186 @@ public class RosterService {
 			);
 		}
 
-		// Plan single non-working day (OFF or LEAVE) per employee
-		Map<Long, LocalDate> weeklyOffs = planWeeklyOffs(employees, startDate, endDate);
-		Set<Long> offTaken = new HashSet<>();
-		
-		// In-flight state tracking for continuity, rest rules, and night limits
-		Map<Long, Shift> lastShiftMap = new HashMap<>();
-		Map<Long, LocalDate> lastShiftDateMap = new HashMap<>();
-		Map<Long, Integer> cycleNightCounts = new HashMap<>();
-		Map<Long, Map<ShiftType, Integer>> shiftCountsMap = new HashMap<>();
+		// 2. Load approved employee preferences applicable to [startDate, endDate]
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, startDate, endDate);
 
-		for (Employee emp : employees) {
-			cycleNightCounts.put(emp.getId(), 0);
-			
-			// Load boundary state from previous cycles
-			List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), startDate);
-			if (!prevWorked.isEmpty()) {
-				RosterAssignment lastA = prevWorked.get(0);
-				lastShiftMap.put(emp.getId(), lastA.getShift());
-				lastShiftDateMap.put(emp.getId(), lastA.getRosterDate());
+		int maxAttempts = 5;
+		List<RosterAssignment> bestGenerated = null;
+		List<DailyCoverageReport> bestDailyReports = null;
+		int bestConfiguredDemand = 0;
+		int bestWorkforceCapacity = 0;
+		int bestFeasibleCapacity = 0;
+		int bestAssigned = 0;
+		int bestOperationalShortage = 0;
+		List<String> bestWarnings = null;
+		FinalValidationResult bestValidation = null;
+
+		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+			int cycleSalt = (int) ((System.currentTimeMillis() + attempt * 277L) % 10000L);
+
+			Map<Long, LocalDate> weeklyOffs = planWeeklyOffs(employees, startDate, endDate, preferencesMap, cycleSalt);
+			Set<Long> offTaken = new HashSet<>();
+
+			Map<Long, Shift> lastShiftMap = new HashMap<>();
+			Map<Long, LocalDate> lastShiftDateMap = new HashMap<>();
+			Map<Long, Integer> cycleNightCounts = new HashMap<>();
+			Map<Long, Map<ShiftType, Integer>> shiftCountsMap = new HashMap<>();
+
+			for (Employee emp : employees) {
+				cycleNightCounts.put(emp.getId(), 0);
+
+				List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), startDate);
+				if (!prevWorked.isEmpty()) {
+					RosterAssignment lastA = prevWorked.get(0);
+					lastShiftMap.put(emp.getId(), lastA.getShift());
+					lastShiftDateMap.put(emp.getId(), lastA.getRosterDate());
+				}
+
+				Map<ShiftType, Integer> counts = new EnumMap<>(ShiftType.class);
+				for (ShiftType type : ShiftType.values()) {
+					counts.put(type, (int) assignmentRepository.countShiftForEmployee(emp.getId(), type));
+				}
+				shiftCountsMap.put(emp.getId(), counts);
 			}
 
-			Map<ShiftType, Integer> counts = new EnumMap<>(ShiftType.class);
-			for (ShiftType type : ShiftType.values()) {
-				counts.put(type, (int) assignmentRepository.countShiftForEmployee(emp.getId(), type));
-			}
-			shiftCountsMap.put(emp.getId(), counts);
-		}
+			List<RosterAssignment> candidateAssignments = new ArrayList<>();
+			List<DailyCoverageReport> dailyReports = new ArrayList<>();
+			int totalConfiguredDemand = 0;
+			int totalWorkforceCapacity = 0;
+			int totalFeasibleCapacity = 0;
+			int totalAssigned = 0;
+			int totalOperationalShortage = 0;
+			List<String> warnings = new ArrayList<>();
 
-		List<RosterAssignment> generated = new ArrayList<>();
-		List<DailyCoverageReport> dailyReports = new ArrayList<>();
-		int totalConfiguredDemand = 0;
-		int totalWorkforceCapacity = 0;
-		int totalFeasibleCapacity = 0;
-		int totalAssigned = 0;
-		int totalOperationalShortage = 0;
-		List<String> warnings = new ArrayList<>();
+			for (int offset = 0; offset < 7; offset++) {
+				LocalDate date = startDate.plusDays(offset);
+				DayGenerationResult dayResult = generateDay(cycle, employees, weeklyOffs, offTaken, shifts, date,
+						lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, preferencesMap, cycleSalt);
 
-		for (int offset = 0; offset < 7; offset++) {
-			LocalDate date = startDate.plusDays(offset);
-			DayGenerationResult dayResult = generateDay(cycle, employees, weeklyOffs, offTaken, shifts, date,
-					lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed);
-			
-			generated.addAll(assignmentRepository.saveAll(dayResult.assignments()));
-			dailyReports.add(dayResult.coverageReport());
+				candidateAssignments.addAll(dayResult.assignments());
+				dailyReports.add(dayResult.coverageReport());
 
-			totalConfiguredDemand += dayResult.coverageReport().dailyConfiguredDemand();
-			totalWorkforceCapacity += dayResult.coverageReport().plannedWorking();
-			totalFeasibleCapacity += dayResult.coverageReport().dailyFeasibleCapacity();
-			totalAssigned += dayResult.coverageReport().dailyAssigned();
-			totalOperationalShortage += dayResult.coverageReport().dailyOperationalShortage();
+				totalConfiguredDemand += dayResult.coverageReport().dailyConfiguredDemand();
+				totalWorkforceCapacity += dayResult.coverageReport().plannedWorking();
+				totalFeasibleCapacity += dayResult.coverageReport().dailyFeasibleCapacity();
+				totalAssigned += dayResult.coverageReport().dailyAssigned();
+				totalOperationalShortage += dayResult.coverageReport().dailyOperationalShortage();
 
-			for (ShiftCoverageSummary summary : dayResult.coverageReport().shiftSummaries()) {
-				if (summary.operationalShortage() > 0) {
-					warnings.add("Operational shortage on " + date + " for " + summary.shiftType() + ": feasible "
-							+ summary.feasibleCapacity() + ", assigned " + summary.assignedCount() + " (" + summary.reason() + ")");
+				for (ShiftCoverageSummary summary : dayResult.coverageReport().shiftSummaries()) {
+					if (summary.operationalShortage() > 0) {
+						warnings.add("Operational shortage on " + date + " for " + summary.shiftType() + ": feasible "
+								+ summary.feasibleCapacity() + ", assigned " + summary.assignedCount() + " (" + summary.reason() + ")");
+					}
 				}
 			}
+
+			int totalConfiguredShortage = Math.max(0, totalConfiguredDemand - totalAssigned);
+			if (totalConfiguredShortage > 0 && totalOperationalShortage == 0) {
+				warnings.add("Configured demand (" + totalConfiguredDemand + ") exceeds active workforce capacity ("
+						+ totalWorkforceCapacity + "). All required shift types are fully covered.");
+			}
+
+			enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap);
+			ensureMinimumNightAllocation(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap);
+			enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap);
+
+			if (!priorOverrideMap.isEmpty()) {
+				for (RosterAssignment a : candidateAssignments) {
+					String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+					RosterOverride prior = priorOverrideMap.get(key);
+					if (prior != null) {
+						a.setOverridden(true);
+						a.setWeeklyOff(prior.isWeeklyOff());
+						if (prior.isWeeklyOff()) {
+							a.setShift(shifts.get(ShiftType.OFF));
+						} else if (prior.getNewShiftType() != null) {
+							a.setShift(shifts.get(prior.getNewShiftType()));
+						}
+						a.setAssignmentReason("Admin Override: " + (prior.getReason() != null ? prior.getReason() : "Manual override"));
+					}
+				}
+			}
+
+			for (RosterAssignment a : candidateAssignments) {
+				ApplicablePreference pref = preferencesMap.getOrDefault(a.getEmployee().getId(), ApplicablePreference.none(a.getEmployee().getId()));
+				populateAssignmentReason(a, pref);
+			}
+
+			FinalValidationResult validation = evaluateFinalValidation(cycle, candidateAssignments, shifts, maxNightsAllowed, preferencesMap, priorOverrideMap);
+
+			if (validation.criticalConflicts() == 0) {
+				bestGenerated = candidateAssignments;
+				bestDailyReports = dailyReports;
+				bestConfiguredDemand = totalConfiguredDemand;
+				bestWorkforceCapacity = totalWorkforceCapacity;
+				bestFeasibleCapacity = totalFeasibleCapacity;
+				bestAssigned = totalAssigned;
+				bestOperationalShortage = totalOperationalShortage;
+				bestWarnings = warnings;
+				bestValidation = validation;
+				break;
+			}
+
+			if (bestValidation == null || validation.criticalConflicts() < bestValidation.criticalConflicts()) {
+				bestGenerated = candidateAssignments;
+				bestDailyReports = dailyReports;
+				bestConfiguredDemand = totalConfiguredDemand;
+				bestWorkforceCapacity = totalWorkforceCapacity;
+				bestFeasibleCapacity = totalFeasibleCapacity;
+				bestAssigned = totalAssigned;
+				bestOperationalShortage = totalOperationalShortage;
+				bestWarnings = warnings;
+				bestValidation = validation;
+			}
 		}
 
-		int totalConfiguredShortage = Math.max(0, totalConfiguredDemand - totalAssigned);
-		if (totalConfiguredShortage > 0 && totalOperationalShortage == 0) {
-			warnings.add("Configured demand (" + totalConfiguredDemand + ") exceeds active workforce capacity ("
-					+ totalWorkforceCapacity + "). All required shift types are fully covered.");
+		if (bestValidation == null || bestValidation.criticalConflicts() > 0) {
+			String firstCrit = (bestValidation != null && !bestValidation.conflicts().isEmpty())
+					? bestValidation.conflicts().stream().filter(c -> "CRITICAL".equalsIgnoreCase(c.severity())).map(ConflictItem::reason).findFirst().orElse("Mandatory scheduling constraints violated")
+					: "Unable to generate compliant roster within safety and workforce rules";
+			throw new BusinessException("Validation failure: " + firstCrit);
 		}
 
-		// Enforce and repair exact weekly off rule (exactly 1 weekly OFF per active employee)
-		enforceAndRepairExactWeeklyOff(cycle, generated, employees, shifts, maxNightsAllowed, weeklyOffs);
-		assignmentRepository.saveAll(generated);
+		List<RosterAssignment> generated = new ArrayList<>(assignmentRepository.saveAll(bestGenerated));
 
-		// Comprehensive Post-Generation Validation
-		validateGeneratedRoster(cycle, generated, shifts, maxNightsAllowed);
+		if (!priorOverrideMap.isEmpty()) {
+			List<RosterOverride> reestablishedOverrides = new ArrayList<>();
+			for (RosterAssignment a : generated) {
+				String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+				RosterOverride prior = priorOverrideMap.get(key);
+				if (prior != null) {
+					a.setOverridden(true);
+					a.setWeeklyOff(prior.isWeeklyOff());
+					if (prior.isWeeklyOff()) {
+						a.setShift(shifts.get(ShiftType.OFF));
+					} else if (prior.getNewShiftType() != null) {
+						a.setShift(shifts.get(prior.getNewShiftType()));
+					}
+					a.setAssignmentReason("Admin Override: " + (prior.getReason() != null ? prior.getReason() : "Manual override"));
+
+					RosterOverride newRo = new RosterOverride();
+					newRo.setAssignment(a);
+					newRo.setPreviousShiftType(prior.getPreviousShiftType() != null ? prior.getPreviousShiftType() : ShiftType.GENERAL);
+					newRo.setNewShiftType(prior.getNewShiftType() != null ? prior.getNewShiftType() : (prior.isWeeklyOff() ? ShiftType.OFF : ShiftType.GENERAL));
+					newRo.setWeeklyOff(prior.isWeeklyOff());
+					newRo.setReason(prior.getReason() != null ? prior.getReason() : "Preserved Admin Override");
+					newRo.setCreatedAt(prior.getCreatedAt() != null ? prior.getCreatedAt() : LocalDateTime.now());
+					reestablishedOverrides.add(newRo);
+				}
+			}
+			if (!reestablishedOverrides.isEmpty()) {
+				overrideRepository.saveAll(reestablishedOverrides);
+			}
+		}
+
+		for (RosterAssignment a : generated) {
+			ApplicablePreference pref = preferencesMap.getOrDefault(a.getEmployee().getId(), ApplicablePreference.none(a.getEmployee().getId()));
+			populateAssignmentReason(a, pref);
+		}
+		generated = new ArrayList<>(assignmentRepository.saveAll(generated));
+
+		// 5. Final Invariant Assertion
+		validateGeneratedRoster(cycle, generated, shifts, maxNightsAllowed, preferencesMap);
 
 		if (rosterVersionService != null) {
 			try {
@@ -289,12 +424,169 @@ public class RosterService {
 			} catch (Exception ignored) {}
 		}
 
-		CoverageReportResponse coverageReport = new CoverageReportResponse(totalConfiguredDemand,
-				totalWorkforceCapacity, totalFeasibleCapacity, totalAssigned, totalOperationalShortage,
-				totalConfiguredShortage, dailyReports, warnings);
+		CoverageReportResponse coverageReport = new CoverageReportResponse(bestConfiguredDemand,
+				bestWorkforceCapacity, bestFeasibleCapacity, bestAssigned, bestOperationalShortage,
+				Math.max(0, bestConfiguredDemand - bestAssigned), bestDailyReports, bestWarnings);
 
-		return toCycleResponse(cycle, generated, coverageReport);
+		return toCycleResponse(cycle, generated, coverageReport, bestValidation);
 	}
+
+
+	@Transactional(readOnly = true)
+		// -------------------------------------------------------------------------
+	// PREFERENCE MANAGEMENT & PARSING ENGINE
+	// -------------------------------------------------------------------------
+
+	public Map<Long, ApplicablePreference> loadApprovedPreferences(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
+		Map<Long, ApplicablePreference> map = new HashMap<>();
+		for (Employee emp : employees) {
+			if (preferenceRepository == null) {
+				map.put(emp.getId(), ApplicablePreference.none(emp.getId()));
+				continue;
+			}
+			List<EmployeePreference> prefs = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(emp.getId());
+			EmployeePreference active = prefs.stream()
+					.filter(pr -> pr.getStatus() == PreferenceStatus.APPROVED)
+					.filter(pr -> (pr.getEffectiveFrom() == null || !pr.getEffectiveFrom().isAfter(endDate))
+							&& (pr.getEffectiveTo() == null || !pr.getEffectiveTo().isBefore(startDate)))
+					.findFirst()
+					.orElse(null);
+
+			if (active != null) {
+				map.put(emp.getId(), parseApplicablePreference(active));
+			} else {
+				map.put(emp.getId(), ApplicablePreference.none(emp.getId()));
+			}
+		}
+		return map;
+	}
+
+	private ApplicablePreference parseApplicablePreference(EmployeePreference p) {
+		Set<ShiftType> preferredShifts = parseShiftTypes(p.getPreferredShiftTypes());
+		Set<ShiftType> avoidShifts = parseShiftTypes(p.getAvoidShiftTypes());
+		Set<DayOfWeek> preferredOffDays = parseDaysOfWeek(p.getPreferredOffDays());
+		Set<DayOfWeek> preferredWorkingDays = parseDaysOfWeek(p.getPreferredWorkingDays());
+
+		if (!preferredWorkingDays.isEmpty() && preferredOffDays.isEmpty()) {
+			Set<DayOfWeek> implicitOff = EnumSet.allOf(DayOfWeek.class);
+			implicitOff.removeAll(preferredWorkingDays);
+			preferredOffDays = implicitOff;
+		}
+
+		return new ApplicablePreference(
+				p.getId(),
+				p.getEmployee().getId(),
+				preferredShifts,
+				avoidShifts,
+				preferredOffDays,
+				preferredWorkingDays,
+				p.getTemporaryRestrictions(),
+				true
+		);
+	}
+
+	private Set<ShiftType> parseShiftTypes(String text) {
+		if (text == null || text.isBlank()) return Collections.emptySet();
+		Set<ShiftType> set = EnumSet.noneOf(ShiftType.class);
+		String[] parts = text.toUpperCase().split("[,;|/\\s]+");
+		for (String p : parts) {
+			String trimmed = p.trim();
+			if (trimmed.isEmpty() || trimmed.equals("AND") || trimmed.equals("&")) continue;
+			try {
+				set.add(ShiftType.valueOf(trimmed));
+			} catch (IllegalArgumentException ignored) {
+				for (ShiftType st : ShiftType.values()) {
+					if (st.name().startsWith(trimmed) || (trimmed.length() >= 3 && st.name().startsWith(trimmed.substring(0, 3)))) {
+						set.add(st);
+						break;
+					}
+				}
+			}
+		}
+		return set;
+	}
+
+	private Set<DayOfWeek> parseDaysOfWeek(String text) {
+		if (text == null || text.isBlank()) return Collections.emptySet();
+		Set<DayOfWeek> set = EnumSet.noneOf(DayOfWeek.class);
+		String upper = text.toUpperCase().trim();
+
+		if (upper.contains("-") || upper.contains(" TO ")) {
+			String[] tokens = upper.contains("-") ? upper.split("-") : upper.split(" TO ");
+			if (tokens.length == 2) {
+				DayOfWeek start = parseSingleDay(tokens[0].trim());
+				DayOfWeek end = parseSingleDay(tokens[1].trim());
+				if (start != null && end != null) {
+					int s = start.getValue();
+					int e = end.getValue();
+					if (s <= e) {
+						for (int i = s; i <= e; i++) set.add(DayOfWeek.of(i));
+					} else {
+						for (int i = s; i <= 7; i++) set.add(DayOfWeek.of(i));
+						for (int i = 1; i <= e; i++) set.add(DayOfWeek.of(i));
+					}
+					return set;
+				}
+			}
+		}
+
+		String[] parts = upper.split("[,;|/\\s]+");
+		for (String p : parts) {
+			DayOfWeek d = parseSingleDay(p.trim());
+			if (d != null) set.add(d);
+		}
+		return set;
+	}
+
+	private DayOfWeek parseSingleDay(String s) {
+		if (s == null) return null;
+		String u = s.toUpperCase().trim();
+		if (u.startsWith("MON")) return DayOfWeek.MONDAY;
+		if (u.startsWith("TUE")) return DayOfWeek.TUESDAY;
+		if (u.startsWith("WED")) return DayOfWeek.WEDNESDAY;
+		if (u.startsWith("THU")) return DayOfWeek.THURSDAY;
+		if (u.startsWith("FRI")) return DayOfWeek.FRIDAY;
+		if (u.startsWith("SAT")) return DayOfWeek.SATURDAY;
+		if (u.startsWith("SUN")) return DayOfWeek.SUNDAY;
+		return null;
+	}
+
+	private void populateAssignmentReason(RosterAssignment a, ApplicablePreference pref) {
+		if (a.isOverridden()) {
+			if (a.getAssignmentReason() == null || a.getAssignmentReason().isBlank()) {
+				a.setAssignmentReason("Admin Override");
+			}
+			return;
+		}
+		if (a.isOnLeave()) {
+			a.setAssignmentReason("Approved Leave");
+			return;
+		}
+		if (a.isWeeklyOff() || a.getShift().getShiftType() == ShiftType.OFF) {
+			if (pref != null && pref.isDayPreferredOff(a.getRosterDate().getDayOfWeek())) {
+				a.setAssignmentReason("Preferred Weekly OFF (" + a.getRosterDate().getDayOfWeek() + ")");
+			} else {
+				a.setAssignmentReason("Scheduled Weekly OFF");
+			}
+			return;
+		}
+
+		ShiftType st = a.getShift().getShiftType();
+		if (st == ShiftType.NIGHT) {
+			a.setAssignmentReason("Required Night Rotation");
+		} else if (pref != null && pref.isShiftPreferred(st)) {
+			a.setAssignmentReason("Preferred Shift (" + st + ")");
+		} else if (st == ShiftType.EVENING) {
+			a.setAssignmentReason("Mandatory Evening Coverage");
+		} else if (st == ShiftType.MORNING) {
+			a.setAssignmentReason("Mandatory Morning Coverage");
+		} else if (pref != null && pref.isDayPreferredWorking(a.getRosterDate().getDayOfWeek())) {
+			a.setAssignmentReason("Preferred Working Day (" + st + ")");
+		} else {
+			a.setAssignmentReason("Workforce Operational Coverage (" + st + ")");
+		}
+	}
+
 
 	@Transactional(readOnly = true)
 	public List<RosterCycleResponse> allCycles() {
@@ -371,8 +663,12 @@ public class RosterService {
 		if (rosterHealthService != null) {
 			RosterHealthReport health = rosterHealthService.evaluateHealth(cycle, assignments);
 			if (!health.readyToPublish()) {
+				String conflictDetails = health.conflicts().stream()
+						.filter(c -> "CRITICAL".equalsIgnoreCase(c.severity()))
+						.map(c -> c.ruleName() + ": " + c.reason() + " on " + c.date())
+						.collect(Collectors.joining("; "));
 				throw new BusinessException("Roster cannot be published until critical conflicts are resolved. Found " 
-						+ health.criticalConflictsCount() + " critical conflict(s).");
+						+ health.criticalConflictsCount() + " critical conflict(s). " + conflictDetails);
 			}
 		}
 
@@ -727,7 +1023,7 @@ public class RosterService {
 			Map<Long, LocalDate> weeklyOffs, Set<Long> offTaken, Map<ShiftType, Shift> shifts, LocalDate date,
 			Map<Long, Shift> lastShiftMap, Map<Long, LocalDate> lastShiftDateMap,
 			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
-			int maxNightsAllowed) {
+			int maxNightsAllowed, Map<Long, ApplicablePreference> preferencesMap, int randomSeed) {
 		List<RosterAssignment> dayAssignments = new ArrayList<>();
 		List<Employee> available = new ArrayList<>();
 
@@ -753,7 +1049,6 @@ public class RosterService {
 		int plannedWorking = available.size();
 		int activeEmployees = employees.size();
 
-		// Calculate Configured Demand vs Feasible Demand for this date
 		Map<ShiftType, Integer> configuredDemands = new EnumMap<>(ShiftType.class);
 		int dailyConfiguredTotal = 0;
 		for (ShiftType type : ASSIGNMENT_ORDER) {
@@ -765,11 +1060,9 @@ public class RosterService {
 			dailyConfiguredTotal += cap;
 		}
 
-		// Calculate realistic feasible daily demand tailored for available staff
 		Map<ShiftType, Integer> feasibleDemands = calculateDailyFeasibleDemands(available, configuredDemands);
 		int dailyFeasibleTotal = feasibleDemands.values().stream().mapToInt(Integer::intValue).sum();
 
-		// Build prioritized required slots list
 		List<ShiftType> feasibleSlots = new ArrayList<>();
 		for (ShiftType type : ASSIGNMENT_ORDER) {
 			int count = feasibleDemands.getOrDefault(type, 0);
@@ -781,13 +1074,11 @@ public class RosterService {
 		Map<ShiftType, List<Employee>> dailyMatching = new EnumMap<>(ShiftType.class);
 		Set<Long> assigned = new HashSet<>();
 
-		// Solve feasible matching
-		int dayOffset = cycle.getStartDate() != null ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycle.getStartDate(), date) : 0;
+		int totalActiveMales = (int) employees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive()).count();
 		boolean solvedFeasible = solveDay(0, feasibleSlots, available, assigned, dailyMatching, date,
-				shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, weeklyOffs, cycle.getStartDate(), cycle.getEndDate());
+				shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycle.getStartDate(), cycle.getEndDate(), preferencesMap, randomSeed);
 
 		if (!solvedFeasible) {
-			// Backtracking fallback
 			assigned.clear();
 			dailyMatching.clear();
 
@@ -797,7 +1088,7 @@ public class RosterService {
 					Shift candidateShift = shifts.get(type);
 					List<Employee> candidates = available.stream()
 							.filter(emp -> !assigned.contains(emp.getId()))
-							.filter(emp -> isEligible(emp, type))
+							.filter(emp -> isEligible(emp, type, preferencesMap != null ? preferencesMap.get(emp.getId()) : null))
 							.filter(emp -> {
 								if (type != ShiftType.NIGHT) return true;
 								if (cycleNightCounts.getOrDefault(emp.getId(), 0) >= maxNightsAllowed) return false;
@@ -813,29 +1104,25 @@ public class RosterService {
 								boolean isCompletingSecondNight = (cycleNightCounts.getOrDefault(emp.getId(), 0) == 1) && wasNightYesterday;
 								boolean isOffTomorrow = nextDate.equals(weeklyOffs != null ? weeklyOffs.get(emp.getId()) : null);
 								boolean isLeaveTomorrow = isApprovedLeave(emp.getId(), nextDate);
+								int dayOffset = cycle.getStartDate() != null ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycle.getStartDate(), date) : 0;
 								boolean canDoSecondNight = (cycleNightCounts.getOrDefault(emp.getId(), 0) == 0) && (dayOffset == 0 || dayOffset == 2 || dayOffset == 4);
 								return isCompletingSecondNight || isOffTomorrow || isLeaveTomorrow || canDoSecondNight;
 							})
 							.filter(emp -> hasMinimumRest(lastShiftDateMap.get(emp.getId()), lastShiftMap.get(emp.getId()), date, candidateShift))
-							.sorted(Comparator.comparingInt((Employee emp) -> score(emp, type, date, lastShiftMap, cycleNightCounts, shiftCountsMap, weeklyOffs, cycle.getStartDate()))
-									.thenComparing(Employee::getId))
+							.sorted(Comparator.comparingInt((Employee emp) -> score(emp, type, date, lastShiftMap, cycleNightCounts, shiftCountsMap, weeklyOffs, cycle.getStartDate(), preferencesMap != null ? preferencesMap.get(emp.getId()) : null, randomSeed)))
 							.toList();
 
 					if (!candidates.isEmpty()) {
 						Employee chosen = candidates.get(0);
 						assigned.add(chosen.getId());
 						dailyMatching.computeIfAbsent(type, k -> new ArrayList<>()).add(chosen);
-					} else {
-						break;
 					}
 				}
 			}
 		}
 
-		// Rebalancing / Repair: Ensure mandatory coverage (Morning >= 1, General >= 1, Evening >= 1, Night = 1)
-		repairDailyCoverage(dailyMatching, date, shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, maxNightsAllowed);
+		repairDailyCoverage(dailyMatching, date, shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, maxNightsAllowed, preferencesMap);
 
-		// Record assigned shifts
 		Map<ShiftType, Integer> actualAssignedCounts = new EnumMap<>(ShiftType.class);
 		for (ShiftType type : ASSIGNMENT_ORDER) {
 			actualAssignedCounts.put(type, 0);
@@ -843,14 +1130,14 @@ public class RosterService {
 
 		for (Map.Entry<ShiftType, List<Employee>> entry : dailyMatching.entrySet()) {
 			ShiftType type = entry.getKey();
+			Shift shift = shifts.get(type);
 			for (Employee emp : entry.getValue()) {
-				dayAssignments.add(newAssignment(cycle, emp, shifts.get(type), date, false, false));
+				dayAssignments.add(newAssignment(cycle, emp, shift, date, false, false));
 				actualAssignedCounts.put(type, actualAssignedCounts.get(type) + 1);
 
 				if (type == ShiftType.NIGHT) {
-					cycleNightCounts.put(emp.getId(), cycleNightCounts.getOrDefault(emp.getId(), 0) + 1);
+					cycleNightCounts.compute(emp.getId(), (k, v) -> v == null ? 1 : v + 1);
 				}
-
 				Map<ShiftType, Integer> empCounts = shiftCountsMap.get(emp.getId());
 				if (empCounts != null) {
 					empCounts.compute(type, (k, v) -> v == null ? 1 : v + 1);
@@ -858,30 +1145,33 @@ public class RosterService {
 			}
 		}
 
-		// Handle any remaining available employee: assign to Day/Evening shift if valid (NEVER NIGHT)
-		List<Employee> unassigned = available.stream().filter(e -> !assigned.contains(e.getId())).toList();
-		for (Employee emp : unassigned) {
-			ShiftType bestExtra = null;
-			Shift prevShift = lastShiftMap.get(emp.getId());
-			ShiftType prevType = prevShift != null ? prevShift.getShiftType() : null;
+		List<Employee> unassigned = available.stream()
+				.filter(emp -> !assigned.contains(emp.getId()))
+				.toList();
 
-			// Prefer same shift as yesterday for continuity, otherwise try day shifts
-			List<ShiftType> tryTypes = new ArrayList<>();
-			if (prevType != null && prevType != ShiftType.NIGHT && prevType != ShiftType.OFF) {
-				tryTypes.add(prevType);
-			}
-			for (ShiftType candidateType : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING)) {
-				if (!tryTypes.contains(candidateType)) {
-					tryTypes.add(candidateType);
+		for (Employee emp : unassigned) {
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(emp.getId()) : null;
+			ShiftType bestExtra = null;
+			List<ShiftType> extraCandidates = List.of(ShiftType.GENERAL, ShiftType.MORNING, ShiftType.EVENING);
+
+			if (pref != null && pref.hasPreferredShifts()) {
+				for (ShiftType pShift : pref.preferredShifts()) {
+					if (pShift != ShiftType.OFF && pShift != ShiftType.NIGHT && isEligible(emp, pShift, pref) &&
+							hasMinimumRest(lastShiftDateMap.get(emp.getId()), lastShiftMap.get(emp.getId()), date, shifts.get(pShift))) {
+						bestExtra = pShift;
+						break;
+					}
 				}
 			}
 
-			for (ShiftType candidateType : tryTypes) {
-				Shift candidateShift = shifts.get(candidateType);
-				if (isEligible(emp, candidateType) &&
-						hasMinimumRest(lastShiftDateMap.get(emp.getId()), lastShiftMap.get(emp.getId()), date, candidateShift)) {
-					bestExtra = candidateType;
-					break;
+			if (bestExtra == null) {
+				for (ShiftType candidateType : extraCandidates) {
+					Shift candidateShift = shifts.get(candidateType);
+					if (isEligible(emp, candidateType, pref) &&
+							hasMinimumRest(lastShiftDateMap.get(emp.getId()), lastShiftMap.get(emp.getId()), date, candidateShift)) {
+						bestExtra = candidateType;
+						break;
+					}
 				}
 			}
 
@@ -893,10 +1183,9 @@ public class RosterService {
 					empCounts.compute(bestExtra, (k, v) -> v == null ? 1 : v + 1);
 				}
 			} else {
-				// Fallback: assign to eligible working shift (GENERAL/MORNING/EVENING) if rest allows
 				ShiftType fallback = null;
 				for (ShiftType candidateType : List.of(ShiftType.GENERAL, ShiftType.MORNING, ShiftType.EVENING)) {
-					if (isEligible(emp, candidateType) &&
+					if (isEligible(emp, candidateType, pref) &&
 							hasMinimumRest(lastShiftDateMap.get(emp.getId()), lastShiftMap.get(emp.getId()), date, shifts.get(candidateType))) {
 						fallback = candidateType;
 						break;
@@ -910,14 +1199,12 @@ public class RosterService {
 						empCounts.compute(fallback, (k, v) -> v == null ? 1 : v + 1);
 					}
 				} else {
-					// Rest prevents working any day shift (e.g. post-night recovery)
 					dayAssignments.add(newAssignment(cycle, emp, shifts.get(ShiftType.OFF), date, true, false));
 					offTaken.add(emp.getId());
 				}
 			}
 		}
 
-		// Update in-flight shift and date states
 		for (RosterAssignment assignment : dayAssignments) {
 			Long empId = assignment.getEmployee().getId();
 			if (!assignment.isWeeklyOff() && !assignment.isOnLeave() && assignment.getShift().getShiftType() != ShiftType.OFF) {
@@ -926,7 +1213,6 @@ public class RosterService {
 			}
 		}
 
-		// Compile Daily Coverage Report with 3-tier metrics
 		List<ShiftCoverageSummary> summaries = new ArrayList<>();
 		int dailyAssignedTotal = 0;
 		int dailyOperationalShortage = 0;
@@ -946,7 +1232,7 @@ public class RosterService {
 			if (opShortage > 0) {
 				status = "SHORTAGE";
 				reason = determineShortageReason(type, available, assigned, date, shifts.get(type),
-						lastShiftMap, lastShiftDateMap, cycleNightCounts, maxNightsAllowed);
+						lastShiftMap, lastShiftDateMap, cycleNightCounts, maxNightsAllowed, preferencesMap);
 			} else if (actual < configured) {
 				status = (type == ShiftType.NIGHT || type == ShiftType.EVENING)
 						? "Workforce/eligibility-limited"
@@ -954,7 +1240,7 @@ public class RosterService {
 				reason = "Configured demand (" + configured + ") dynamically adapted to workforce capacity (" + feasible + ")";
 			} else {
 				status = "FULL";
-				reason = "✓ Fully staffed within safety rules";
+				reason = "Fully staffed within safety rules";
 			}
 
 			summaries.add(new ShiftCoverageSummary(type, configured, feasible, actual, opShortage, status, reason));
@@ -969,7 +1255,7 @@ public class RosterService {
 
 	private void repairDailyCoverage(Map<ShiftType, List<Employee>> dailyMatching, LocalDate date,
 			Map<ShiftType, Shift> shifts, Map<Long, Shift> lastShiftMap, Map<Long, LocalDate> lastShiftDateMap,
-			Map<Long, Integer> cycleNightCounts, int maxNightsAllowed) {
+			Map<Long, Integer> cycleNightCounts, int maxNightsAllowed, Map<Long, ApplicablePreference> preferencesMap) {
 		for (ShiftType missingType : List.of(ShiftType.NIGHT, ShiftType.EVENING, ShiftType.GENERAL, ShiftType.MORNING)) {
 			List<Employee> assigned = dailyMatching.getOrDefault(missingType, Collections.emptyList());
 			if (!assigned.isEmpty()) {
@@ -980,11 +1266,12 @@ public class RosterService {
 			for (ShiftType donorType : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING)) {
 				if (donorType == missingType) continue;
 				List<Employee> donorList = dailyMatching.getOrDefault(donorType, Collections.emptyList());
-				if (donorList.size() <= 1) continue; // Keep at least 1 in donor shift
+				if (donorList.size() <= 1) continue;
 
 				Employee candidateToMove = null;
 				for (Employee candidate : donorList) {
-					if (isEligible(candidate, missingType)
+					ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(candidate.getId()) : null;
+					if (isEligible(candidate, missingType, pref)
 							&& !(missingType == ShiftType.NIGHT && cycleNightCounts.getOrDefault(candidate.getId(), 0) >= maxNightsAllowed)
 							&& hasMinimumRest(lastShiftDateMap.get(candidate.getId()), lastShiftMap.get(candidate.getId()), date, targetShift)) {
 						candidateToMove = candidate;
@@ -1010,7 +1297,6 @@ public class RosterService {
 			return feasible;
 		}
 
-		// Baseline: Ensure all 4 shift types are covered (Night is strictly exactly 1)
 		feasible.put(ShiftType.NIGHT, availableCount >= 1 ? 1 : 0);
 		feasible.put(ShiftType.EVENING, availableCount >= 2 ? 1 : 0);
 		feasible.put(ShiftType.MORNING, availableCount >= 3 ? 1 : 0);
@@ -1019,7 +1305,6 @@ public class RosterService {
 		int baselineAssigned = feasible.values().stream().mapToInt(Integer::intValue).sum();
 		int remainingStaff = Math.max(0, availableCount - baselineAssigned);
 
-		// Distribute remaining available staff to Morning and General (never to Night!)
 		while (remainingStaff > 0) {
 			int morningCur = feasible.get(ShiftType.MORNING);
 			int generalCur = feasible.get(ShiftType.GENERAL);
@@ -1043,19 +1328,19 @@ public class RosterService {
 
 	private String determineShortageReason(ShiftType type, List<Employee> available, Set<Long> assigned,
 			LocalDate date, Shift shift, Map<Long, Shift> lastShiftMap, Map<Long, LocalDate> lastShiftDateMap,
-			Map<Long, Integer> cycleNightCounts, int maxNightsAllowed) {
+			Map<Long, Integer> cycleNightCounts, int maxNightsAllowed, Map<Long, ApplicablePreference> preferencesMap) {
 		if (available.isEmpty()) {
 			return "No active employees available on " + date + " (all on leave or weekly off)";
 		}
 
-		long eligibleCount = available.stream().filter(e -> isEligible(e, type)).count();
+		long eligibleCount = available.stream().filter(e -> isEligible(e, type, preferencesMap != null ? preferencesMap.get(e.getId()) : null)).count();
 		if (eligibleCount == 0) {
-			return "No available employees eligible for " + type + " (female restriction / skills)";
+			return "No available employees eligible for " + type + " (female restriction / avoid shift / skills)";
 		}
 
 		if (type == ShiftType.NIGHT) {
 			long nightLimitReached = available.stream()
-					.filter(e -> isEligible(e, type))
+					.filter(e -> isEligible(e, type, preferencesMap != null ? preferencesMap.get(e.getId()) : null))
 					.filter(e -> cycleNightCounts.getOrDefault(e.getId(), 0) >= maxNightsAllowed)
 					.count();
 			if (nightLimitReached == eligibleCount) {
@@ -1064,7 +1349,7 @@ public class RosterService {
 		}
 
 		long restBlocked = available.stream()
-				.filter(e -> isEligible(e, type))
+				.filter(e -> isEligible(e, type, preferencesMap != null ? preferencesMap.get(e.getId()) : null))
 				.filter(e -> !hasMinimumRest(lastShiftDateMap.get(e.getId()), lastShiftMap.get(e.getId()), date, shift))
 				.count();
 		if (restBlocked == eligibleCount) {
@@ -1078,39 +1363,54 @@ public class RosterService {
 			Set<Long> assigned, Map<ShiftType, List<Employee>> dailyAssignments, LocalDate date,
 			Map<ShiftType, Shift> shifts, Map<Long, Shift> lastShiftMap, Map<Long, LocalDate> lastShiftDateMap,
 			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
-			int maxNightsAllowed, Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate, LocalDate cycleEndDate) {
+			int maxNightsAllowed, int totalActiveMales, Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate, LocalDate cycleEndDate,
+			Map<Long, ApplicablePreference> preferencesMap, int randomSeed) {
 		if (slotIndex >= slots.size()) {
 			return true;
 		}
 
 		ShiftType shiftType = slots.get(slotIndex);
 		Shift shift = shifts.get(shiftType);
-		int dayOffset = cycleStartDate != null ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, date) : 0;
 
 		List<Employee> candidates = available.stream()
 				.filter(e -> !assigned.contains(e.getId()))
-				.filter(e -> isEligible(e, shiftType))
+				.filter(e -> isEligible(e, shiftType, preferencesMap != null ? preferencesMap.get(e.getId()) : null))
 				.filter(e -> {
 					if (shiftType != ShiftType.NIGHT) return true;
 					if (cycleNightCounts.getOrDefault(e.getId(), 0) >= maxNightsAllowed) return false;
-					boolean wasNightYesterday = false;
 					if (cycleNightCounts.getOrDefault(e.getId(), 0) >= 1) {
+						long otherZeroNightMales = available.stream()
+								.filter(o -> o.getGender() == Gender.MALE && !o.getId().equals(e.getId()))
+								.filter(o -> cycleNightCounts.getOrDefault(o.getId(), 0) == 0)
+								.count();
+
+						long twoNightMales = cycleNightCounts.values().stream().filter(c -> c >= 2).count();
+						long activeMalesInCycle = available.stream().filter(o -> o.getGender() == Gender.MALE).count();
+						long maxTwoNightAllowed = Math.max(0, 7 - totalActiveMales);
+
+						if (twoNightMales >= maxTwoNightAllowed && otherZeroNightMales > 0) {
+							return false;
+						}
+
 						Shift prevS = lastShiftMap.get(e.getId());
 						LocalDate prevD = lastShiftDateMap.get(e.getId());
-						wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
-						if (!wasNightYesterday) return false;
+						boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
+						if (!wasNightYesterday && otherZeroNightMales > 0) {
+							return false;
+						}
+
+						LocalDate schedOff = weeklyOffs != null ? weeklyOffs.get(e.getId()) : null;
+						int offOff = (schedOff != null && cycleStartDate != null) ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, schedOff) : -1;
+						int dOff = cycleStartDate != null ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, date) : 0;
+						if (dOff == 5 && !wasNightYesterday && offOff != 6) {
+							// Cannot start 1st night on Saturday unless Sunday is scheduled OFF
+							return false;
+						}
 					}
-					LocalDate nextDate = date.plusDays(1);
-					if (cycleEndDate != null && nextDate.isAfter(cycleEndDate)) return true;
-					boolean isCompletingSecondNight = (cycleNightCounts.getOrDefault(e.getId(), 0) == 1) && wasNightYesterday;
-					boolean isOffTomorrow = nextDate.equals(weeklyOffs != null ? weeklyOffs.get(e.getId()) : null);
-					boolean isLeaveTomorrow = isApprovedLeave(e.getId(), nextDate);
-					boolean canDoSecondNight = (cycleNightCounts.getOrDefault(e.getId(), 0) == 0) && (dayOffset == 0 || dayOffset == 2 || dayOffset == 4);
-					return isCompletingSecondNight || isOffTomorrow || isLeaveTomorrow || canDoSecondNight;
+					return true;
 				})
 				.filter(e -> hasMinimumRest(lastShiftDateMap.get(e.getId()), lastShiftMap.get(e.getId()), date, shift))
-				.sorted(Comparator.comparingInt((Employee e) -> score(e, shiftType, date, lastShiftMap, cycleNightCounts, shiftCountsMap, weeklyOffs, cycleStartDate))
-						.thenComparing(Employee::getId))
+				.sorted(Comparator.comparingInt((Employee e) -> score(e, shiftType, date, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, weeklyOffs, cycleStartDate, preferencesMap != null ? preferencesMap.get(e.getId()) : null, randomSeed)))
 				.toList();
 
 		for (Employee candidate : candidates) {
@@ -1118,7 +1418,7 @@ public class RosterService {
 			dailyAssignments.computeIfAbsent(shiftType, k -> new ArrayList<>()).add(candidate);
 
 			if (solveDay(slotIndex + 1, slots, available, assigned, dailyAssignments, date,
-					shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, weeklyOffs, cycleStartDate, cycleEndDate)) {
+					shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycleStartDate, cycleEndDate, preferencesMap, randomSeed)) {
 				return true;
 			}
 
@@ -1129,14 +1429,18 @@ public class RosterService {
 		return false;
 	}
 
-	private Map<Long, LocalDate> planWeeklyOffs(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
+	private Long empId(Employee e) {
+		return e != null ? e.getId() : null;
+	}
+
+	private Map<Long, LocalDate> planWeeklyOffs(List<Employee> employees, LocalDate startDate, LocalDate endDate,
+			Map<Long, ApplicablePreference> preferencesMap, int randomSeed) {
 		Map<Long, LocalDate> result = new HashMap<>();
 		Map<LocalDate, Integer> offCounts = new LinkedHashMap<>();
 		for (int i = 0; i < 7; i++) {
 			offCounts.put(startDate.plusDays(i), 0);
 		}
 
-		// Maximum normal OFF capacity per day = total active employees - 4 mandatory shifts (Morning, General, Evening, Night)
 		int maxOffPerDay = Math.max(1, Math.min(3, employees.size() - 4));
 
 		List<Employee> males = employees.stream()
@@ -1146,16 +1450,18 @@ public class RosterService {
 				.filter(e -> e.getGender() == Gender.FEMALE)
 				.toList();
 
-		// Sort by weekend fairness: fewest past weekend OFFs first
 		List<Employee> sortedMales = new ArrayList<>(males);
-		sortedMales.sort(Comparator.comparingInt(this::weekendOffCount)
+		sortedMales.sort(Comparator.comparing((Employee e) -> (preferencesMap != null && !preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty()) ? 0 : 1)
+				.thenComparingInt(e -> (int) assignmentRepository.countShiftForEmployee(e.getId(), ShiftType.NIGHT))
+				.thenComparingInt(this::weekendOffCount)
 				.thenComparing(Comparator.comparingInt(this::weekendWorkCount).reversed())
-				.thenComparing(Employee::getId));
+				.thenComparing(e -> (int) ((e.getId() + randomSeed) % 17)));
 
 		List<Employee> sortedFemales = new ArrayList<>(females);
-		sortedFemales.sort(Comparator.comparingInt(this::weekendOffCount)
+		sortedFemales.sort(Comparator.comparing((Employee e) -> (preferencesMap != null && !preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty()) ? 0 : 1)
+				.thenComparingInt(this::weekendOffCount)
 				.thenComparing(Comparator.comparingInt(this::weekendWorkCount).reversed())
-				.thenComparing(Employee::getId));
+				.thenComparing(e -> (int) ((e.getId() + randomSeed) % 17)));
 
 		LocalDate d0 = startDate.plusDays(0);
 		LocalDate d1 = startDate.plusDays(1);
@@ -1165,34 +1471,28 @@ public class RosterService {
 		LocalDate d5 = startDate.plusDays(5);
 		LocalDate d6 = startDate.plusDays(6);
 
-		// Distribute males:
-		// Male 1 (Day 0, 1 Night) -> Day 2 (Wed)
-		// Male 2 (Day 2, 3 Night) -> Day 4 (Fri)
-		// Male 3 (Day 4, 5 Night) -> Day 6 (Sun)
-		// Male 4 (Day 6 Night) -> Day 5 (Sat)
-		// Male 5 -> Day 6 (Sun)
 		List<LocalDate> maleOrderedTargets;
-		if (sortedMales.size() >= 5) {
-			maleOrderedTargets = List.of(d2, d4, d6, d5, d6);
+		if (sortedMales.size() >= 7) {
+			maleOrderedTargets = List.of(d1, d2, d3, d4, d5, d6, d0);
+		} else if (sortedMales.size() == 6) {
+			maleOrderedTargets = List.of(d2, d3, d4, d5, d6, d1);
+		} else if (sortedMales.size() == 5) {
+			maleOrderedTargets = List.of(d2, d4, d5, d6, d3);
 		} else if (sortedMales.size() == 4) {
 			maleOrderedTargets = List.of(d2, d4, d6, d5);
 		} else if (sortedMales.size() == 3) {
 			maleOrderedTargets = List.of(d2, d4, d6);
+		} else if (sortedMales.size() == 2) {
+			maleOrderedTargets = List.of(d3, d6);
 		} else {
 			maleOrderedTargets = List.of(d6, d5, d4, d2, d3, d1, d0);
 		}
 
-		Map<LocalDate, Integer> maleOffCounts = new LinkedHashMap<>();
-		for (int i = 0; i < 7; i++) {
-			maleOffCounts.put(startDate.plusDays(i), 0);
-		}
-		int maxMaleOffPerDay = Math.min(2, Math.max(1, males.size() - 3));
+		int maxMaleOffPerDay = sortedMales.size() >= 7 ? 2 : 1;
 
+		// Step 1: Assign preferred OFF days if approved for males
 		for (int i = 0; i < sortedMales.size(); i++) {
 			Employee m = sortedMales.get(i);
-			if (result.containsKey(m.getId())) continue;
-
-			// If employee is on leave on all 7 days of the cycle, skip
 			boolean allLeave = true;
 			for (int d = 0; d < 7; d++) {
 				if (!isApprovedLeave(m.getId(), startDate.plusDays(d))) {
@@ -1205,39 +1505,65 @@ public class RosterService {
 				continue;
 			}
 
-			LocalDate target = i < maleOrderedTargets.size() ? maleOrderedTargets.get(i) : d5;
-			if (isApprovedLeave(m.getId(), target)
-					|| offCounts.getOrDefault(target, 0) >= maxOffPerDay
-					|| maleOffCounts.getOrDefault(target, 0) >= maxMaleOffPerDay) {
-				// Pick next available non-leave day
-				target = List.of(d5, d6, d4, d3, d2, d1, d0).stream()
-						.filter(d -> !isApprovedLeave(m.getId(), d))
-						.filter(d -> maleOffCounts.getOrDefault(d, 0) < maxMaleOffPerDay)
-						.filter(d -> offCounts.getOrDefault(d, 0) < maxOffPerDay)
-						.findFirst()
-						.orElseGet(() -> List.of(d5, d6, d4, d3, d2, d1, d0).stream()
-								.filter(d -> !isApprovedLeave(m.getId(), d))
-								.findFirst()
-								.orElse(d5));
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(m.getId()) : null;
+			if (pref != null && !pref.preferredOffDays().isEmpty()) {
+				for (DayOfWeek dow : pref.preferredOffDays()) {
+					for (int d = 0; d < 7; d++) {
+						LocalDate cand = startDate.plusDays(d);
+						if (cand.getDayOfWeek() == dow && !isApprovedLeave(m.getId(), cand)) {
+							int curMaleOffs = (int) result.values().stream().filter(cand::equals).count();
+							if (curMaleOffs < maxMaleOffPerDay && offCounts.getOrDefault(cand, 0) < maxOffPerDay) {
+								result.put(m.getId(), cand);
+								offCounts.put(cand, offCounts.get(cand) + 1);
+								break;
+							}
+						}
+					}
+					if (result.containsKey(m.getId())) break;
+				}
 			}
+		}
+
+		// Step 2: Assign remaining males using ordered targets
+		int targetPointer = 0;
+		for (int i = 0; i < sortedMales.size(); i++) {
+			Employee m = sortedMales.get(i);
+			if (result.containsKey(m.getId())) continue;
+
+			LocalDate target = null;
+			for (int step = 0; step < maleOrderedTargets.size(); step++) {
+				LocalDate cand = maleOrderedTargets.get((targetPointer + step) % maleOrderedTargets.size());
+				int maleOffsOnCand = (int) result.values().stream().filter(cand::equals).count();
+				if (!isApprovedLeave(m.getId(), cand)
+						&& offCounts.getOrDefault(cand, 0) < maxOffPerDay
+						&& maleOffsOnCand < maxMaleOffPerDay) {
+					target = cand;
+					targetPointer = (targetPointer + step + 1) % maleOrderedTargets.size();
+					break;
+				}
+			}
+			if (target == null) {
+				for (LocalDate candidate : List.of(d6, d5, d4, d2, d3, d1, d0)) {
+					int maleOffsOnCand = (int) result.values().stream().filter(candidate::equals).count();
+					if (!isApprovedLeave(m.getId(), candidate)
+							&& offCounts.getOrDefault(candidate, 0) < maxOffPerDay
+							&& maleOffsOnCand < maxMaleOffPerDay) {
+						target = candidate;
+						break;
+					}
+				}
+			}
+			if (target == null) target = d6;
+
 			result.put(m.getId(), target);
 			offCounts.compute(target, (d, count) -> count == null ? 1 : count + 1);
-			maleOffCounts.compute(target, (d, count) -> count == null ? 1 : count + 1);
 		}
 
-		// Distribute females:
-		List<LocalDate> femaleOrderedTargets;
-		if (maxOffPerDay >= 2) {
-			femaleOrderedTargets = List.of(d6, d5, d4, d3, d2, d1, d0);
-		} else {
-			femaleOrderedTargets = List.of(d5, d3, d1, d0, d4, d2, d6);
-		}
+		List<LocalDate> femaleOrderedTargets = List.of(d6, d5, d4, d2, d3, d1, d0);
 
+		// Step 3: Females: assign preferred OFF day if approved
 		for (int i = 0; i < sortedFemales.size(); i++) {
 			Employee f = sortedFemales.get(i);
-			if (result.containsKey(f.getId())) continue;
-
-			// If employee is on leave on all 7 days of the cycle, skip
 			boolean allLeave = true;
 			for (int d = 0; d < 7; d++) {
 				if (!isApprovedLeave(f.getId(), startDate.plusDays(d))) {
@@ -1249,6 +1575,29 @@ public class RosterService {
 				result.put(f.getId(), null);
 				continue;
 			}
+
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(f.getId()) : null;
+			if (pref != null && !pref.preferredOffDays().isEmpty()) {
+				for (DayOfWeek dow : pref.preferredOffDays()) {
+					for (int d = 0; d < 7; d++) {
+						LocalDate cand = startDate.plusDays(d);
+						if (cand.getDayOfWeek() == dow && !isApprovedLeave(f.getId(), cand)) {
+							if (offCounts.getOrDefault(cand, 0) < maxOffPerDay) {
+								result.put(f.getId(), cand);
+								offCounts.put(cand, offCounts.get(cand) + 1);
+								break;
+							}
+						}
+					}
+					if (result.containsKey(f.getId())) break;
+				}
+			}
+		}
+
+		// Step 4: Remaining females using ordered targets
+		for (int i = 0; i < sortedFemales.size(); i++) {
+			Employee f = sortedFemales.get(i);
+			if (result.containsKey(f.getId())) continue;
 
 			LocalDate chosen = null;
 			for (LocalDate target : femaleOrderedTargets) {
@@ -1270,8 +1619,113 @@ public class RosterService {
 		return result;
 	}
 
-	private void enforceAndRepairExactWeeklyOff(RosterCycle cycle, List<RosterAssignment> assignments,
-			List<Employee> employees, Map<ShiftType, Shift> shifts, int maxNightsAllowed, Map<Long, LocalDate> weeklyOffs) {
+	private Map<Long, LocalDate> planWeeklyOffs(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
+		return planWeeklyOffs(employees, startDate, endDate, null, 0);
+	}
+
+	private void ensureMinimumNightAllocation(RosterCycle cycle, List<RosterAssignment> assignments,
+		List<Employee> employees, Map<ShiftType, Shift> shifts, int maxNightsAllowed,
+		Map<Long, LocalDate> weeklyOffs, Map<Long, ApplicablePreference> preferencesMap) {
+	Map<Long, List<RosterAssignment>> empAssignments = assignments.stream()
+			.collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
+
+	List<Employee> activeMales = employees.stream()
+			.filter(e -> e.getGender() == Gender.MALE && e.isActive())
+			.toList();
+
+	if (activeMales.size() > 7) {
+		return;
+	}
+
+	for (Employee male : activeMales) {
+		List<RosterAssignment> maleList = empAssignments.getOrDefault(male.getId(), Collections.emptyList());
+		if (maleList.isEmpty()) continue;
+		maleList.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+
+		long leaveCount = maleList.stream().filter(RosterAssignment::isOnLeave).count();
+		if (leaveCount >= 7) continue;
+
+		long nightCount = maleList.stream()
+				.filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+				.count();
+
+		if (nightCount == 0) {
+			LocalDate scheduledOff = weeklyOffs != null ? weeklyOffs.get(male.getId()) : null;
+
+			// Find a night slot to swap with a male employee who has >= 2 night shifts
+			for (RosterAssignment maleAssign : maleList) {
+				if (maleAssign.isWeeklyOff() || maleAssign.isOnLeave()) continue;
+				LocalDate date = maleAssign.getRosterDate();
+
+				// Find who is assigned NIGHT on this date
+				RosterAssignment nightAssign = assignments.stream()
+						.filter(a -> a.getRosterDate().equals(date) && !a.isWeeklyOff() && !a.isOnLeave()
+								&& a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+						.findFirst().orElse(null);
+
+				if (nightAssign == null) continue;
+				Employee donor = nightAssign.getEmployee();
+				if (donor.getId().equals(male.getId())) continue;
+
+				List<RosterAssignment> donorList = empAssignments.getOrDefault(donor.getId(), Collections.emptyList());
+				donorList.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+				long donorNights = donorList.stream()
+						.filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+						.count();
+
+				if (donorNights >= 2) {
+					Shift nightShift = shifts.get(ShiftType.NIGHT);
+					int maleIdx = maleList.indexOf(maleAssign);
+					RosterAssignment prevA = maleIdx > 0 ? maleList.get(maleIdx - 1) : null;
+					RosterAssignment nextA = maleIdx < maleList.size() - 1 ? maleList.get(maleIdx + 1) : null;
+
+					boolean restOkPrev = (prevA == null || prevA.isWeeklyOff() || prevA.isOnLeave() ||
+							hasMinimumRest(prevA.getRosterDate(), prevA.getShift(), date, nightShift));
+					boolean restOkNext = (nextA == null || nextA.isWeeklyOff() || nextA.isOnLeave() ||
+							(scheduledOff != null && scheduledOff.equals(nextA.getRosterDate())) ||
+							hasMinimumRest(date, nightShift, nextA.getRosterDate(), nextA.getShift()));
+
+					if (!restOkPrev || !restOkNext) continue;
+
+					// Check donor rest-safe replacement shift
+					int donorIdx = donorList.indexOf(nightAssign);
+					RosterAssignment donorPrev = donorIdx > 0 ? donorList.get(donorIdx - 1) : null;
+					RosterAssignment donorNext = donorIdx < donorList.size() - 1 ? donorList.get(donorIdx + 1) : null;
+
+					ShiftType donorNewShift = null;
+					for (ShiftType cand : List.of(maleAssign.getShift().getShiftType(), ShiftType.GENERAL, ShiftType.MORNING, ShiftType.EVENING)) {
+						if (cand == ShiftType.NIGHT || cand == ShiftType.OFF) continue;
+						if (!isEligible(donor, cand, preferencesMap != null ? preferencesMap.get(donor.getId()) : null)) continue;
+						Shift cShift = shifts.get(cand);
+						boolean dRestPrev = (donorPrev == null || donorPrev.isWeeklyOff() || donorPrev.isOnLeave() ||
+								hasMinimumRest(donorPrev.getRosterDate(), donorPrev.getShift(), date, cShift));
+						boolean dRestNext = (donorNext == null || donorNext.isWeeklyOff() || donorNext.isOnLeave() ||
+								hasMinimumRest(date, cShift, donorNext.getRosterDate(), donorNext.getShift()));
+						if (dRestPrev && dRestNext) {
+							donorNewShift = cand;
+							break;
+						}
+					}
+
+					if (donorNewShift == null) continue;
+
+					maleAssign.setShift(nightShift);
+					nightAssign.setShift(shifts.get(donorNewShift));
+
+					if (scheduledOff != null && nextA != null && scheduledOff.equals(nextA.getRosterDate())) {
+						nextA.setWeeklyOff(true);
+						nextA.setShift(shifts.get(ShiftType.OFF));
+					}
+					break;
+				}
+			}
+		}
+	}
+}
+
+private void enforceAndRepairExactWeeklyOff(RosterCycle cycle, List<RosterAssignment> assignments,
+			List<Employee> employees, Map<ShiftType, Shift> shifts, int maxNightsAllowed, Map<Long, LocalDate> weeklyOffs,
+			Map<Long, ApplicablePreference> preferencesMap) {
 		Map<Long, List<RosterAssignment>> empAssignments = assignments.stream()
 				.collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
 
@@ -1279,6 +1733,7 @@ public class RosterService {
 			List<RosterAssignment> list = empAssignments.getOrDefault(emp.getId(), Collections.emptyList());
 			if (list.isEmpty()) continue;
 			list.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(emp.getId()) : null;
 
 			long leaveCount = list.stream().filter(RosterAssignment::isOnLeave).count();
 			if (leaveCount >= 7) {
@@ -1312,6 +1767,9 @@ public class RosterService {
 					LocalDate postNightDate = postNightOffDates.iterator().next();
 					primaryOff = offList.stream().filter(a -> a.getRosterDate().equals(postNightDate)).findFirst().orElse(null);
 				}
+				if (primaryOff == null && pref != null && !pref.preferredOffDays().isEmpty()) {
+					primaryOff = offList.stream().filter(a -> pref.isDayPreferredOff(a.getRosterDate().getDayOfWeek())).findFirst().orElse(null);
+				}
 				if (primaryOff == null && weeklyOffs != null) {
 					LocalDate scheduled = weeklyOffs.get(emp.getId());
 					if (scheduled != null) {
@@ -1333,8 +1791,18 @@ public class RosterService {
 					RosterAssignment next = idx < list.size() - 1 ? list.get(idx + 1) : null;
 
 					ShiftType chosen = null;
-					for (ShiftType candidate : List.of(ShiftType.GENERAL, ShiftType.MORNING, ShiftType.EVENING)) {
-						if (!isEligible(emp, candidate)) continue;
+					List<ShiftType> priorityCandidates = new ArrayList<>();
+					if (pref != null && pref.hasPreferredShifts()) {
+						for (ShiftType pSt : pref.preferredShifts()) {
+							if (pSt != ShiftType.OFF) priorityCandidates.add(pSt);
+						}
+					}
+					for (ShiftType std : List.of(ShiftType.GENERAL, ShiftType.MORNING, ShiftType.EVENING)) {
+						if (!priorityCandidates.contains(std)) priorityCandidates.add(std);
+					}
+
+					for (ShiftType candidate : priorityCandidates) {
+						if (!isEligible(emp, candidate, pref)) continue;
 						Shift candidateShift = shifts.get(candidate);
 						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() ||
 								hasMinimumRest(prev.getRosterDate(), prev.getShift(), extraOff.getRosterDate(), candidateShift));
@@ -1345,22 +1813,32 @@ public class RosterService {
 							break;
 						}
 					}
-					if (chosen == null) {
-						if (isEligible(emp, ShiftType.NIGHT)) {
-							Shift nightShift = shifts.get(ShiftType.NIGHT);
-							boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() ||
-									hasMinimumRest(prev.getRosterDate(), prev.getShift(), extraOff.getRosterDate(), nightShift));
-							boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() ||
-									hasMinimumRest(extraOff.getRosterDate(), nightShift, next.getRosterDate(), next.getShift()));
-							if (restPrev && restNext) {
-								chosen = ShiftType.NIGHT;
-							}
+					if (chosen == null && isEligible(emp, ShiftType.NIGHT, pref)) {
+						Shift nightShift = shifts.get(ShiftType.NIGHT);
+						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() ||
+								hasMinimumRest(prev.getRosterDate(), prev.getShift(), extraOff.getRosterDate(), nightShift));
+						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() ||
+								hasMinimumRest(extraOff.getRosterDate(), nightShift, next.getRosterDate(), next.getShift()));
+						if (restPrev && restNext) {
+							chosen = ShiftType.NIGHT;
 						}
 					}
 					if (chosen != null) {
 						extraOff.setShift(shifts.get(chosen));
 					} else {
-						extraOff.setShift(shifts.get(ShiftType.GENERAL));
+						// Rest-safe fallback
+						ShiftType fallback = null;
+						for (ShiftType fbCandidate : List.of(ShiftType.EVENING, ShiftType.GENERAL, ShiftType.MORNING)) {
+							if (!isEligible(emp, fbCandidate, pref)) continue;
+							Shift candidateShift = shifts.get(fbCandidate);
+							boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() ||
+									hasMinimumRest(prev.getRosterDate(), prev.getShift(), extraOff.getRosterDate(), candidateShift));
+							if (restPrev) {
+								fallback = fbCandidate;
+								break;
+							}
+						}
+						extraOff.setShift(shifts.get(fallback != null ? fallback : ShiftType.GENERAL));
 					}
 				}
 			}
@@ -1369,7 +1847,10 @@ public class RosterService {
 			if (offList.isEmpty()) {
 				LocalDate scheduled = weeklyOffs != null ? weeklyOffs.get(emp.getId()) : null;
 				RosterAssignment targetAssignment = null;
-				if (scheduled != null) {
+				if (pref != null && !pref.preferredOffDays().isEmpty()) {
+					targetAssignment = list.stream().filter(a -> pref.isDayPreferredOff(a.getRosterDate().getDayOfWeek()) && !a.isOnLeave()).findFirst().orElse(null);
+				}
+				if (targetAssignment == null && scheduled != null) {
 					targetAssignment = list.stream().filter(a -> a.getRosterDate().equals(scheduled) && !a.isOnLeave()).findFirst().orElse(null);
 				}
 				if (targetAssignment == null) {
@@ -1385,58 +1866,101 @@ public class RosterService {
 		}
 	}
 
+	private void enforceAndRepairExactWeeklyOff(RosterCycle cycle, List<RosterAssignment> assignments,
+			List<Employee> employees, Map<ShiftType, Shift> shifts, int maxNightsAllowed, Map<Long, LocalDate> weeklyOffs) {
+		enforceAndRepairExactWeeklyOff(cycle, assignments, employees, shifts, maxNightsAllowed, weeklyOffs, null);
+	}
+
 	private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Long, Shift> lastShiftMap,
-			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
-			Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate) {
+			Map<Long, LocalDate> lastShiftDateMap, Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
+			Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate,
+			ApplicablePreference pref, int randomSeed) {
 		int shiftCount = shiftCountsMap != null && shiftCountsMap.containsKey(employee.getId())
 				? shiftCountsMap.get(employee.getId()).getOrDefault(shiftType, 0)
 				: (int) assignmentRepository.countShiftForEmployee(employee.getId(), shiftType);
-		
+
 		int score = shiftCount * 10;
 
-		// Prioritize female employees for Morning and General so males stay available for Evening and Night
+		// 1. Employee Preferences (Priority 2)
+		if (pref != null) {
+			if (pref.isShiftPreferred(shiftType)) {
+				score -= 1200;
+			} else if (pref.hasPreferredShifts()) {
+				score += 800;
+			}
+
+			if (pref.isDayPreferredOff(date.getDayOfWeek()) && shiftType != ShiftType.OFF) {
+				score += 500;
+			}
+
+			if (pref.isDayPreferredWorking(date.getDayOfWeek()) && shiftType != ShiftType.OFF) {
+				score -= 200;
+			}
+		}
+
+		// 2. Prioritize female employees for Morning and General so males stay available for Evening and Night
 		if (shiftType == ShiftType.MORNING || shiftType == ShiftType.GENERAL) {
 			if (employee.getGender() == Gender.FEMALE) {
 				score -= 150;
 			}
 		}
-		
-		if (shiftType == ShiftType.NIGHT) {
-			// Prioritize employees with fewer nights in current cycle
-			score += cycleNightCounts.getOrDefault(employee.getId(), 0) * 150;
-			Shift lastShiftObj = lastShiftMap.get(employee.getId());
-			if (lastShiftObj != null && lastShiftObj.getShiftType() == ShiftType.NIGHT) {
-				// Strongly prioritize completing the consecutive 2-night block (15h rest)
-				score -= 3500;
-			}
 
-			// Reward matching night shifts to recovery days by cycle offset
+		if (shiftType == ShiftType.NIGHT) {
+			int myCurNights = cycleNightCounts != null ? cycleNightCounts.getOrDefault(employee.getId(), 0) : 0;
+			int priorNights = (int) assignmentRepository.countShiftForEmployee(employee.getId(), ShiftType.NIGHT);
 			LocalDate scheduledOff = weeklyOffs != null ? weeklyOffs.get(employee.getId()) : null;
 			int dayOffset = cycleStartDate != null ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, date) : 0;
-			if (scheduledOff != null && cycleStartDate != null) {
-				int offOffset = (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, scheduledOff);
-				if ((dayOffset == 0 || dayOffset == 1) && offOffset == 2) {
-					score -= 600;
-				} else if ((dayOffset == 2 || dayOffset == 3) && offOffset == 4) {
-					score -= 600;
-				} else if ((dayOffset == 4 || dayOffset == 5) && offOffset == 6) {
-					score -= 600;
-				} else if (dayOffset == 6 && offOffset == 5) {
-					score -= 600;
+			int offOffset = (scheduledOff != null && cycleStartDate != null) ? (int) java.time.temporal.ChronoUnit.DAYS.between(cycleStartDate, scheduledOff) : -1;
+
+			Shift lastShiftObj = lastShiftMap != null ? lastShiftMap.get(employee.getId()) : null;
+			LocalDate lastShiftDate = lastShiftDateMap != null ? lastShiftDateMap.get(employee.getId()) : null;
+			boolean wasNightYesterday = lastShiftObj != null && lastShiftObj.getShiftType() == ShiftType.NIGHT
+					&& lastShiftDate != null && lastShiftDate.equals(date.minusDays(1));
+
+			if (wasNightYesterday) {
+				// Completing consecutive 2-night stint
+				score -= 7000;
+				if (offOffset >= 0 && dayOffset == offOffset - 1) {
+					// Perfectly aligning post-night day with scheduled Weekly OFF!
+					score -= 3000;
 				}
+			} else if (myCurNights == 0) {
+				// Zero-Night Priority
+				score -= 3000;
+				score += priorNights * 30;
+
+				boolean isLeaveTomorrow = (date != null && isApprovedLeave(employee.getId(), date.plusDays(1)));
+				if (isLeaveTomorrow) {
+					// Perfectly aligning night shift before approved leave day
+					score -= 4500;
+				} else if (offOffset >= 0) {
+					if (dayOffset == offOffset - 2) {
+						// Starting a 2-night stint before scheduled Weekly OFF (e.g. Fri before Sun OFF, Wed before Fri OFF, Mon before Wed OFF)
+						score -= 4500;
+					} else if (dayOffset == offOffset - 1 && offOffset != 5 && offOffset != 6) {
+						// Starting a 1-night stint before scheduled Weekly OFF
+						score -= 3500;
+					} else if (dayOffset == 6 && (offOffset == 5 || offOffset == 4 || offOffset == 3)) {
+						// Sunday night slot for single-night rotation male
+						score -= 6000;
+					} else {
+						// Starting night on a wrong day that does NOT lead up to scheduled Weekly OFF
+						score += 5500;
+					}
+				}
+			} else {
+				// Second disconnected night: penalized heavily so 0-night males get their first night first
+				score += 5000;
 			}
 		}
 
-		Shift lastShiftObj = lastShiftMap.get(employee.getId());
+		Shift lastShiftObj = lastShiftMap != null ? lastShiftMap.get(employee.getId()) : null;
 		ShiftType lastShift = lastShiftObj != null ? lastShiftObj.getShiftType() : null;
 		if (lastShift != null) {
 			if (lastShift == shiftType) {
-				// Strong bonus for maintaining shift continuity (same shift block)
 				score -= 280;
 			} else {
-				// Penalty for unnecessary shift change
 				score += 180;
-				// Larger penalty for rapid/disruptive switching between dissimilar shifts
 				if ((lastShift == ShiftType.MORNING && shiftType == ShiftType.EVENING) ||
 				    (lastShift == ShiftType.EVENING && shiftType == ShiftType.MORNING) ||
 				    (lastShift == ShiftType.GENERAL && shiftType == ShiftType.NIGHT)) {
@@ -1445,18 +1969,25 @@ public class RosterService {
 			}
 		}
 
-		if (isWeekend(date)) {
-			score += weekendWorkCount(employee) * 5;
-		}
-		if (shiftType == ShiftType.NIGHT || shiftType == ShiftType.EVENING || shiftType == ShiftType.MORNING) {
-			score += shiftCount * 3;
-		}
 		return score;
 	}
 
 	private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Long, Shift> lastShiftMap,
+			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
+			Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate,
+			ApplicablePreference pref, int randomSeed) {
+		return score(employee, shiftType, date, lastShiftMap, null, cycleNightCounts, shiftCountsMap, weeklyOffs, cycleStartDate, pref, randomSeed);
+	}
+
+	private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Long, Shift> lastShiftMap,
+			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
+			Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate) {
+		return score(employee, shiftType, date, lastShiftMap, null, cycleNightCounts, shiftCountsMap, weeklyOffs, cycleStartDate, null, 0);
+	}
+
+	private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Long, Shift> lastShiftMap,
 			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap) {
-		return score(employee, shiftType, date, lastShiftMap, cycleNightCounts, shiftCountsMap, null, null);
+		return score(employee, shiftType, date, lastShiftMap, null, cycleNightCounts, shiftCountsMap, null, null, null, 0);
 	}
 
 	public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
@@ -1557,21 +2088,32 @@ public class RosterService {
 	// -------------------------------------------------------------------------
 
 	public void validateGeneratedRoster(RosterCycle cycle, List<RosterAssignment> assignments, Map<ShiftType, Shift> shifts, int maxNightsAllowed) {
+		validateGeneratedRoster(cycle, assignments, shifts, maxNightsAllowed, null);
+	}
+
+	public void validateGeneratedRoster(RosterCycle cycle, List<RosterAssignment> assignments, Map<ShiftType, Shift> shifts, int maxNightsAllowed, Map<Long, ApplicablePreference> preferencesMap) {
 		Map<Long, List<RosterAssignment>> empAssignments = new HashMap<>();
 		for (RosterAssignment a : assignments) {
 			empAssignments.computeIfAbsent(a.getEmployee().getId(), k -> new ArrayList<>()).add(a);
 		}
 
+		long activeMaleCount = empAssignments.values().stream()
+				.map(l -> l.isEmpty() ? null : l.get(0).getEmployee())
+				.filter(e -> e != null)
+				.filter(e -> e.getGender() == Gender.MALE && e.isActive())
+				.count();
+
 		for (Map.Entry<Long, List<RosterAssignment>> entry : empAssignments.entrySet()) {
 			List<RosterAssignment> list = entry.getValue();
 			list.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+			Long empId = entry.getKey();
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.getOrDefault(empId, ApplicablePreference.none(empId)) : ApplicablePreference.none(empId);
 
 			int nightCount = 0;
 			int offCount = 0;
 			int leaveCount = 0;
 			RosterAssignment prevWorking = null;
 
-			// Check rest from previous cycle
 			if (!list.isEmpty()) {
 				LocalDate firstDate = list.get(0).getRosterDate();
 				List<RosterAssignment> before = assignmentRepository.findWorkedAssignmentsBefore(entry.getKey(), firstDate);
@@ -1594,12 +2136,19 @@ public class RosterService {
 					}
 				}
 
+				// Avoid Shift Hard Constraint (unless overridden by Admin)
+				if (!curr.isOverridden() && !curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift().getShiftType() != ShiftType.OFF) {
+					if (pref != null && pref.isShiftAvoided(curr.getShift().getShiftType())) {
+						throw new BusinessException("Validation failure: Employee " + emp.getEmployeeCode()
+								+ " assigned to avoided shift " + curr.getShift().getShiftType() + " on " + curr.getRosterDate());
+					}
+				}
+
 				if (!curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift().getShiftType() != ShiftType.OFF) {
 					if (curr.getShift().getShiftType() == ShiftType.NIGHT) {
 						nightCount++;
 					}
 
-					// Rest Constraint
 					if (prevWorking != null) {
 						if (!hasMinimumRest(prevWorking.getRosterDate(), prevWorking.getShift(), curr.getRosterDate(), curr.getShift())) {
 							Duration rest = calculateRestDuration(prevWorking.getRosterDate(), prevWorking.getShift(), curr.getRosterDate(), curr.getShift());
@@ -1613,17 +2162,23 @@ public class RosterService {
 				}
 			}
 
-			// Max Night Count Constraint
 			if (nightCount > maxNightsAllowed) {
 				throw new BusinessException("Validation failure: Employee " + entry.getKey()
 						+ " assigned " + nightCount + " night shifts in cycle (max allowed is " + maxNightsAllowed + ")");
 			}
 
-			// Exactly 1 Weekly OFF Constraint (unless on leave all 7 days)
 			if (offCount != 1 && leaveCount < 7) {
 				Employee emp = list.get(0).getEmployee();
 				throw new BusinessException("Validation failure: Employee " + emp.getEmployeeCode()
 						+ " has " + offCount + " weekly OFF assignments in cycle (expected exactly 1)");
+			}
+
+			// Batch 33: Mandatory Minimum Night Allocation Check for Eligible Males
+			Employee emp = list.get(0).getEmployee();
+			if (emp != null && emp.getGender() == Gender.MALE && emp.isActive() && leaveCount < 7 && activeMaleCount <= 7) {
+				if (nightCount < 1) {
+					throw new BusinessException("Validation failure: Mandatory minimum night allocation not satisfied for eligible male employee " + emp.getEmployeeCode() + " (" + emp.getFirstName() + " " + emp.getLastName() + ") with 0 night shifts");
+				}
 			}
 		}
 	}
@@ -1738,8 +2293,18 @@ public class RosterService {
 				totalAssigned, totalOperationalShortage, totalConfiguredShortage, dailyReports, warnings);
 	}
 
+	private boolean isEligible(Employee employee, ShiftType shiftType, ApplicablePreference pref) {
+		if (employee.getGender() == Gender.FEMALE && (shiftType == ShiftType.EVENING || shiftType == ShiftType.NIGHT)) {
+			return false;
+		}
+		if (pref != null && pref.isShiftAvoided(shiftType)) {
+			return false;
+		}
+		return true;
+	}
+
 	private boolean isEligible(Employee employee, ShiftType shiftType) {
-		return employee.getGender() == Gender.MALE || shiftType == ShiftType.MORNING || shiftType == ShiftType.GENERAL;
+		return isEligible(employee, shiftType, null);
 	}
 
 	private ShiftType nextShift(Employee employee, ShiftType previous) {
@@ -1811,6 +2376,7 @@ public class RosterService {
 		assignment.setWeeklyOff(weeklyOff);
 		assignment.setOnLeave(false);
 		assignment.setOverridden(true);
+		assignment.setAssignmentReason("Admin Override" + (reason != null ? ": " + reason : ""));
 
 		RosterOverride override = new RosterOverride();
 		override.setAssignment(assignment);
@@ -1915,6 +2481,14 @@ public class RosterService {
 	}
 
 	private RosterCycleResponse toCycleResponse(RosterCycle cycle, List<RosterAssignment> assignments, CoverageReportResponse coverageReport) {
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, cycle.getStartDate(), cycle.getEndDate());
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		FinalValidationResult val = evaluateFinalValidation(cycle, assignments, shifts, 2, preferencesMap, Collections.emptyMap());
+		return toCycleResponse(cycle, assignments, coverageReport, val);
+	}
+
+	private RosterCycleResponse toCycleResponse(RosterCycle cycle, List<RosterAssignment> assignments, CoverageReportResponse coverageReport, FinalValidationResult val) {
 		return new RosterCycleResponse(
 				cycle.getId(),
 				cycle.getStartDate(),
@@ -1932,7 +2506,19 @@ public class RosterService {
 				"SENT",
 				assignments.stream().sorted(Comparator.comparing(RosterAssignment::getRosterDate)
 						.thenComparing(a -> a.getEmployee().getId())).map(this::toAssignmentResponse).toList(),
-				coverageReport);
+				coverageReport,
+				com.weeklyroster.util.RosterLifecycleUtil.classifyCycle(cycle.getStartDate(), cycle.getEndDate()),
+				com.weeklyroster.util.RosterLifecycleUtil.resolveSource(cycle.getGenerationMode() != null ? cycle.getGenerationMode() : com.weeklyroster.entity.GenerationMode.MANUAL),
+				cycle.getStatus() == RosterStatus.DRAFT || cycle.getStatus() == RosterStatus.GENERATED,
+				val.overallStatus(),
+				val.preferenceComplianceScore(),
+				val.maleNightCoverage(),
+				val.criticalConflicts(),
+				val.warnings(),
+				val.healthScore(),
+				val.conflicts(),
+				val.workloadMetrics()
+		);
 	}
 
 	private RosterAssignmentResponse toAssignmentResponse(RosterAssignment assignment) {
@@ -1942,7 +2528,7 @@ public class RosterService {
 				assignment.getRosterDate(), employee.getId(), employee.getEmployeeCode(),
 				employee.getFirstName() + " " + employee.getLastName(), employee.getGender(),
 				assignment.getShift().getShiftType(), assignment.isWeeklyOff(), assignment.isOnLeave(),
-				assignment.isOverridden());
+				assignment.isOverridden(), assignment.getAssignmentReason());
 	}
 
 	// -------------------------------------------------------------------------
@@ -2228,4 +2814,289 @@ public class RosterService {
 			case OFF -> "Weekly Off";
 		};
 	}
+
+	public record FinalValidationResult(
+			boolean isValid,
+			String overallStatus,
+			double preferenceComplianceScore,
+			String maleNightCoverage,
+			int criticalConflicts,
+			int warnings,
+			int infoCount,
+			double healthScore,
+			List<ConflictItem> conflicts,
+			List<EmployeeWorkloadMetric> workloadMetrics
+	) {}
+
+	public FinalValidationResult evaluateFinalValidation(RosterCycle cycle, List<RosterAssignment> assignments,
+			Map<ShiftType, Shift> shifts, int maxNightsAllowed, Map<Long, ApplicablePreference> preferencesMap,
+			Map<String, RosterOverride> priorOverrideMap) {
+		List<ConflictItem> conflicts = new ArrayList<>();
+		if (assignments == null || assignments.isEmpty()) {
+			return new FinalValidationResult(false, "INVALID", 0.0, "0 / 0", 1, 0, 0, 0.0,
+					List.of(new ConflictItem(cycle.getStartDate(), null, "All Staff", null, "NO_ASSIGNMENTS", "0", "42+", "No roster assignments generated", "CRITICAL", "Generate roster", false)),
+					Collections.emptyList());
+		}
+
+		Map<LocalDate, Map<ShiftType, List<RosterAssignment>>> dateShiftMap = new TreeMap<>();
+		Map<Long, List<RosterAssignment>> empMap = new LinkedHashMap<>();
+		Map<String, Integer> dupMap = new HashMap<>();
+
+		for (RosterAssignment a : assignments) {
+			LocalDate d = a.getRosterDate();
+			dateShiftMap.computeIfAbsent(d, k -> new EnumMap<>(ShiftType.class));
+			if (!a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() != ShiftType.OFF) {
+				dateShiftMap.get(d).computeIfAbsent(a.getShift().getShiftType(), k -> new ArrayList<>()).add(a);
+			}
+
+			if (a.getEmployee() != null) {
+				empMap.computeIfAbsent(a.getEmployee().getId(), k -> new ArrayList<>()).add(a);
+				String dupKey = a.getEmployee().getId() + "_" + d;
+				dupMap.put(dupKey, dupMap.getOrDefault(dupKey, 0) + 1);
+			}
+		}
+
+		boolean coverageOk = true;
+		for (LocalDate date = cycle.getStartDate(); !date.isAfter(cycle.getEndDate()); date = date.plusDays(1)) {
+			Map<ShiftType, List<RosterAssignment>> shiftMap = dateShiftMap.getOrDefault(date, Collections.emptyMap());
+			int mCount = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList()).size();
+			int gCount = shiftMap.getOrDefault(ShiftType.GENERAL, Collections.emptyList()).size();
+			int eCount = shiftMap.getOrDefault(ShiftType.EVENING, Collections.emptyList()).size();
+			int nCount = shiftMap.getOrDefault(ShiftType.NIGHT, Collections.emptyList()).size();
+
+			if (mCount < 1) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", "0 assigned", ">= 1 assigned", "Morning shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to Morning", false));
+			}
+			if (gCount < 1) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "General Staffing", ShiftType.GENERAL, "MIN_COVERAGE_GENERAL", "0 assigned", ">= 1 assigned", "General shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to General", false));
+			}
+			if (eCount < 1) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", "0 assigned", ">= 1 assigned", "Evening shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to Evening", false));
+			}
+			long eligibleMaleStaff = empMap.values().stream()
+					.filter(l -> !l.isEmpty() && l.get(0).getEmployee().getGender() == Gender.MALE && l.get(0).getEmployee().isActive() && l.stream().filter(RosterAssignment::isOnLeave).count() < 7)
+					.count();
+			boolean nightCapacityShortage = (eligibleMaleStaff * maxNightsAllowed < 7);
+
+			if (nCount == 0) {
+				if (nightCapacityShortage) {
+					conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "MIN_COVERAGE_NIGHT", "0 assigned", "1 assigned", "Night shift unstaffed on " + date + " due to active male capacity (" + eligibleMaleStaff + " eligible males * " + maxNightsAllowed + " max nights < 7)", "WARNING", "Review male workforce staffing capacity", false));
+				} else {
+					coverageOk = false;
+					conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "MIN_COVERAGE_NIGHT", "0 assigned", "Exactly 1 assigned", "Night shift has 0 assigned staff on " + date, "CRITICAL", "Assign exactly 1 eligible male staff to Night", false));
+				}
+			} else if (nCount > 1) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "EXACT_NIGHT_COVERAGE", nCount + " assigned", "Exactly 1 assigned", "Night shift has " + nCount + " staff assigned (strictly 1 required) on " + date, "CRITICAL", "Reduce Night shift to 1 employee", false));
+			}
+		}
+
+		for (Map.Entry<String, Integer> dup : dupMap.entrySet()) {
+			if (dup.getValue() > 1) {
+				String[] parts = dup.getKey().split("_");
+				Long empId = Long.parseLong(parts[0]);
+				LocalDate date = LocalDate.parse(parts[1]);
+				conflicts.add(new ConflictItem(date, empId, "Employee #" + empId, null, "DUPLICATE_ASSIGNMENT", dup.getValue() + " assignments", "1 assignment", "Employee has multiple roster assignments on " + date, "CRITICAL", "Remove duplicate assignments", false));
+			}
+		}
+
+		boolean restOk = true;
+		boolean nightLimitOk = true;
+		boolean genderOk = true;
+		boolean maleNightOk = true;
+
+		int totalPrefOpportunities = 0;
+		int satisfiedPrefPoints = 0;
+		int eligibleMaleCount = 0;
+		int satisfiedMaleNightCount = 0;
+		List<EmployeeWorkloadMetric> workloadMetrics = new ArrayList<>();
+
+		for (List<RosterAssignment> empAssignments : empMap.values()) {
+			if (empAssignments.isEmpty()) continue;
+			empAssignments.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+			Employee emp = empAssignments.get(0).getEmployee();
+			String empName = emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : "");
+			Long empId = emp.getId();
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.getOrDefault(empId, ApplicablePreference.none(empId)) : ApplicablePreference.none(empId);
+
+			int nightCount = 0;
+			int offCount = 0;
+			int leaveCount = 0;
+			int morningCount = 0;
+			int generalCount = 0;
+			int eveningCount = 0;
+			int consecutiveDays = 0;
+			int maxConsecutiveDays = 0;
+			int consecutiveNights = 0;
+			int maxConsecutiveNights = 0;
+			int weekendDuties = 0;
+			int preferredFulfilled = 0;
+			RosterAssignment prevWorking = null;
+
+			LocalDate firstDate = empAssignments.get(0).getRosterDate();
+			List<RosterAssignment> before = assignmentRepository.findWorkedAssignmentsBefore(empId, firstDate);
+			if (!before.isEmpty()) {
+				prevWorking = before.get(0);
+			}
+
+			for (RosterAssignment curr : empAssignments) {
+				LocalDate d = curr.getRosterDate();
+				boolean isWeekend = (d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY);
+
+				if (curr.isOnLeave()) {
+					leaveCount++;
+					consecutiveDays = 0;
+					consecutiveNights = 0;
+				} else if (curr.isWeeklyOff() || (curr.getShift() != null && curr.getShift().getShiftType() == ShiftType.OFF)) {
+					offCount++;
+					consecutiveDays = 0;
+					consecutiveNights = 0;
+
+					if (pref.hasPreferredOffDays()) {
+						totalPrefOpportunities++;
+						if (pref.isDayPreferredOff(d.getDayOfWeek())) {
+							satisfiedPrefPoints++;
+						} else {
+							conflicts.add(new ConflictItem(d, empId, empName, null, "PREFERRED_OFF_NOT_MET", d.getDayOfWeek().name(), pref.preferredOffDays().toString(), "Preferred OFF day not satisfied on " + d + " because coverage/rest constraints required an alternate schedule", "WARNING", "Review employee OFF day allocation", false));
+						}
+					}
+				} else {
+					consecutiveDays++;
+					maxConsecutiveDays = Math.max(maxConsecutiveDays, consecutiveDays);
+					if (isWeekend) weekendDuties++;
+
+					ShiftType st = curr.getShift().getShiftType();
+					switch (st) {
+						case MORNING -> morningCount++;
+						case GENERAL -> generalCount++;
+						case EVENING -> eveningCount++;
+						case NIGHT -> {
+							nightCount++;
+							consecutiveNights++;
+							maxConsecutiveNights = Math.max(maxConsecutiveNights, consecutiveNights);
+						}
+						default -> {}
+					}
+					if (st != ShiftType.NIGHT) consecutiveNights = 0;
+
+					if (emp.getGender() == Gender.FEMALE && (st == ShiftType.EVENING || st == ShiftType.NIGHT)) {
+						genderOk = false;
+						conflicts.add(new ConflictItem(d, empId, empName, st, "FEMALE_RESTRICTION", st.name(), "MORNING or GENERAL", "Female employee " + empName + " assigned to restricted " + st + " shift on " + d, "CRITICAL", "Reassign female employee to Day shift", false));
+					}
+
+					if (!curr.isOverridden() && pref.isShiftAvoided(st)) {
+						conflicts.add(new ConflictItem(d, empId, empName, st, "AVOID_SHIFT_VIOLATION", st.name(), "Not " + st.name(), "Employee " + empName + " assigned to approved avoided shift " + st + " on " + d, "CRITICAL", "Reassign away from avoided shift", false));
+					}
+
+					if (pref.hasPreferredShifts()) {
+						totalPrefOpportunities++;
+						if (pref.isShiftPreferred(st)) {
+							satisfiedPrefPoints++;
+							preferredFulfilled++;
+						} else {
+							conflicts.add(new ConflictItem(d, empId, empName, st, "PREFERRED_SHIFT_NOT_MET", st.name(), pref.preferredShifts().toString(), "Preferred shift " + pref.preferredShifts() + " not selected (assigned " + st + ") on " + d + " due to workforce balancing", "WARNING", "Consider adjusting shift if feasible", false));
+						}
+					}
+
+					if (pref.hasAvoidShifts()) {
+						totalPrefOpportunities++;
+						if (!pref.isShiftAvoided(st)) {
+							satisfiedPrefPoints++;
+						}
+					}
+
+					if (pref.hasPreferredWorkingDays()) {
+						totalPrefOpportunities++;
+						if (pref.isDayPreferredWorking(d.getDayOfWeek())) {
+							satisfiedPrefPoints++;
+						}
+					}
+
+					if (prevWorking != null) {
+						if (!hasMinimumRest(prevWorking.getRosterDate(), prevWorking.getShift(), d, curr.getShift())) {
+							restOk = false;
+							Duration rest = calculateRestDuration(prevWorking.getRosterDate(), prevWorking.getShift(), d, curr.getShift());
+							conflicts.add(new ConflictItem(d, empId, empName, st, "REST_INTERVAL_12H", rest.toHours() + "h " + (rest.toMinutes() % 60) + "m rest", ">= 12h rest", prevWorking.getShift().getShiftType() + " -> " + st + " violates 12h minimum rest rule between " + prevWorking.getRosterDate() + " and " + d, "CRITICAL", "Schedule a rest day or shift with >= 12h separation", false));
+						}
+					}
+					prevWorking = curr;
+				}
+
+				if (curr.isOverridden()) {
+					conflicts.add(new ConflictItem(d, empId, empName, curr.getShift() != null ? curr.getShift().getShiftType() : null, "ADMIN_OVERRIDE_PRESERVED", "Overridden", "Preserved", "Admin manual override preserved for " + empName + " on " + d, "INFO", "Administrative override active", false));
+				}
+			}
+
+			if (nightCount > maxNightsAllowed) {
+				nightLimitOk = false;
+				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, ShiftType.NIGHT, "MAX_NIGHT_LIMIT", nightCount + " night shifts", "<= 2 night shifts", empName + " assigned " + nightCount + " night shifts (max allowed is " + maxNightsAllowed + ")", "CRITICAL", "Reduce night shifts to at most 2", false));
+			}
+
+			if (offCount != 1 && leaveCount < 7) {
+				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, null, offCount == 0 ? "NO_WEEKLY_OFF" : "DUPLICATE_WEEKLY_OFF", offCount + " Weekly OFFs", "Exactly 1 Weekly OFF", "Employee " + empName + " has " + offCount + " weekly OFF assignments in cycle (expected exactly 1)", "CRITICAL", "Ensure exactly 1 Weekly OFF", false));
+			}
+
+			if (emp.getGender() == Gender.MALE && emp.isActive() && leaveCount < 7) {
+				eligibleMaleCount++;
+				if (nightCount >= 1) {
+					satisfiedMaleNightCount++;
+				} else if (empMap.size() <= 7) {
+					maleNightOk = false;
+					conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, ShiftType.NIGHT, "MALE_MINIMUM_NIGHT_ALLOCATION", "0 night shifts", ">= 1 night shift", "Mandatory minimum night allocation not satisfied for eligible male employee " + empName + " (" + emp.getEmployeeCode() + ") with 0 night shifts", "CRITICAL", "Assign at least 1 Night shift", false));
+				}
+			}
+
+			int workingDays = empAssignments.size() - offCount - leaveCount;
+			double workloadScore = workingDays * 16.0 + nightCount * 5.0 + eveningCount * 2.0;
+			String workloadRating = workloadScore > 100 ? "HIGH" : workloadScore >= 80 ? "BALANCED" : "LIGHT";
+			workloadMetrics.add(new EmployeeWorkloadMetric(
+					empId, emp.getEmployeeCode(), empName, emp.getGender().name(),
+					empAssignments.size(), workingDays, offCount, morningCount, generalCount,
+					eveningCount, nightCount, maxConsecutiveDays, maxConsecutiveNights,
+					weekendDuties, 0, 0, Math.round(workloadScore * 10.0) / 10.0, workloadRating
+			));
+		}
+
+		double prefScore = totalPrefOpportunities > 0 ? Math.round((satisfiedPrefPoints * 1000.0) / totalPrefOpportunities) / 10.0 : 100.0;
+		String maleNightCoverageStr = eligibleMaleCount > 0
+				? (eligibleMaleCount == satisfiedMaleNightCount ? satisfiedMaleNightCount + " / " + eligibleMaleCount + " satisfied" : satisfiedMaleNightCount + " / " + eligibleMaleCount + " (⚠ " + (eligibleMaleCount - satisfiedMaleNightCount) + " male without NIGHT)")
+				: "N/A";
+
+		int criticalCount = (int) conflicts.stream().filter(c -> "CRITICAL".equalsIgnoreCase(c.severity())).count();
+		int warningCount = (int) conflicts.stream().filter(c -> "WARNING".equalsIgnoreCase(c.severity()) || "HIGH".equalsIgnoreCase(c.severity())).count();
+		int infoCount = (int) conflicts.stream().filter(c -> "INFO".equalsIgnoreCase(c.severity()) || "LOW".equalsIgnoreCase(c.severity())).count();
+
+		double coveragePoints = coverageOk ? 25.0 : 0.0;
+		double restPoints = restOk ? 25.0 : 0.0;
+		double nightPoints = (nightLimitOk && maleNightOk) ? 20.0 : (nightLimitOk ? 10.0 : 0.0);
+		double prefPoints = Math.min(15.0, (prefScore * 0.15));
+		double fairnessPoints = 15.0; // Balanced allocation
+		double healthScore = Math.round((coveragePoints + restPoints + nightPoints + prefPoints + fairnessPoints) * 10.0) / 10.0;
+
+		String overallStatus;
+		if (criticalCount > 0) {
+			overallStatus = "INVALID";
+		} else if (warningCount > 0) {
+			overallStatus = "WARNING";
+		} else {
+			overallStatus = "VALID";
+		}
+
+		return new FinalValidationResult(
+				criticalCount == 0,
+				overallStatus,
+				prefScore,
+				maleNightCoverageStr,
+				criticalCount,
+				warningCount,
+				infoCount,
+				healthScore,
+				conflicts,
+				workloadMetrics
+		);
+	}
+
 }

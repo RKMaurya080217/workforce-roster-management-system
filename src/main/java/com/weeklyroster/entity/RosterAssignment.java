@@ -47,6 +47,9 @@ public class RosterAssignment {
 	@Column(nullable = false)
 	private boolean overridden;
 
+	@Column(name = "assignment_reason", length = 255)
+	private String assignmentReason;
+
 	public Long getId() {
 		return id;
 	}
@@ -109,5 +112,13 @@ public class RosterAssignment {
 
 	public void setOverridden(boolean overridden) {
 		this.overridden = overridden;
+	}
+
+	public String getAssignmentReason() {
+		return assignmentReason;
+	}
+
+	public void setAssignmentReason(String assignmentReason) {
+		this.assignmentReason = assignmentReason;
 	}
 }

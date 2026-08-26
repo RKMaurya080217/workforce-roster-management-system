@@ -376,49 +376,51 @@ async function renderAdminPreferencesView() {
       </div>
 
       <div class="card">
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Employee</th>
-                <th>Preferred Shifts</th>
-                <th>Avoid Shifts</th>
-                <th>Preferred OFF Days</th>
-                <th>Preferred Work Days</th>
-                <th>Constraints / Reason</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${list.length === 0 ? `<tr><td colspan="9" class="text-center text-muted" style="padding:32px;">No employee preferences submitted yet</td></tr>` :
-                list.map(p => `
-                  <tr>
-                    <td>#${p.id}</td>
-                    <td><strong>${escapeHTML(p.employeeName)}</strong><br><small class="text-muted">${escapeHTML(p.employeeCode)}</small></td>
-                    <td>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</td>
-                    <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
-                    <td>${escapeHTML(p.preferredOffDays || "-")}</td>
-                    <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
-                    <td style="max-width:200px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
-                    <td>
-                      <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
-                        ${p.status}
-                      </span>
-                    </td>
-                    <td>
-                      ${p.status === 'PENDING' ? `
-                        <div style="display:flex; gap:6px;">
-                          <button class="btn btn-primary btn-xs" onclick="openAdminPrefDecisionModal(${p.id}, 'APPROVED', '${escapeHTML(p.employeeName)}')">Approve</button>
-                          <button class="btn btn-danger btn-xs" onclick="openAdminPrefDecisionModal(${p.id}, 'REJECTED', '${escapeHTML(p.employeeName)}')">Reject</button>
-                        </div>
-                      ` : `<small class="text-muted">${formatDate(p.reviewedAt)}</small>`}
-                    </td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
+        <div class="card-body" style="padding:0;">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Employee</th>
+                  <th>Preferred Shifts</th>
+                  <th>Avoid Shifts</th>
+                  <th>Preferred OFF Days</th>
+                  <th>Preferred Work Days</th>
+                  <th>Constraints / Reason</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${list.length === 0 ? `<tr><td colspan="9" class="text-center text-muted" style="padding:32px;">No employee preferences submitted yet</td></tr>` :
+                  list.map(p => `
+                    <tr>
+                      <td>#${p.id}</td>
+                      <td><strong>${escapeHTML(p.employeeName)}</strong><br><small class="text-muted">${escapeHTML(p.employeeCode)}</small></td>
+                      <td>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</td>
+                      <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
+                      <td>${escapeHTML(p.preferredOffDays || "-")}</td>
+                      <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
+                      <td style="max-width:200px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
+                      <td>
+                        <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
+                          ${p.status}
+                        </span>
+                      </td>
+                      <td>
+                        ${p.status === 'PENDING' ? `
+                          <div style="display:flex; gap:6px;">
+                            <button class="btn btn-primary btn-xs" onclick="openAdminPrefDecisionModal(${p.id}, 'APPROVED', '${escapeHTML(p.employeeName)}')">Approve</button>
+                            <button class="btn btn-danger btn-xs" onclick="openAdminPrefDecisionModal(${p.id}, 'REJECTED', '${escapeHTML(p.employeeName)}')">Reject</button>
+                          </div>
+                        ` : `<small class="text-muted">${formatDate(p.reviewedAt)}</small>`}
+                      </td>
+                    </tr>
+                  `).join("")}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
@@ -711,7 +713,7 @@ async function renderExportCenterView() {
     <div class="view-header-bar">
       <div>
         <h2>Enterprise Export Center</h2>
-        <p class="text-muted">Instant one-click exports in standard Excel (.xlsx), PDF documents, and CSV datasets</p>
+        <p class="text-muted">Instant one-click exports in standard Excel (.xlsx), PDF documents, CSV datasets, and high-resolution images (PNG / JPG / JPEG)</p>
       </div>
     </div>
 
@@ -729,17 +731,26 @@ async function renderExportCenterView() {
             <p style="font-size:0.84rem; color:var(--text-muted); line-height:1.4;">${r.desc}</p>
           </div>
           <div class="export-actions">
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'XLSX')">
-              ${WRMS_ICONS.fileExcel}
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'XLSX')" title="Download Excel Spreadsheet">
+              ${WRMS_ICONS.fileExcel || '📊'}
               <span>Excel (.xlsx)</span>
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PDF')">
-              ${WRMS_ICONS.filePdf}
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PDF')" title="Download PDF Document">
+              ${WRMS_ICONS.filePdf || '📄'}
               <span>PDF</span>
             </button>
-            <button class="btn btn-ghost btn-sm" onclick="triggerDownload('${r.type}', 'CSV')">
-              ${WRMS_ICONS.fileCsv}
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'CSV')" title="Download CSV Dataset">
+              ${WRMS_ICONS.fileCsv || '📑'}
               <span>CSV</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PNG')" title="Download PNG Image">
+              <span>🖼️ PNG</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'JPG')" title="Download JPG Image">
+              <span>📷 JPG</span>
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'JPEG')" title="Download JPEG Image">
+              <span>🖼️ JPEG</span>
             </button>
           </div>
         </div>
@@ -762,12 +773,27 @@ async function triggerDownload(reportType, format) {
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Export download failed");
+      let errText = "";
+      try {
+        errText = await res.text();
+      } catch (e) {}
+      throw new Error(errText || `Unable to generate ${format} export (HTTP ${res.status}). Please try again.`);
     }
 
     const blob = await res.blob();
-    const ext = format === "XLSX" ? "xlsx" : format === "PDF" ? "pdf" : "csv";
+    if (!blob || blob.size === 0) {
+      throw new Error(`Unable to generate ${format} export (received 0 bytes). Please try again.`);
+    }
+
+    const extMap = {
+      XLSX: "xlsx",
+      PDF: "pdf",
+      CSV: "csv",
+      PNG: "png",
+      JPG: "jpg",
+      JPEG: "jpg"
+    };
+    const ext = extMap[format.toUpperCase()] || format.toLowerCase();
     const filename = `${reportType.toLowerCase()}_export_${new Date().toISOString().split('T')[0]}.${ext}`;
 
     const downloadUrl = window.URL.createObjectURL(blob);
@@ -779,9 +805,9 @@ async function triggerDownload(reportType, format) {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(downloadUrl);
 
-    toast(`Downloaded ${filename} successfully!`, "success");
+    toast(`Downloaded ${filename} successfully (${(blob.size / 1024).toFixed(1)} KB)!`, "success");
   } catch (err) {
-    toast(`Export error: ${err.message}`, "error");
+    toast(`Export error: ${err.message || "Failed to download export"}`, "error");
   }
 }
 
@@ -1237,40 +1263,42 @@ async function renderEmployeePreferencesTabHTML() {
             <span>Submit New Preference</span>
           </button>
         </div>
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Submitted Date</th>
-                <th>Preferred Shifts</th>
-                <th>Avoid Shifts</th>
-                <th>Preferred OFF Days</th>
-                <th>Working Days</th>
-                <th>Restrictions</th>
-                <th>Status</th>
-                <th>Admin Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${list.length === 0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">No shift preferences submitted yet</td></tr>` :
-                list.map(p => `
-                  <tr>
-                    <td>${formatDate(p.createdAt)}</td>
-                    <td><strong>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</strong></td>
-                    <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
-                    <td>${escapeHTML(p.preferredOffDays || "-")}</td>
-                    <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
-                    <td style="max-width:180px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
-                    <td>
-                      <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
-                        ${p.status}
-                      </span>
-                    </td>
-                    <td>${escapeHTML(p.adminRemarks || "-")}</td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
+        <div class="card-body" style="padding:0;">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Submitted Date</th>
+                  <th>Preferred Shifts</th>
+                  <th>Avoid Shifts</th>
+                  <th>Preferred OFF Days</th>
+                  <th>Working Days</th>
+                  <th>Restrictions</th>
+                  <th>Status</th>
+                  <th>Admin Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${list.length === 0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">No shift preferences submitted yet</td></tr>` :
+                  list.map(p => `
+                    <tr>
+                      <td>${formatDate(p.createdAt)}</td>
+                      <td><strong>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</strong></td>
+                      <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
+                      <td>${escapeHTML(p.preferredOffDays || "-")}</td>
+                      <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
+                      <td style="max-width:180px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || "-")}</td>
+                      <td>
+                        <span class="badge" style="background:${p.status === 'APPROVED' ? '#dcfce7' : p.status === 'REJECTED' ? '#fee2e2' : '#fef9c3'}; color:${p.status === 'APPROVED' ? '#166534' : p.status === 'REJECTED' ? '#991b1b' : '#854d0e'};">
+                          ${p.status}
+                        </span>
+                      </td>
+                      <td>${escapeHTML(p.adminRemarks || "-")}</td>
+                    </tr>
+                  `).join("")}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;
@@ -1730,6 +1758,9 @@ document.addEventListener("DOMContentLoaded", () => {
           body: payload
         });
         toast("Shift preferences submitted successfully!", "success");
+        if (typeof broadcastDataMutation === "function") {
+          broadcastDataMutation("PREFERENCE_SUBMITTED");
+        }
         document.getElementById("preferenceModal").classList.add("hidden");
         
         // Refresh preferences tab/view

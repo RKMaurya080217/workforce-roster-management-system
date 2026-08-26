@@ -159,7 +159,7 @@ class Batch22FreshResetTest {
         // 1. Generate First Roster
         RosterCycleResponse cycle = rosterService.generateWeeklyRoster(targetMonday, GenerationMode.MANUAL);
         assertNotNull(cycle.id());
-        assertEquals(49, cycle.assignments().size());
+        assertEquals(employeeRepository.countByActiveTrue() * 7, cycle.assignments().size());
 
         // 2. Verify Exactly 1 Roster Cycle exists in test transaction
         assertEquals(1, cycleRepository.count());

@@ -107,6 +107,7 @@ const dom = {
     employeeRosterDetail: document.getElementById("viewEmployeeRosterDetail"),
     health: document.getElementById("viewHealth"),
     audit: document.getElementById("viewAudit"),
+    approvals: document.getElementById("viewApprovals"),
     profileApprovals: document.getElementById("viewProfileApprovals"),
     analytics: document.getElementById("viewAnalytics"),
     validation: document.getElementById("viewValidation"),
@@ -128,6 +129,7 @@ const WRMS_ICONS = {
   dashboard: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   roster: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`,
   employees: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  approvals: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
   leaves: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
   profileApprovals: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>`,
   more: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>`,
@@ -169,15 +171,13 @@ const ADMIN_PRIMARY_NAV = [
   { id: "dashboard", route: "dashboard", label: "Dashboard", icon: WRMS_ICONS.dashboard },
   { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
   { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
-  { id: "leaves", route: "leave-requests", label: "Leave Requests", badgeKey: "pendingLeaves", icon: WRMS_ICONS.leaves },
-  { id: "profileApprovals", route: "profile-approvals", label: "Profile Approvals", badgeKey: "pendingProfileChangesCount", icon: WRMS_ICONS.profileApprovals }
+  { id: "approvals", route: "approvals", label: "Approvals", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals }
 ];
 
 // Admin Secondary Navigation Menu Items (Inside Collapsible More Menu)
 const ADMIN_MORE_NAV = [
   { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
   { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
-  { id: "adminPreferences", route: "shift-preferences", label: "Shift Preferences", icon: WRMS_ICONS.preferences },
   { id: "adminHolidays", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays },
   { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
   { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
@@ -213,6 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindGlobalEvents();
   setupRouter();
   scheduleMidnightRefresh();
+  startDataSyncPolling();
 
   if (state.token && state.profile) {
     showWorkspace();
@@ -253,11 +254,73 @@ function scheduleMidnightRefresh() {
   }, msUntilMidnight);
 }
 
-// Cross-Tab & State Invalidation Broadcaster
+// Cross-Tab & Real-Time State Invalidation Broadcaster
 function broadcastDataMutation(type) {
   try {
     localStorage.setItem("wrms_last_mutation", JSON.stringify({ type, timestamp: Date.now() }));
   } catch (e) {}
+  syncApplicationState();
+}
+
+window.addEventListener("storage", (e) => {
+  if (e.key === "wrms_last_mutation") {
+    syncApplicationState();
+  }
+});
+
+async function syncApplicationState() {
+  if (!state.token || !state.profile) return;
+  try {
+    if (state.profile.role === "ROLE_ADMIN") {
+      const summary = await apiRequest("/api/admin/approvals/summary");
+      const prevTotal = state.totalPendingApprovalsCount;
+      state.totalPendingApprovalsCount = summary.totalPending || 0;
+      state.pendingProfileChangesCount = summary.profileRequestsCount || 0;
+      renderNavigation();
+
+      if (state.activePage === "approvals") {
+        await renderUnifiedApprovalsView();
+      } else if (state.activePage === "dashboard") {
+        await renderDashboardView();
+      }
+    } else if (state.profile.role === "ROLE_EMPLOYEE") {
+      if (typeof fetchUnreadNotificationCount === "function") {
+        fetchUnreadNotificationCount();
+      }
+    }
+  } catch (e) {}
+}
+
+function startDataSyncPolling() {
+  if (state.syncPollingIntervalId) {
+    clearInterval(state.syncPollingIntervalId);
+    state.syncPollingIntervalId = null;
+  }
+
+  state.syncPollingIntervalId = setInterval(async () => {
+    if (!state.token || !state.profile) return;
+    try {
+      if (state.profile.role === "ROLE_ADMIN") {
+        const summary = await apiRequest("/api/admin/approvals/summary");
+        const prevTotal = state.totalPendingApprovalsCount || 0;
+        const newTotal = summary.totalPending || 0;
+        state.totalPendingApprovalsCount = newTotal;
+        state.pendingProfileChangesCount = summary.profileRequestsCount || 0;
+
+        if (prevTotal !== newTotal) {
+          renderNavigation();
+          if (state.activePage === "approvals") {
+            await renderUnifiedApprovalsView();
+          } else if (state.activePage === "dashboard") {
+            await renderDashboardView();
+          }
+        }
+      }
+      if (typeof fetchUnreadNotificationCount === "function") {
+        fetchUnreadNotificationCount();
+      }
+    } catch (e) {}
+  }, 10000);
 }
 
 function bindGlobalEvents() {
@@ -556,19 +619,20 @@ function parseRouteTarget(target) {
       "employees": "employees",
       "admin/employees": "employees",
       
-      "leaves": "leaves",
-      "leave-requests": "leaves",
-      "leave_requests": "leaves",
-      "admin/leaves": "leaves",
-      "admin/leave-requests": "leaves",
+      "leaves": "approvals",
+      "leave-requests": "approvals",
+      "leave_requests": "approvals",
+      "admin/leaves": "approvals",
+      "admin/leave-requests": "approvals",
       
-      "profileApprovals": "profileApprovals",
-      "profile-approvals": "profileApprovals",
-      "profile_approvals": "profileApprovals",
-      "admin/profile-approvals": "profileApprovals",
-      "admin/profileApprovals": "profileApprovals",
-      "profile-changes": "profileApprovals",
-      "approvals": "profileApprovals",
+      "profileApprovals": "approvals",
+      "profile-approvals": "approvals",
+      "profile_approvals": "approvals",
+      "admin/profile-approvals": "approvals",
+      "admin/profileApprovals": "approvals",
+      "profile-changes": "approvals",
+      "approvals": "approvals",
+      "admin/approvals": "approvals",
       
       "analytics": "analytics",
       "roster-analytics": "analytics",
@@ -583,12 +647,12 @@ function parseRouteTarget(target) {
       "admin/validation": "validation",
       "admin/conflict-validator": "validation",
       
-      "adminPreferences": "adminPreferences",
-      "shift-preferences": "adminPreferences",
-      "shift_preferences": "adminPreferences",
-      "preferences": "adminPreferences",
-      "admin/preferences": "adminPreferences",
-      "admin/shift-preferences": "adminPreferences",
+      "adminPreferences": "approvals",
+      "shift-preferences": "approvals",
+      "shift_preferences": "approvals",
+      "preferences": "approvals",
+      "admin/preferences": "approvals",
+      "admin/shift-preferences": "approvals",
       
       "adminHolidays": "adminHolidays",
       "holiday-calendar": "adminHolidays",
@@ -659,15 +723,24 @@ function parseRouteTarget(target) {
       "employee-roster": "employeeRosterDetail"
     };
 
+    if (clean === "leaves" || clean === "leave-requests" || clean === "admin/leaves" || clean === "admin/leave-requests") {
+      state.activeApprovalCategory = "leaves";
+    } else if (clean === "profileApprovals" || clean === "profile-approvals" || clean === "profile-changes") {
+      state.activeApprovalCategory = "profile";
+    } else if (clean === "adminPreferences" || clean === "shift-preferences" || clean === "preferences") {
+      state.activeApprovalCategory = "preferences";
+    }
+
     const adminCanonicalHashes = {
       dashboard: "#/dashboard",
       roster: "#/weekly-roster",
       employees: "#/employees",
-      leaves: "#/leave-requests",
-      profileApprovals: "#/profile-approvals",
+      approvals: "#/approvals",
+      leaves: "#/approvals",
+      profileApprovals: "#/approvals",
       analytics: "#/roster-analytics",
       validation: "#/conflict-validator",
-      adminPreferences: "#/shift-preferences",
+      adminPreferences: "#/approvals",
       adminHolidays: "#/holiday-calendar",
       adminHandovers: "#/shift-handovers",
       adminWorkload: "#/workload-analytics",
@@ -899,19 +972,20 @@ function updateTopbarTitle(pageId) {
     validation: { title: "Smart Roster Conflict Detector & Validator", bc: "Conflict Validator" },
     employees: { title: "Employee Directory & Workforce", bc: "Employees" },
     roster: { title: "Weekly Roster Schedule", bc: "Weekly Roster" },
-    adminPreferences: { title: "Employee Shift Preferences & Availability", bc: "Shift Preferences" },
+    approvals: { title: "Unified Request Approvals (Profile, Leaves, Preferences)", bc: "Approvals" },
+    adminPreferences: { title: "Unified Request Approvals (Shift Preferences)", bc: "Approvals" },
     adminHolidays: { title: "Official Company Holiday Calendar", bc: "Holiday Calendar" },
     adminHandovers: { title: "Shift Handover Management", bc: "Shift Handovers" },
     adminWorkload: { title: "Employee Workload Analytics & Duty Balance", bc: "Workload Analytics" },
     adminSkills: { title: "Workforce Skill Matrix & Competency Catalog", bc: "Skill Matrix" },
-    exportCenter: { title: "Enterprise Export Center (PDF / Excel / CSV)", bc: "Export Center" },
+    exportCenter: { title: "Enterprise Export Center (PDF / Excel / CSV / Images)", bc: "Export Center" },
     rosterVersions: { title: "Roster Version History & Revision Comparison", bc: "Roster Versions" },
     health: { title: "Roster Conflict & Health Center", bc: "Roster Health" },
     shifts: { title: "Shift Configuration & Capacities", bc: "Shift Settings" },
-    leaves: { title: "Leave Approvals & Management", bc: "Leave Requests" },
+    leaves: { title: "Unified Request Approvals (Leave Requests)", bc: "Approvals" },
     history: { title: "Roster Cycle History & Explorer", bc: "History" },
     audit: { title: "Complete Roster Audit Trail", bc: "Audit Trail" },
-    profileApprovals: { title: "Employee Profile Change Approvals", bc: "Profile Approvals" },
+    profileApprovals: { title: "Unified Request Approvals (Profile Requests)", bc: "Approvals" },
     employeeWorkspace: employeeTitles[currentTab] || { title: "Staff Self-Service Workspace", bc: "My Workspace" },
     employeeRosterDetail: { title: `${state.inspectedEmployeeName} - Schedule`, bc: "Employee Roster" }
   };
@@ -929,6 +1003,9 @@ async function loadActiveView() {
     case "dashboard":
       await renderDashboardView();
       break;
+    case "approvals":
+      await renderUnifiedApprovalsView();
+      break;
     case "analytics":
       if (typeof renderAnalyticsView === "function") await renderAnalyticsView();
       break;
@@ -936,7 +1013,8 @@ async function loadActiveView() {
       if (typeof renderValidationView === "function") await renderValidationView();
       break;
     case "adminPreferences":
-      if (typeof renderAdminPreferencesView === "function") await renderAdminPreferencesView();
+      state.activeApprovalCategory = "preferences";
+      await renderUnifiedApprovalsView();
       break;
     case "adminHolidays":
       if (typeof renderAdminHolidaysView === "function") await renderAdminHolidaysView();
@@ -969,7 +1047,8 @@ async function loadActiveView() {
       await renderShiftsView();
       break;
     case "leaves":
-      await renderLeavesView();
+      state.activeApprovalCategory = "leaves";
+      await renderUnifiedApprovalsView();
       break;
     case "history":
       await renderHistoryView();
@@ -978,7 +1057,8 @@ async function loadActiveView() {
       await renderAuditView();
       break;
     case "profileApprovals":
-      await renderProfileApprovalsView();
+      state.activeApprovalCategory = "profile";
+      await renderUnifiedApprovalsView();
       break;
     case "employeeWorkspace":
       await renderEmployeeWorkspaceView();
@@ -2238,9 +2318,10 @@ function renderRosterTableHTML(cycle) {
               <span style="display:block; font-size:0.74rem; color:var(--text-muted);">${a.employeeCode} (${a.gender})</span>
             </td>
             <td>
-              <span class="badge ${String(a.shiftType).toLowerCase()}">
+              <span class="badge ${String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
                 ${a.shiftType} (${getShiftTimingDisplay(a.shiftType)})
               </span>
+              ${a.assignmentReason ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${escapeHTML(a.assignmentReason)}</div>` : ''}
             </td>
             <td>
               ${[a.weeklyOff ? "Weekly OFF" : "", a.onLeave ? "On Leave" : "", a.overridden ? "Overridden" : ""].filter(Boolean).join(", ") || "-"}
@@ -4591,7 +4672,12 @@ function renderUpcomingShiftsTableHTML(list) {
             <tr>
               <td><strong>${formatDate(a.rosterDate)}</strong></td>
               <td><code>${dayName}</code></td>
-              <td><span class="badge ${String(a.shiftType).toLowerCase()}">${a.onLeave ? 'OFF (Leave)' : a.shiftType}</span></td>
+              <td>
+                <span class="badge ${String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
+                  ${a.onLeave ? 'OFF (Leave)' : a.shiftType}
+                </span>
+                ${a.assignmentReason ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${escapeHTML(a.assignmentReason)}</div>` : ''}
+              </td>
               <td><small style="font-weight:600; color:var(--text-muted);">${a.onLeave ? 'Approved Leave' : getShiftTimingDisplay(a.shiftType)}</small></td>
               <td>${flagHtml}</td>
             </tr>
@@ -6263,9 +6349,17 @@ async function renderHealthView() {
             <div class="health-check-card">
               <div class="check-card-info">
                 <strong>Night Shift Limits</strong>
-                <span>Max 2 consecutive nights</span>
+                <span>Max 2 nights per cycle</span>
               </div>
               <span class="check-status-badge ${(health.nightLimitCheck || health.nightLimitStatus) === 'PASS' ? 'pass' : (health.nightLimitCheck || health.nightLimitStatus) === 'WARN' ? 'warn' : 'fail'}">${health.nightLimitCheck || health.nightLimitStatus || 'PASS'}</span>
+            </div>
+
+            <div class="health-check-card">
+              <div class="check-card-info">
+                <strong>Male Night Allocation</strong>
+                <span>Min 1 night per eligible male</span>
+              </div>
+              <span class="check-status-badge ${(health.conflicts && health.conflicts.some(c => c.ruleName === 'MALE_MINIMUM_NIGHT_ALLOCATION')) ? 'fail' : 'pass'}">${(health.conflicts && health.conflicts.some(c => c.ruleName === 'MALE_MINIMUM_NIGHT_ALLOCATION')) ? 'WARN' : 'PASS'}</span>
             </div>
 
             <div class="health-check-card">
@@ -6613,7 +6707,475 @@ function getAuditActionClass(action) {
 
 
 /* ==========================================================================
-   VIEW 11: EMPLOYEE PROFILE CHANGE APPROVALS (ADMIN)
+   VIEW 11: UNIFIED ADMIN APPROVALS (PROFILE, LEAVES, SHIFT PREFERENCES)
+   ========================================================================== */
+
+window.toggleApprovalCategory = function(cat) {
+  state.activeApprovalCategory = (state.activeApprovalCategory === cat) ? null : cat;
+  
+  ["profile", "leaves", "preferences"].forEach(c => {
+    const card = document.getElementById(`approvalCard_${c}`);
+    if (card) {
+      if (state.activeApprovalCategory === c) {
+        card.classList.add("expanded");
+      } else {
+        card.classList.remove("expanded");
+      }
+    }
+  });
+};
+
+async function renderUnifiedApprovalsView() {
+  const container = dom.views.approvals;
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="empty-state-box">
+      <div class="spinner"></div>
+      <p>Loading pending requests across Profile, Leave, and Shift Preference approvals...</p>
+    </div>
+  `;
+
+  try {
+    const data = await apiRequest("/api/admin/approvals/all");
+    const profileRequests = data.profileRequests || [];
+    const leaveRequests = data.leaveRequests || [];
+    const prefRequests = data.preferenceRequests || [];
+
+    const profCount = profileRequests.length;
+    const leaveCount = leaveRequests.length;
+    const prefCount = prefRequests.length;
+    const totalCount = profCount + leaveCount + prefCount;
+
+    state.totalPendingApprovalsCount = totalCount;
+    state.pendingProfileChangesCount = profCount;
+    state.pendingLeaves = leaveRequests;
+    renderNavigation();
+
+    // Default open the first section with pending items, or 'profile'
+    if (!state.activeApprovalCategory) {
+      if (profCount > 0) state.activeApprovalCategory = "profile";
+      else if (leaveCount > 0) state.activeApprovalCategory = "leaves";
+      else if (prefCount > 0) state.activeApprovalCategory = "preferences";
+      else state.activeApprovalCategory = "profile";
+    }
+
+    container.innerHTML = `
+      <div class="table-toolbar" style="margin-bottom:18px; flex-wrap:wrap; gap:12px;">
+        <div>
+          <h2>Unified Request Approvals</h2>
+          <p style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">
+            Single unified review center for Profile modifications, Leave applications, and Shift availability preferences.
+          </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="status-pill ${totalCount > 0 ? 'pending' : 'active'}" style="font-size:0.85rem; font-weight:700; padding:6px 14px;">
+            ${totalCount} Pending Action${totalCount === 1 ? '' : 's'}
+          </span>
+          <button class="btn btn-secondary btn-sm" id="refreshUnifiedApprovalsBtn" title="Re-sync pending requests">
+            <span>🔄 Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="approvals-container">
+        <!-- CATEGORY 1: Profile Change Requests -->
+        <div class="approval-category-card ${state.activeApprovalCategory === 'profile' ? 'expanded' : ''}" id="approvalCard_profile">
+          <div class="approval-category-header" onclick="toggleApprovalCategory('profile')">
+            <div class="approval-category-left">
+              <div class="approval-category-icon">👤</div>
+              <div class="approval-category-title-group">
+                <h3>Profile Change Requests</h3>
+                <p>Employee name, contact, email, and personal record update requests</p>
+              </div>
+            </div>
+            <div class="approval-category-right">
+              <span class="approval-count-chip ${profCount === 0 ? 'zero' : ''}">${profCount}</span>
+              <span class="approval-chevron">${WRMS_ICONS.chevronDown}</span>
+            </div>
+          </div>
+          <div class="approval-category-body">
+            ${renderProfileApprovalsCategoryBody(profileRequests)}
+          </div>
+        </div>
+
+        <!-- CATEGORY 2: Leave Requests -->
+        <div class="approval-category-card ${state.activeApprovalCategory === 'leaves' ? 'expanded' : ''}" id="approvalCard_leaves">
+          <div class="approval-category-header" onclick="toggleApprovalCategory('leaves')">
+            <div class="approval-category-left">
+              <div class="approval-category-icon leave-icon">📅</div>
+              <div class="approval-category-title-group">
+                <h3>Leave Requests</h3>
+                <p>New leave applications, schedule modifications, and cancellation requests</p>
+              </div>
+            </div>
+            <div class="approval-category-right">
+              <span class="approval-count-chip ${leaveCount === 0 ? 'zero' : ''}">${leaveCount}</span>
+              <span class="approval-chevron">${WRMS_ICONS.chevronDown}</span>
+            </div>
+          </div>
+          <div class="approval-category-body">
+            ${renderLeaveApprovalsCategoryBody(leaveRequests)}
+          </div>
+        </div>
+
+        <!-- CATEGORY 3: Shift Preference Requests -->
+        <div class="approval-category-card ${state.activeApprovalCategory === 'preferences' ? 'expanded' : ''}" id="approvalCard_preferences">
+          <div class="approval-category-header" onclick="toggleApprovalCategory('preferences')">
+            <div class="approval-category-left">
+              <div class="approval-category-icon pref-icon">⚙️</div>
+              <div class="approval-category-title-group">
+                <h3>Shift Preference Requests</h3>
+                <p>Employee shift timings, preferred days off, and availability constraints</p>
+              </div>
+            </div>
+            <div class="approval-category-right">
+              <span class="approval-count-chip ${prefCount === 0 ? 'zero' : ''}">${prefCount}</span>
+              <span class="approval-chevron">${WRMS_ICONS.chevronDown}</span>
+            </div>
+          </div>
+          <div class="approval-category-body">
+            ${renderPreferenceApprovalsCategoryBody(prefRequests)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const refreshBtn = document.getElementById("refreshUnifiedApprovalsBtn");
+    if (refreshBtn) refreshBtn.addEventListener("click", () => renderUnifiedApprovalsView());
+
+    bindUnifiedApprovalActions(container);
+
+  } catch (err) {
+    container.innerHTML = `
+      <div class="empty-state-box" style="padding:48px 20px;">
+        <div class="empty-state-icon" style="color:var(--danger);">⚠️</div>
+        <h3>Failed to Load Approvals</h3>
+        <p class="text-muted">${escapeHTML(err.message || String(err))}</p>
+        <button class="btn btn-primary btn-sm" onclick="renderUnifiedApprovalsView()" style="margin-top:12px;">Try Again</button>
+      </div>
+    `;
+  }
+}
+
+function renderProfileApprovalsCategoryBody(requests) {
+  if (!requests || requests.length === 0) {
+    return `
+      <div class="empty-state-box" style="padding:30px 10px;">
+        <div class="empty-state-icon" style="font-size:1.8rem;">✅</div>
+        <p style="margin-top:6px; color:var(--text-muted);">No pending profile change requests</p>
+      </div>
+    `;
+  }
+
+  const fieldLabels = {
+    firstName: "First Name",
+    lastName: "Last Name",
+    email: "Email Address",
+    contactNumber: "Contact Number",
+    gender: "Gender",
+    employeeCode: "Employee Code"
+  };
+
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Requested Changes</th>
+            <th>Reason</th>
+            <th>Submitted Time</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${requests.map(r => {
+            const empName = `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.employeeCode || `Employee #${r.employeeId}`;
+            const diffs = r.fieldDifferences || {};
+            const keys = Object.keys(diffs);
+            const diffHtml = keys.length ? keys.map(k => `
+              <div style="font-size:0.8rem; margin-bottom:4px;">
+                <strong>${fieldLabels[k] || k}:</strong> 
+                <span class="badge" style="background:#fee2e2; color:#991b1b; text-decoration:line-through;">${escapeHTML(String(diffs[k].oldValue ?? 'Empty'))}</span>
+                ➜ 
+                <span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">${escapeHTML(String(diffs[k].newValue ?? 'Empty'))}</span>
+              </div>
+            `).join("") : `<span class="text-muted">No explicit diffs</span>`;
+
+            return `
+              <tr>
+                <td>
+                  <strong>${escapeHTML(empName)}</strong>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(r.employeeCode || '')}</div>
+                </td>
+                <td style="max-width:320px;">${diffHtml}</td>
+                <td style="max-width:220px; font-size:0.82rem;">${escapeHTML(r.reason || '-')}</td>
+                <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${r.createdAt ? r.createdAt.replace('T', ' ').substring(0, 16) : '-'}</td>
+                <td><span class="status-pill pending">PENDING</span></td>
+                <td style="text-align:right; white-space:nowrap;">
+                  <button class="btn btn-primary btn-xs" data-approve-profile="${r.id}" data-emp="${escapeHTML(empName)}">
+                    Approve
+                  </button>
+                  <button class="btn btn-secondary btn-xs" data-reject-profile="${r.id}" data-emp="${escapeHTML(empName)}" style="border-color:#ef4444; color:#dc2626;">
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderLeaveApprovalsCategoryBody(leaves) {
+  if (!leaves || leaves.length === 0) {
+    return `
+      <div class="empty-state-box" style="padding:30px 10px;">
+        <div class="empty-state-icon" style="font-size:1.8rem;">✅</div>
+        <p style="margin-top:6px; color:var(--text-muted);">No pending leave requests</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Type</th>
+            <th>Leave Period</th>
+            <th>Days</th>
+            <th>Reason</th>
+            <th>Submitted</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${leaves.map(l => {
+            const isMod = l.status === 'PENDING_MODIFICATION';
+            const isCancel = l.status === 'PENDING_CANCELLATION';
+            const typeLabel = isMod ? 'Modification' : (isCancel ? 'Cancellation' : 'New Leave');
+            const typeBadgeColor = isMod ? 'background:#f5f3ff; color:#7c3aed; border:1px solid #ddd6fe;' : isCancel ? 'background:#fff1f2; color:#be123c; border:1px solid #fecdd3;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
+
+            return `
+              <tr>
+                <td>
+                  <strong>${escapeHTML(l.employeeName || l.employeeCode || `Employee #${l.employeeId}`)}</strong>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(l.employeeCode || '')}</div>
+                </td>
+                <td>
+                  <span class="badge" style="${typeBadgeColor}; font-weight:700; font-size:0.75rem;">
+                    ${typeLabel}
+                  </span>
+                </td>
+                <td style="font-weight:600; white-space:nowrap;">
+                  ${formatDate(l.startDate)} ➜ ${formatDate(l.endDate)}
+                </td>
+                <td><strong>${l.daysCount || l.durationDays || '-'}</strong></td>
+                <td style="max-width:240px; font-size:0.82rem;">${escapeHTML(l.reason || '-')}</td>
+                <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${l.requestedAt ? l.requestedAt.replace('T', ' ').substring(0, 16) : '-'}</td>
+                <td><span class="status-pill pending">${l.status}</span></td>
+                <td style="text-align:right; white-space:nowrap;">
+                  <button class="btn btn-primary btn-xs" data-approve-leave="${l.id}" data-status="${l.status}">
+                    Approve
+                  </button>
+                  <button class="btn btn-secondary btn-xs" data-reject-leave="${l.id}" data-status="${l.status}" style="border-color:#ef4444; color:#dc2626;">
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPreferenceApprovalsCategoryBody(prefs) {
+  if (!prefs || prefs.length === 0) {
+    return `
+      <div class="empty-state-box" style="padding:30px 10px;">
+        <div class="empty-state-icon" style="font-size:1.8rem;">✅</div>
+        <p style="margin-top:6px; color:var(--text-muted);">No pending shift preference requests</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Preferred Shifts</th>
+            <th>Avoid Shifts</th>
+            <th>Preferred Off Days</th>
+            <th>Restrictions / Reason</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${prefs.map(p => `
+            <tr>
+              <td>
+                <strong>${escapeHTML(p.employeeName || p.employeeCode || `Employee #${p.employeeId}`)}</strong>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(p.employeeCode || '')}</div>
+              </td>
+              <td><span class="badge morning">${escapeHTML(p.preferredShiftTypes || p.preferredShifts || 'ANY')}</span></td>
+              <td><span class="badge night">${escapeHTML(p.avoidShiftTypes || p.avoidShifts || 'NONE')}</span></td>
+              <td><strong>${escapeHTML(p.preferredOffDays || 'NONE')}</strong></td>
+              <td style="max-width:240px; font-size:0.82rem;">${escapeHTML(p.temporaryRestrictions || p.temporaryConstraints || '-')}</td>
+              <td><span class="status-pill pending">${p.status || 'PENDING'}</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button class="btn btn-primary btn-xs" data-approve-pref="${p.id}">
+                  Approve
+                </button>
+                <button class="btn btn-secondary btn-xs" data-reject-pref="${p.id}" style="border-color:#ef4444; color:#dc2626;">
+                  Reject
+                </button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function bindUnifiedApprovalActions(container) {
+  // 1. Profile actions
+  container.querySelectorAll("[data-approve-profile]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-approve-profile");
+      const emp = btn.getAttribute("data-emp") || "Employee";
+      try {
+        btn.disabled = true;
+        toast(`Approving profile changes for ${emp}...`, "info");
+        await apiRequest(`/api/admin/approvals/profile/${id}/approve`, "POST", { decisionReason: "Approved by administrator" });
+        toast(`Profile change request #${id} approved successfully!`, "success");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to approve: ${err.message}`, "error");
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-reject-profile]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-reject-profile");
+      const emp = btn.getAttribute("data-emp") || "Employee";
+      const reason = prompt(`Enter rejection reason for ${emp}'s profile change:`, "Information could not be verified");
+      if (reason === null) return;
+      try {
+        btn.disabled = true;
+        toast(`Rejecting profile change request...`, "info");
+        await apiRequest(`/api/admin/approvals/profile/${id}/reject`, "POST", { decisionReason: reason || "Rejected by administrator" });
+        toast(`Profile change request #${id} rejected`, "info");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to reject: ${err.message}`, "error");
+      }
+    });
+  });
+
+  // 2. Leave actions
+  container.querySelectorAll("[data-approve-leave]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-approve-leave");
+      const status = btn.getAttribute("data-status");
+      let endpoint = `/api/admin/approvals/leave/${id}/approve`;
+      if (status === 'PENDING_MODIFICATION') endpoint = `/api/leaves/${id}/modification/approve`;
+      if (status === 'PENDING_CANCELLATION') endpoint = `/api/leaves/${id}/cancellation/approve`;
+      try {
+        btn.disabled = true;
+        toast("Processing leave approval...", "info");
+        await apiRequest(endpoint, "PUT", { reason: "Approved by administrator" });
+        toast(`Leave request #${id} approved successfully!`, "success");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to approve leave: ${err.message}`, "error");
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-reject-leave]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-reject-leave");
+      const status = btn.getAttribute("data-status");
+      const reason = prompt("Enter rejection reason for this leave request:", "Operational coverage requirements");
+      if (reason === null) return;
+      let endpoint = `/api/admin/approvals/leave/${id}/reject`;
+      if (status === 'PENDING_MODIFICATION') endpoint = `/api/leaves/${id}/modification/reject`;
+      if (status === 'PENDING_CANCELLATION') endpoint = `/api/leaves/${id}/cancellation/reject`;
+      try {
+        btn.disabled = true;
+        toast("Processing leave rejection...", "info");
+        await apiRequest(endpoint, "PUT", { reason: reason || "Rejected by administrator" });
+        toast(`Leave request #${id} rejected`, "info");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to reject leave: ${err.message}`, "error");
+      }
+    });
+  });
+
+  // 3. Preference actions
+  container.querySelectorAll("[data-approve-pref]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-approve-pref");
+      try {
+        btn.disabled = true;
+        toast("Approving shift preference...", "info");
+        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, "POST", { decision: "APPROVE", reviewNote: "Approved" });
+        toast(`Shift preference #${id} approved!`, "success");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to approve preference: ${err.message}`, "error");
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-reject-pref]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-reject-pref");
+      const reason = prompt("Enter rejection note for this shift preference:", "Conflicts with shift coverage rules");
+      if (reason === null) return;
+      try {
+        btn.disabled = true;
+        toast("Rejecting shift preference...", "info");
+        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, "POST", { decision: "REJECT", reviewNote: reason || "Rejected" });
+        toast(`Shift preference #${id} rejected`, "info");
+        broadcastDataMutation("APPROVALS_CHANGED");
+        await renderUnifiedApprovalsView();
+      } catch (err) {
+        btn.disabled = false;
+        toast(`Failed to reject preference: ${err.message}`, "error");
+      }
+    });
+  });
+}
+
+
+/* ==========================================================================
+   VIEW 11: EMPLOYEE PROFILE CHANGE APPROVALS (ADMIN - COMPATIBILITY)
    ========================================================================== */
 
 async function renderProfileApprovalsView() {

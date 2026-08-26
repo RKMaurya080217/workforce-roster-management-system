@@ -45,6 +45,11 @@ public class ExportCenterController {
             contentType = "text/csv; charset=UTF-8";
         } else if ("pdf".equals(ext)) {
             contentType = "application/pdf";
+        } else if ("png".equals(ext)) {
+            contentType = "image/png";
+        } else if ("jpg".equals(ext) || "jpeg".equals(ext)) {
+            contentType = "image/jpeg";
+            ext = "jpg";
         } else {
             contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             ext = "xlsx";

@@ -82,7 +82,7 @@ class Batch20FinalQaAndUatTest {
         // 1. Generate Roster
         RosterCycleResponse cycle = rosterService.generateWeeklyRoster(monday, GenerationMode.MANUAL);
         assertNotNull(cycle.id());
-        assertEquals(49, cycle.assignments().size());
+        assertEquals(employeeRepository.countByActiveTrue() * 7, cycle.assignments().size());
 
         // 2. Lock & Publish Roster
         RosterCycleResponse published = rosterService.publishRoster(cycle.id());

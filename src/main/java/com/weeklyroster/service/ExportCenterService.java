@@ -213,7 +213,9 @@ public class ExportCenterService {
             if ("csv".equalsIgnoreCase(format)) {
                 return buildCsv(title, rows);
             } else if ("pdf".equalsIgnoreCase(format)) {
-                return buildPdf(title, rows);
+                return com.weeklyroster.export.EnterprisePdfExporter.generatePdf(title, rows);
+            } else if ("png".equalsIgnoreCase(format) || "jpg".equalsIgnoreCase(format) || "jpeg".equalsIgnoreCase(format)) {
+                return com.weeklyroster.export.EnterpriseImageExporter.generateImage(title, rows, format);
             } else {
                 return buildExcelXml(title, rows);
             }
@@ -240,37 +242,6 @@ public class ExportCenterService {
             }
             sb.append("\r\n");
         }
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
-    }
-
-    private byte[] buildPdf(String title, List<String[]> rows) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("%PDF-1.4\n");
-        sb.append("% WRMS Enterprise Export Document\n");
-        sb.append("================================================================================\n");
-        sb.append("  ").append(title.toUpperCase()).append("\n");
-        sb.append("  Generated: ").append(LocalDateTime.now().format(TIME_FMT)).append("\n");
-        sb.append("================================================================================\n\n");
-
-        if (!rows.isEmpty()) {
-            String[] headers = rows.get(0);
-            for (int i = 0; i < headers.length; i++) {
-                sb.append(String.format("%-20s", truncate(headers[i], 18)));
-            }
-            sb.append("\n--------------------------------------------------------------------------------\n");
-
-            for (int r = 1; r < rows.size(); r++) {
-                String[] row = rows.get(r);
-                for (int i = 0; i < row.length; i++) {
-                    sb.append(String.format("%-20s", truncate(row[i], 18)));
-                }
-                sb.append("\n");
-            }
-        }
-        sb.append("\n================================================================================\n");
-        sb.append("  End of WRMS Official Report\n");
-        sb.append("%%EOF\n");
-
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
