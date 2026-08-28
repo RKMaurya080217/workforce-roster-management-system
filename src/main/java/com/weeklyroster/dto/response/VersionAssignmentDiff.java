@@ -9,5 +9,8 @@ public record VersionAssignmentDiff(
         String dayOfWeek,
         String v1Shift,
         String v2Shift,
+        String v1Timing,
+        String v2Timing,
+        String changeReason,
         boolean changed
 ) {}

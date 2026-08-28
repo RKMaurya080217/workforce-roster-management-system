@@ -43,6 +43,10 @@ public class EmailDeliveryLog {
     @Column(nullable = false, length = 20)
     private GenerationMode mode = GenerationMode.MANUAL;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "email_type", length = 30)
+    private EmailType emailType = EmailType.WEEKLY_ROSTER_DISTRIBUTION;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -66,4 +70,7 @@ public class EmailDeliveryLog {
 
     public GenerationMode getMode() { return mode; }
     public void setMode(GenerationMode mode) { this.mode = mode; }
+
+    public EmailType getEmailType() { return emailType; }
+    public void setEmailType(EmailType emailType) { this.emailType = emailType; }
 }

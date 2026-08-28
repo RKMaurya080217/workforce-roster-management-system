@@ -13,6 +13,7 @@ import java.util.Optional;
 public interface RosterVersionRepository extends JpaRepository<RosterVersion, Long> {
     List<RosterVersion> findByCycleIdOrderByVersionNumberDesc(Long cycleId);
     Optional<RosterVersion> findByCycleIdAndVersionNumber(Long cycleId, int versionNumber);
+    Optional<RosterVersion> findTopByCycleIdOrderByVersionNumberDesc(Long cycleId);
     int countByCycleId(Long cycleId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

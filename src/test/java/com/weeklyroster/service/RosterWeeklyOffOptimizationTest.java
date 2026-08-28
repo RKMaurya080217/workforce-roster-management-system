@@ -266,6 +266,7 @@ class RosterWeeklyOffOptimizationTest {
                 .toList();
 
         // Employees with 0 past weekend OFFs (EMP005, EMP006, EMP007) should be prioritized for weekend OFF
+
         assertTrue(weekendOffEmpIds.contains(5L) || weekendOffEmpIds.contains(6L) || weekendOffEmpIds.contains(7L),
                 "Employees with fewer past weekend OFFs should receive weekend OFF");
     }

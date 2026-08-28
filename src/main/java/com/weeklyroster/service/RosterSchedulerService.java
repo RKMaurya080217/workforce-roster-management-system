@@ -107,8 +107,100 @@ public class RosterSchedulerService {
      * Generates ONLY the immediately upcoming Monday to Sunday cycle.
      * Cron expression defaults to every Sunday at 09:00 AM Asia/Kolkata timezone.
      */
+    /**
+     * Scheduled automatic Sunday 4:00 PM (16:00 IST) weekly roster finalization.
+     * Closes the review window, incorporates all approved requests, re-optimizes, locks the roster, and sends FINAL emails.
+     */
+    @Scheduled(cron = "${roster.auto-finalization.cron:0 0 16 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
+    public void runScheduledSundayFinalization() {
+        if (isShuttingDown) {
+            log.warn("[WRMS Scheduler] Finalization aborted: System shutdown in progress.");
+            return;
+        }
+
+        if (!autoGenerationEnabled) {
+            log.info("[WRMS Scheduler] Automatic finalization skipped: Auto-generation is disabled.");
+            return;
+        }
+
+        LocalDate today = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
+        LocalDate upcomingMonday = calculateUpcomingWeekStart(today);
+        executeAutoFinalization(upcomingMonday);
+    }
+
+    public RosterCycleResponse executeAutoFinalization(LocalDate targetMonday) {
+        this.lastRunAt = LocalDateTime.now();
+        java.time.ZoneId istZone = java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        LocalDate today = LocalDate.now(istZone);
+        LocalDate upcomingMonday = calculateUpcomingWeekStart(today);
+
+        final LocalDate finalTargetMonday = (targetMonday != null) ? targetMonday : upcomingMonday;
+        final LocalDate upcomingEnd = finalTargetMonday.plusDays(6);
+        log.info("[WRMS Scheduler] Starting Sunday 4:00 PM Finalization for {} to {}...", finalTargetMonday, upcomingEnd);
+
+        List<RosterCycle> existingCycles = cycleRepository.findByStartDateAndEndDate(finalTargetMonday, upcomingEnd)
+                .map(List::of)
+                .orElseGet(() -> cycleRepository.findOverlappingCycles(finalTargetMonday, upcomingEnd));
+
+        if (existingCycles.isEmpty()) {
+            log.warn("[WRMS Scheduler] Operational Warning: No tentative roster cycle found for finalization ({} to {}).", finalTargetMonday, upcomingEnd);
+            if (notificationService != null) {
+                notificationService.notifyAdmins(
+                        "Finalization Warning: Missing Roster",
+                        "Sunday 4:00 PM Finalization ran but no roster cycle was found for " + finalTargetMonday + " to " + upcomingEnd + ". Please generate manually.",
+                        NotificationType.ADMIN_ALERT, "roster", null);
+            }
+            return null;
+        }
+
+        RosterCycle cycle = existingCycles.get(0);
+        if (cycle.getStatus() == RosterStatus.FINAL || cycle.getStatus() == RosterStatus.LOCKED) {
+            log.info("[WRMS Scheduler] Cycle #{} is already FINAL/LOCKED. Finalization skipped (idempotent).", cycle.getId());
+            return rosterService.cycle(cycle.getId());
+        }
+
+        try {
+            // 1. Re-optimize the roster incorporating all approved requests
+            RosterCycleResponse reoptimized = rosterService.reoptimizeCycle(cycle.getId(), "Sunday 4:00 PM Automatic Finalization");
+
+            // 2. Lock the cycle and mark as FINAL
+            cycle.setStatus(RosterStatus.FINAL);
+            cycle.setLockedAt(LocalDateTime.now());
+            cycle.setLockedBy("SYSTEM");
+            cycle.setPublishedAt(LocalDateTime.now());
+            cycle.setPublishedBy("SYSTEM");
+            cycleRepository.save(cycle);
+
+            log.info("[WRMS Scheduler] Cycle #{} successfully finalized and marked FINAL / LOCKED at 4:00 PM IST.", cycle.getId());
+
+            // 3. Notify employees
+            if (notificationService != null) {
+                notificationService.notifyAllActiveEmployees(
+                        "Weekly Roster Finalized & Locked",
+                        "Your weekly roster for " + cycle.getStartDate() + " to " + cycle.getEndDate() + " has been finalized and locked. Normal change requests are now closed.",
+                        NotificationType.ROSTER_PUBLISHED, "roster", cycle.getId());
+            }
+
+            // 4. Send final emails
+            if (autoEmailEnabled) {
+                rosterEmailService.distributeFinalRosterEmails(cycle, reoptimized, GenerationMode.AUTOMATIC);
+            }
+
+            return rosterService.cycle(cycle.getId());
+        } catch (Exception e) {
+            log.error("[WRMS Scheduler] Failed to finalize cycle #{}: {}", cycle.getId(), e.getMessage(), e);
+            throw new BusinessException("Failed to finalize weekly roster: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Scheduled automatic Sunday weekly roster generator.
+     * Generates ONLY the immediately upcoming Monday to Sunday cycle.
+     * Cron expression defaults to every Sunday at 09:00 AM Asia/Kolkata timezone.
+     */
     @Scheduled(cron = "${roster.auto-generation.cron:0 0 9 * * SUN}", zone = "${roster.auto-generation.timezone:Asia/Kolkata}")
     public void runScheduledSundayGeneration() {
+
         if (isShuttingDown) {
             log.warn("[WRMS Scheduler] Automatic generation aborted: System shutdown in progress.");
             return;
@@ -191,6 +283,38 @@ public class RosterSchedulerService {
      * Global automation guard for both generation and email distribution.
      * Verifies if a given date range is strictly the immediate upcoming Monday to Sunday cycle.
      */
+        /**
+     * Checks if the employee review window is currently open for the given cycle start date.
+     * The review window is open from Sunday morning until Sunday 4:00 PM (16:00) IST prior to the Monday cycle start.
+     */
+    public boolean isReviewWindowOpen(LocalDate cycleStartDate, LocalDateTime checkTime) {
+        if (cycleStartDate == null) return false;
+        java.time.ZoneId istZone = java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata");
+        if (checkTime == null) {
+            checkTime = LocalDateTime.now(istZone);
+        }
+
+        LocalDate sundayBefore = cycleStartDate.minusDays(1);
+        LocalDateTime reviewDeadline = LocalDateTime.of(sundayBefore, java.time.LocalTime.of(16, 0, 0));
+
+        // Check if cycle is already FINAL or LOCKED
+        List<RosterCycle> cycles = cycleRepository.findByStartDateAndEndDate(cycleStartDate, cycleStartDate.plusDays(6)).map(List::of).orElseGet(List::of);
+        if (!cycles.isEmpty()) {
+            RosterStatus status = cycles.get(0).getStatus();
+            if (status == RosterStatus.FINAL || status == RosterStatus.LOCKED) {
+                return false;
+            }
+        }
+
+        return !checkTime.isAfter(reviewDeadline);
+    }
+
+    public LocalDateTime calculateReviewDeadline(LocalDate cycleStartDate) {
+        if (cycleStartDate == null) return null;
+        LocalDate sundayBefore = cycleStartDate.minusDays(1);
+        return LocalDateTime.of(sundayBefore, java.time.LocalTime.of(16, 0, 0));
+    }
+
     public boolean isImmediateUpcomingWeek(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null) return false;
         LocalDate today = LocalDate.now(java.time.ZoneId.of(autoGenerationTimezone != null ? autoGenerationTimezone : "Asia/Kolkata"));
@@ -349,21 +473,21 @@ public class RosterSchedulerService {
 
             if (healthPassed && response.id() != null) {
                 cycleRepository.findById(response.id()).ifPresent(cycle -> {
-                    cycle.setStatus(RosterStatus.PUBLISHED);
+                    cycle.setStatus(RosterStatus.TENTATIVE);
                     cycle.setPublishedAt(LocalDateTime.now());
                     cycle.setPublishedBy("SYSTEM");
                     cycleRepository.save(cycle);
                 });
-                log.info("[WRMS Scheduler] Automatic roster #{} marked PUBLISHED.", response.id());
+                log.info("[WRMS Scheduler] Automatic roster #{} marked TENTATIVE. Review window open until 4:00 PM IST.", response.id());
 
                 if (notificationService != null) {
                     notificationService.notifyAllActiveEmployees(
-                            "Weekly Roster Published",
-                            "Your weekly roster for " + response.startDate() + " to " + response.endDate() + " is now published.",
+                            "Tentative Weekly Roster Available",
+                            "Your tentative weekly roster for " + response.startDate() + " to " + response.endDate() + " is now available for review. Submit change requests before Sunday 4:00 PM IST.",
                             NotificationType.ROSTER_PUBLISHED, "roster", response.id());
                 }
 
-                // Trigger automated email distribution if enabled
+                // Trigger automated tentative email distribution if enabled
                 if (autoEmailEnabled) {
                     cycleRepository.findById(response.id()).ifPresent(cycle -> {
                         rosterEmailService.distributeRosterEmails(cycle, response, GenerationMode.AUTOMATIC);

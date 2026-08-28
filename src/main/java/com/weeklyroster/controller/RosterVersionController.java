@@ -1,6 +1,8 @@
 package com.weeklyroster.controller;
 
+import com.weeklyroster.dto.request.RollbackRequest;
 import com.weeklyroster.dto.response.RosterVersionResponse;
+import com.weeklyroster.dto.response.RollbackPreviewResponse;
 import com.weeklyroster.dto.response.VersionComparisonResponse;
 import com.weeklyroster.service.RosterVersionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/roster-versions")
 @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-@Tag(name = "Admin Roster Versioning & Comparison", description = "Admin endpoints for inspecting version history and comparing roster revisions")
+@Tag(name = "Admin Roster Versioning & Comparison", description = "Admin endpoints for version control, side-by-side comparison, and safe rollback")
 public class RosterVersionController {
 
     private final RosterVersionService versionService;
@@ -46,30 +48,33 @@ public class RosterVersionController {
         return ResponseEntity.ok(versionService.getVersionDetails(cycleId, versionNumber));
     }
 
+    @GetMapping("/cycle/{cycleId}/rollback-preview/{targetVersionNumber}")
+    @Operation(summary = "Preview safety checks and health impact before executing a rollback")
+    public ResponseEntity<RollbackPreviewResponse> previewRollback(
+            @PathVariable Long cycleId,
+            @PathVariable int targetVersionNumber) {
+        return ResponseEntity.ok(versionService.previewRollback(cycleId, targetVersionNumber));
+    }
+
+    @PostMapping("/cycle/{cycleId}/rollback/{targetVersionNumber}")
+    @Operation(summary = "Safely roll back roster state to a historical version (creates a new ROLLBACK version snapshot)")
+    public ResponseEntity<RosterVersionResponse> rollbackVersion(
+            @PathVariable Long cycleId,
+            @PathVariable int targetVersionNumber,
+            @RequestBody(required = false) RollbackRequest request,
+            org.springframework.security.core.Authentication auth) {
+        String actor = auth != null ? auth.getName() : "admin";
+        String reason = request != null ? request.reason() : "Admin rollback";
+        return ResponseEntity.ok(versionService.rollbackVersion(cycleId, targetVersionNumber, reason, actor));
+    }
+
     @PostMapping("/cycle/{cycleId}/restore/{versionNumber}")
-    @Operation(summary = "Restore roster state from a historical version (creates a new RESTORED snapshot)")
+    @Operation(summary = "Legacy restore endpoint (redirects to rollback)")
     public ResponseEntity<RosterVersionResponse> restoreVersion(
             @PathVariable Long cycleId,
             @PathVariable int versionNumber,
             org.springframework.security.core.Authentication auth) {
         String actor = auth != null ? auth.getName() : "admin";
-        return ResponseEntity.ok(versionService.restoreVersion(cycleId, versionNumber, actor));
-    }
-
-    @GetMapping("/compare")
-    @Operation(summary = "Compare two roster versions by snapshot IDs or version numbers")
-    public ResponseEntity<VersionComparisonResponse> compareVersionsFlexible(
-            @RequestParam(required = false) Long version1Id,
-            @RequestParam(required = false) Long version2Id,
-            @RequestParam(required = false) Long cycleId,
-            @RequestParam(required = false, defaultValue = "1") Integer v1,
-            @RequestParam(required = false, defaultValue = "2") Integer v2) {
-        if (version1Id != null && version2Id != null) {
-            return ResponseEntity.ok(versionService.compareVersionsByIds(version1Id, version2Id));
-        }
-        if (cycleId != null) {
-            return ResponseEntity.ok(versionService.compareVersions(cycleId, v1, v2));
-        }
-        throw new com.weeklyroster.exception.BusinessException("Either (version1Id and version2Id) or (cycleId and v1 and v2) must be provided");
+        return ResponseEntity.ok(versionService.rollbackVersion(cycleId, versionNumber, "Restored snapshot from version V" + versionNumber, actor));
     }
 }

@@ -235,6 +235,12 @@ public class LeaveService {
 
     @Transactional
     public LeaveResponse approve(Long id, LeaveDecisionRequest request) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getAuthorities().stream()
+                .noneMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"))) {
+            throw new org.springframework.security.access.AccessDeniedException("Only administrators can approve leave requests");
+        }
+
         LeaveRequest leave = leaveRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Leave request not found"));
 
@@ -288,6 +294,12 @@ public class LeaveService {
 
     @Transactional
     public LeaveResponse reject(Long id, LeaveDecisionRequest request) {
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getAuthorities().stream()
+                .noneMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"))) {
+            throw new org.springframework.security.access.AccessDeniedException("Only administrators can reject leave requests");
+        }
+
         LeaveRequest leave = leaveRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Leave request not found"));
 

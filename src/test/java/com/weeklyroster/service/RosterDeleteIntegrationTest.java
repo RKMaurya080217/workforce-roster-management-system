@@ -8,10 +8,12 @@ import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.*;
 import java.time.LocalDate;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -19,6 +21,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class RosterDeleteIntegrationTest {
 
     @Autowired
@@ -44,6 +47,26 @@ class RosterDeleteIntegrationTest {
 
     @Autowired
     private RosterEmailService emailService;
+
+    @Autowired
+    private RosterVersionRepository versionRepository;
+
+    @Autowired
+    private LeaveRequestRepository leaveRequestRepository;
+
+    @Autowired
+    private EmployeePreferenceRepository preferenceRepository;
+
+    @BeforeEach
+    void setUp() {
+        overrideRepository.deleteAll();
+        assignmentRepository.deleteAll();
+        versionRepository.deleteAll();
+        emailLogRepository.deleteAll();
+        cycleRepository.deleteAll();
+        leaveRequestRepository.deleteAll();
+        preferenceRepository.deleteAll();
+    }
 
     private void authenticateAdmin() {
         SecurityContextHolder.getContext().setAuthentication(

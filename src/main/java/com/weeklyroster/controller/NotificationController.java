@@ -15,9 +15,17 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final com.weeklyroster.service.SseEmitterService sseEmitterService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public NotificationController(NotificationService notificationService,
+                                  @org.springframework.beans.factory.annotation.Autowired(required = false) com.weeklyroster.service.SseEmitterService sseEmitterService) {
+        this.notificationService = notificationService;
+        this.sseEmitterService = sseEmitterService;
+    }
 
     public NotificationController(NotificationService notificationService) {
-        this.notificationService = notificationService;
+        this(notificationService, null);
     }
 
     private String getAuthenticatedUsername() {
@@ -50,5 +58,18 @@ public class NotificationController {
     public ResponseEntity<Map<String, Object>> markAllAsRead() {
         notificationService.markAllAsRead(getAuthenticatedUsername());
         return ResponseEntity.ok(Map.of("success", true, "message", "All notifications marked as read"));
+    }
+
+    @GetMapping(value = "/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter streamNotifications() {
+        if (sseEmitterService == null) {
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter fallback = new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(60000L);
+            try {
+                fallback.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().name("INIT").data(Map.of("status", "DISABLED")));
+                fallback.complete();
+            } catch (Exception ignored) {}
+            return fallback;
+        }
+        return sseEmitterService.subscribe(getAuthenticatedUsername());
     }
 }

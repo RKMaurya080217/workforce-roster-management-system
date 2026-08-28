@@ -241,7 +241,31 @@ public class EnterprisePdfExporter {
 
     private static String escapePdf(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
+        // Clean special characters to safe WinAnsi / ASCII
+        String sanitized = s.replace("→", "->")
+                .replace("←", "<-")
+                .replace("•", "-")
+                .replace("—", "-")
+                .replace("–", "-")
+                .replace("✓", "[OK]")
+                .replace("⚠️", "[WARN]")
+                .replace("🔴", "[ERR]")
+                .replace("🟢", "[OK]")
+                .replace("’", "'")
+                .replace("“", "\"")
+                .replace("”", "\"");
+
+        // Replace non-ASCII printable characters with space
+        StringBuilder sb = new StringBuilder();
+        for (char c : sanitized.toCharArray()) {
+            if (c >= 32 && c <= 126) {
+                sb.append(c);
+            } else if (c == '\n' || c == '\r' || c == '\t') {
+                sb.append(' ');
+            }
+        }
+
+        return sb.toString().replace("\\", "\\\\")
                 .replace("(", "\\(")
                 .replace(")", "\\)");
     }

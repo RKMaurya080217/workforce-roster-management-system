@@ -5,6 +5,8 @@ import com.weeklyroster.dto.request.ShiftChangeRequest;
 import com.weeklyroster.dto.response.EmailDeliveryLogResponse;
 import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
+import com.weeklyroster.dto.response.ShiftExplanationResponse;
+
 import com.weeklyroster.dto.response.TodayDutyResponse;
 import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.RosterCycle;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -62,6 +65,7 @@ public class RosterController {
     }
 
     @PostMapping(value = "/generate", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> generate(
             @RequestParam(name = "startDate", required = false) String startDate) {
         java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
@@ -106,6 +110,7 @@ public class RosterController {
     }
 
     @PostMapping(value = "/cycle/{id}/email", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<EmailDeliveryLogResponse>> sendEmail(@PathVariable("id") Long id) {
         RosterCycleResponse cycleResponse = rosterService.cycle(id);
         RosterCycle cycle = new RosterCycle();
@@ -120,6 +125,7 @@ public class RosterController {
     }
 
     @PostMapping(value = "/cycle/{id}/email/retry", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<EmailDeliveryLogResponse>> retryEmail(@PathVariable("id") Long id) {
         return ResponseEntity.ok(rosterEmailService.retryFailedEmails(id));
     }
@@ -130,6 +136,7 @@ public class RosterController {
     }
 
     @PostMapping(value = "/email/test", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> testEmail(@RequestParam(name = "to", required = false) String to) {
         return ResponseEntity.ok(rosterEmailService.sendTestEmail(to));
     }
@@ -163,41 +170,60 @@ public class RosterController {
     }
 
     @PutMapping("/{id}/shift")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterAssignmentResponse> changeShift(@PathVariable("id") Long id,
                                                                 @Valid @RequestBody ShiftChangeRequest request) {
         return ResponseEntity.ok(rosterService.changeShift(id, request));
     }
 
     @PutMapping("/{id}/off")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterAssignmentResponse> markOff(@PathVariable("id") Long id,
                                                             @Valid @RequestBody ShiftChangeRequest request) {
         return ResponseEntity.ok(rosterService.markWeeklyOff(id, request));
     }
 
     @PostMapping("/overrides")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterAssignmentResponse> override(@Valid @RequestBody RosterOverrideRequest request) {
         return ResponseEntity.ok(rosterService.override(request));
     }
 
     @PostMapping("/swap")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<RosterAssignmentResponse>> swap(@Valid @RequestBody com.weeklyroster.dto.request.RosterSwapRequest request) {
         return ResponseEntity.ok(rosterService.swapShifts(request.assignmentId1(), request.assignmentId2(), request.reason()));
     }
 
     @PostMapping("/cycle/{id}/publish")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> publishCycle(@PathVariable("id") Long id) {
         return ResponseEntity.ok(rosterService.publishRoster(id));
     }
 
     @PostMapping("/cycle/{id}/lock")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> lockCycle(@PathVariable("id") Long id) {
         return ResponseEntity.ok(rosterService.lockRoster(id));
     }
 
     @PostMapping("/cycle/{id}/unlock")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> unlockCycle(@PathVariable("id") Long id,
                                                            @Valid @RequestBody com.weeklyroster.dto.request.UnlockRosterRequest request) {
         return ResponseEntity.ok(rosterService.unlockRoster(id, request));
+    }
+
+    @GetMapping(value = "/assignments/{assignmentId}/explanation", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ShiftExplanationResponse> getShiftExplanation(@PathVariable("assignmentId") Long assignmentId) {
+        return ResponseEntity.ok(rosterService.getShiftExplanation(assignmentId));
+    }
+
+    @GetMapping(value = "/{cycleId}/assignments/{assignmentId}/explanation", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ShiftExplanationResponse> getCycleShiftExplanation(
+            @PathVariable("cycleId") Long cycleId,
+            @PathVariable("assignmentId") Long assignmentId) {
+        return ResponseEntity.ok(rosterService.getShiftExplanation(cycleId, assignmentId));
     }
 
     @GetMapping("/cycle/{id}/health")
@@ -206,14 +232,22 @@ public class RosterController {
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> delete(@PathVariable("id") Long id) {
         rosterService.deleteCycle(id);
         return ResponseEntity.ok(Map.of("success", true, "message", "Roster cycle deleted successfully"));
     }
 
     @org.springframework.web.bind.annotation.DeleteMapping(value = "/cycle/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> deleteCycle(@PathVariable("id") Long id) {
         rosterService.deleteCycle(id);
         return ResponseEntity.ok(Map.of("success", true, "message", "Roster cycle deleted successfully"));
+    }
+
+    @PostMapping(value = "/email/test-smtp", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<Map<String, Object>> testSmtpEmail(@RequestParam(name = "toEmail", required = false) String toEmail) {
+        return ResponseEntity.ok(rosterEmailService.sendTestEmail(toEmail));
     }
 }

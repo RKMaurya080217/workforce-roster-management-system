@@ -233,7 +233,7 @@ public class RosterScenarioTest {
         assertNotNull(response);
         verify(overrideRepository).deleteByCycleIdNative(99L);
         verify(assignmentRepository).deleteByCycleIdNative(99L);
-        verify(cycleRepository).deleteCycleByIdNative(99L);
+        verify(cycleRepository).save(any(RosterCycle.class));
     }
 
     private Shift createShift(Long id, ShiftType type, int capacity) {

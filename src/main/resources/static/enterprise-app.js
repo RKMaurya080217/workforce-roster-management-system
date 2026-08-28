@@ -190,7 +190,7 @@ async function renderAnalyticsView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading analytics: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading analytics: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -341,7 +341,7 @@ async function renderValidationView() {
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error running validator: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ Error running validator: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -371,7 +371,7 @@ async function renderAdminPreferencesView() {
           <p class="text-muted">Review soft preferences for shift types and weekly off requests (safety constraints remain strictly enforced)</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminPreferencesView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminPreferencesView()"><span>🔄 Refresh</span></button>
         </div>
       </div>
 
@@ -425,7 +425,7 @@ async function renderAdminPreferencesView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -458,7 +458,7 @@ async function renderAdminHolidaysView() {
         </div>
         <div class="header-actions">
           <button class="btn btn-primary btn-sm" onclick="openHolidayModal()"><span>âž• Add Holiday</span></button>
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminHolidaysView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminHolidaysView()"><span>🔄 Refresh</span></button>
         </div>
       </div>
 
@@ -500,7 +500,7 @@ async function renderAdminHolidaysView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -551,7 +551,7 @@ async function renderAdminHandoversView() {
           <p class="text-muted">Digital shift logbook, transition briefings, pending action items, and reliever acknowledgments</p>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminHandoversView()"><span>ðŸ”„ Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderAdminHandoversView()"><span>🔄 Refresh</span></button>
         </div>
       </div>
 
@@ -590,7 +590,7 @@ async function renderAdminHandoversView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -688,7 +688,7 @@ async function renderAdminWorkloadView() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸  Error loading workload analytics: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸  Error loading workload analytics: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -931,7 +931,7 @@ async function renderAdminSkillsView() {
     }
 
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading skill matrix: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading skill matrix: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1023,7 +1023,7 @@ async function renderRosterVersionsView() {
           ${versions.length >= 2 ? `
             <button class="btn btn-primary btn-sm" onclick="openVersionComparisonFromPage()"><span>🔄 Compare 2 Revisions</span></button>
           ` : ''}
-          <button class="btn btn-secondary btn-sm" onclick="renderRosterVersionsView()"><span>🔄 Refresh</span></button>
+          <button class="btn btn-secondary btn-sm" onclick="renderRosterVersionsView()"><span>Refresh</span></button>
         </div>
       </div>
 
@@ -1091,7 +1091,7 @@ async function renderRosterVersionsView() {
       });
     }
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error loading versions: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ Error loading versions: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1226,7 +1226,7 @@ async function compareVersionsByIds(v1Id, v2Id) {
       </table>
     `;
   } catch (err) {
-    body.innerHTML = `<div class="empty-state-box text-danger">⚠️ Error comparing versions: ${escapeHTML(err.message)}</div>`;
+    body.innerHTML = `<div class="empty-state-box text-danger">⚠️ ️ Error comparing versions: ${escapeHTML(err.message)}</div>`;
   }
 }
 
@@ -1303,7 +1303,7 @@ async function renderEmployeePreferencesTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1372,7 +1372,7 @@ async function renderEmployeeHandoversTabHTML() {
                     <td>
                       ${h.status !== 'COMPLETED' ? `
                         <button class="btn btn-success btn-xs" onclick="completeHandover(${h.id})">Acknowledge</button>
-                      ` : 'âœ”ï¸ Done'}
+                      ` : '✔ ï¸ Done'}
                     </td>
                   </tr>
                 `).join("")}
@@ -1416,7 +1416,7 @@ async function renderEmployeeHandoversTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1472,7 +1472,7 @@ async function renderEmployeeSkillsTabHTML() {
                     <td><strong>${escapeHTML(s.skillName)}</strong></td>
                     <td>${escapeHTML(s.category || "GENERAL")}</td>
                     <td><span class="proficiency-tag prof-${s.proficiencyLevel}">${s.proficiencyLevel}</span></td>
-                    <td>${s.certified ? 'âœ… Certified' : 'Standard'}</td>
+                    <td>${s.certified ? '✅ Certified' : 'Standard'}</td>
                     <td>${escapeHTML(s.certificationName || "-")}</td>
                     <td>${formatDate(s.createdAt)}</td>
                   </tr>
@@ -1483,7 +1483,7 @@ async function renderEmployeeSkillsTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading skills: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading skills: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1523,7 +1523,7 @@ async function renderEmployeeHolidaysTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">âš ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1833,3 +1833,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+    // Batch 38: Roster Health Trigger from Roster View or Analytics
+    document.querySelectorAll("[data-action='view-roster-health']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cycleId = btn.getAttribute("data-cycle-id") || state.selectedCycleId;
+        if (typeof openRosterHealthModal === "function") {
+          openRosterHealthModal(cycleId);
+        }
+      });
+    });

@@ -11,6 +11,12 @@ public record VersionComparisonResponse(
         LocalDateTime v2Timestamp,
         String v1Action,
         String v2Action,
+        Integer v1Health,
+        Integer v2Health,
+        Integer healthDelta,
         int totalChanges,
+        int affectedEmployeesCount,
+        int shiftChangesCount,
+        int offChangesCount,
         List<VersionAssignmentDiff> diffs
 ) {}

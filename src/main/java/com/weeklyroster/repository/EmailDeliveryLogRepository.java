@@ -2,6 +2,8 @@ package com.weeklyroster.repository;
 
 import com.weeklyroster.entity.EmailDeliveryLog;
 import com.weeklyroster.entity.EmailDeliveryStatus;
+import com.weeklyroster.entity.EmailType;
+import com.weeklyroster.entity.Employee;
 import com.weeklyroster.entity.RosterCycle;
 import java.time.LocalDate;
 import java.util.List;
@@ -17,6 +19,12 @@ public interface EmailDeliveryLogRepository extends JpaRepository<EmailDeliveryL
 
     @Query("SELECT l FROM EmailDeliveryLog l JOIN FETCH l.employee JOIN FETCH l.cycle WHERE l.cycle = :cycle AND l.status = :status")
     List<EmailDeliveryLog> findByCycleAndStatus(@Param("cycle") RosterCycle cycle, @Param("status") EmailDeliveryStatus status);
+
+    @Query("SELECT l FROM EmailDeliveryLog l JOIN FETCH l.employee JOIN FETCH l.cycle WHERE l.cycle = :cycle AND l.emailType = :emailType AND l.status = :status")
+    List<EmailDeliveryLog> findByCycleAndEmailTypeAndStatus(@Param("cycle") RosterCycle cycle, @Param("emailType") EmailType emailType, @Param("status") EmailDeliveryStatus status);
+
+    @Query("SELECT l FROM EmailDeliveryLog l JOIN FETCH l.employee JOIN FETCH l.cycle WHERE l.cycle = :cycle AND l.employee = :employee AND l.emailType = :emailType AND l.status = :status")
+    List<EmailDeliveryLog> findByCycleAndEmployeeAndEmailTypeAndStatus(@Param("cycle") RosterCycle cycle, @Param("employee") Employee employee, @Param("emailType") EmailType emailType, @Param("status") EmailDeliveryStatus status);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM EmailDeliveryLog l WHERE l.cycle.id = :cycleId")

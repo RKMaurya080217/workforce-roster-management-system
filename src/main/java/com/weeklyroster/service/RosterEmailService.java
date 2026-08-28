@@ -5,6 +5,7 @@ import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
 import com.weeklyroster.entity.EmailDeliveryLog;
 import com.weeklyroster.entity.EmailDeliveryStatus;
+import com.weeklyroster.entity.EmailType;
 import com.weeklyroster.entity.Employee;
 import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.RosterCycle;
@@ -95,6 +96,22 @@ public class RosterEmailService {
     /**
      * Global validation: Checks if given cycle dates match the immediate upcoming Monday to Sunday cycle.
      */
+        @Transactional
+    public List<EmailDeliveryLogResponse> distributeTentativeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        if (cycle != null) {
+            cycle.setStatus(com.weeklyroster.entity.RosterStatus.TENTATIVE);
+        }
+        return distributeRosterEmails(cycle, cycleResponse, mode);
+    }
+
+    @Transactional
+    public List<EmailDeliveryLogResponse> distributeFinalRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        if (cycle != null) {
+            cycle.setStatus(com.weeklyroster.entity.RosterStatus.FINAL);
+        }
+        return distributeRosterEmails(cycle, cycleResponse, mode);
+    }
+
     public boolean isImmediateUpcomingWeek(LocalDate startDate, LocalDate endDate) {
         if (startDate == null || endDate == null) return false;
         LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
@@ -139,7 +156,10 @@ public class RosterEmailService {
             }
 
             // Check if automated emails were already sent for this cycle
-            List<EmailDeliveryLog> sentLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
+            List<EmailDeliveryLog> sentLogs = emailLogRepository.findByCycleAndEmailTypeAndStatus(cycle, (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.FINAL || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.LOCKED) ? EmailType.FINAL_ROSTER : EmailType.TENTATIVE_ROSTER, EmailDeliveryStatus.SENT);
+            if (sentLogs == null || sentLogs.isEmpty()) {
+                sentLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
+            }
             if (!sentLogs.isEmpty()) {
                 log.info("[WRMS EMAIL] Automated roster emails for upcoming cycle #{} ({} to {}) have already been sent ({} logs). Skipping duplicate dispatch.",
                         cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), sentLogs.size());
@@ -246,14 +266,25 @@ public class RosterEmailService {
                                            byte[] excelBytes,
                                            byte[] imageBytes,
                                            GenerationMode mode) {
+        EmailType targetEmailType = (mode == GenerationMode.AUTOMATIC && (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.TENTATIVE || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.GENERATED))
+                ? EmailType.TENTATIVE_ROSTER
+                : ((cycle.getStatus() == com.weeklyroster.entity.RosterStatus.FINAL || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.LOCKED)
+                ? EmailType.FINAL_ROSTER
+                : EmailType.WEEKLY_ROSTER_DISTRIBUTION);
+
         if (mode == GenerationMode.AUTOMATIC) {
-            List<EmailDeliveryLog> sentForEmp = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT)
-                    .stream()
-                    .filter(l -> l.getEmployee() != null && l.getEmployee().getId().equals(emp.getId()))
-                    .toList();
+            List<EmailDeliveryLog> sentForEmp = emailLogRepository.findByCycleAndEmployeeAndEmailTypeAndStatus(cycle, emp, targetEmailType, EmailDeliveryStatus.SENT);
+            if (sentForEmp == null || sentForEmp.isEmpty()) {
+                List<EmailDeliveryLog> allSent = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
+                if (allSent != null) {
+                    sentForEmp = allSent.stream()
+                            .filter(l -> l.getEmployee() != null && l.getEmployee().getId().equals(emp.getId()))
+                            .toList();
+                }
+            }
             if (!sentForEmp.isEmpty()) {
-                log.info("[WRMS EMAIL] Employee {} <{}> already received email for cycle #{} ({} -> {}). Skipping duplicate dispatch.",
-                        emp.getEmployeeCode(), emp.getEmail(), cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
+                log.info("[WRMS EMAIL] Employee {} <{}> already received {} email for cycle #{} ({} -> {}). Skipping duplicate dispatch.",
+                        emp.getEmployeeCode(), emp.getEmail(), targetEmailType, cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
                 return sentForEmp.get(0);
             }
         }
@@ -267,19 +298,67 @@ public class RosterEmailService {
         deliveryLog.setSentAt(LocalDateTime.now());
         deliveryLog.setMode(mode != null ? mode : GenerationMode.MANUAL);
 
-        String subject = "WRMS Weekly Roster — " + cycle.getStartDate().format(DISPLAY_DATE_FMT) + " to " + cycle.getEndDate().format(DISPLAY_DATE_FMT);
-        String personalSchedule = buildPersonalSchedule(cycle.getStartDate(), cycle.getEndDate(), myShifts, shifts);
+        EmailType emailType = (mode == GenerationMode.AUTOMATIC && (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.TENTATIVE || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.GENERATED))
+                ? EmailType.TENTATIVE_ROSTER
+                : ((cycle.getStatus() == com.weeklyroster.entity.RosterStatus.FINAL || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.LOCKED)
+                ? EmailType.FINAL_ROSTER
+                : EmailType.WEEKLY_ROSTER_DISTRIBUTION);
 
-        String emailBody = "Dear " + emp.getFirstName() + " " + emp.getLastName() + ",\n\n"
-                + "Here is your duty roster for the upcoming weekly cycle ("
-                + cycle.getStartDate().format(DISPLAY_DATE_FMT) + " to " + cycle.getEndDate().format(DISPLAY_DATE_FMT) + "):\n\n"
-                + personalSchedule + "\n"
-                + "Attached please find:\n"
-                + "  1. Complete Weekly Roster Spreadsheet (.xlsx)\n"
-                + "  2. Complete Weekly Roster Schedule Card (.png)\n\n"
-                + "If you need shift swaps or leave adjustments, please use the WRMS Employee Portal.\n\n"
-                + "Best regards,\n"
-                + "Weekly Roster Management System (WRMS)";
+        deliveryLog.setEmailType(emailType);
+
+        String subject;
+        String emailBody;
+        String personalSchedule = buildPersonalSchedule(cycle.getStartDate(), cycle.getEndDate(), myShifts, shifts);
+        String dateRange = cycle.getStartDate().format(DISPLAY_DATE_FMT) + " to " + cycle.getEndDate().format(DISPLAY_DATE_FMT);
+
+        if (emailType == EmailType.TENTATIVE_ROSTER) {
+            subject = "TENTATIVE WRMS Weekly Roster — " + dateRange + " — SUBJECT TO CHANGE";
+            emailBody = "=======================================================\n"
+                    + "  🟠 TENTATIVE ROSTER — SUBJECT TO CHANGE\n"
+                    + "=======================================================\n\n"
+                    + "Dear " + emp.getFirstName() + " " + emp.getLastName() + ",\n\n"
+                    + "This is a tentative roster for the upcoming cycle (" + dateRange + ").\n"
+                    + "Employees may review their assigned shifts and submit eligible change/leave requests before the review deadline.\n"
+                    + "Review Deadline: Sunday 4:00 PM IST.\n"
+                    + "The final roster will be issued after the review period.\n\n"
+                    + "YOUR TENTATIVE SCHEDULE:\n"
+                    + personalSchedule + "\n"
+                    + "STATUS: TENTATIVE — SUBJECT TO CHANGE\n\n"
+                    + "To submit shift preferences or leave requests, please visit the WRMS Employee Portal.\n\n"
+                    + "Attached:\n"
+                    + "  1. Tentative Weekly Roster (.xlsx)\n"
+                    + "  2. Tentative Schedule Card (.png)\n\n"
+                    + "Best regards,\n"
+                    + "Weekly Roster Management System (WRMS)";
+        } else if (emailType == EmailType.FINAL_ROSTER) {
+            subject = "FINAL WRMS Weekly Roster — " + dateRange + " — LOCKED";
+            emailBody = "=======================================================\n"
+                    + "  🟢 FINAL ROSTER — LOCKED\n"
+                    + "=======================================================\n\n"
+                    + "Dear " + emp.getFirstName() + " " + emp.getLastName() + ",\n\n"
+                    + "This is the final roster for the upcoming week (" + dateRange + ").\n"
+                    + "The roster has been finalized after the employee review period and approved changes.\n"
+                    + "No further changes will be accepted through the normal employee request workflow.\n\n"
+                    + "YOUR FINAL LOCKED SCHEDULE:\n"
+                    + personalSchedule + "\n"
+                    + "STATUS: FINAL — LOCKED\n"
+                    + "Finalized At: Sunday 4:00 PM IST\n\n"
+                    + "Attached:\n"
+                    + "  1. Final Weekly Roster (.xlsx)\n"
+                    + "  2. Final Schedule Card (.png)\n\n"
+                    + "Best regards,\n"
+                    + "Weekly Roster Management System (WRMS)";
+        } else {
+            subject = "WRMS Weekly Roster — " + dateRange;
+            emailBody = "Dear " + emp.getFirstName() + " " + emp.getLastName() + ",\n\n"
+                    + "Here is your duty roster for the weekly cycle (" + dateRange + "):\n\n"
+                    + personalSchedule + "\n"
+                    + "Attached please find:\n"
+                    + "  1. Complete Weekly Roster Spreadsheet (.xlsx)\n"
+                    + "  2. Complete Weekly Roster Schedule Card (.png)\n\n"
+                    + "Best regards,\n"
+                    + "Weekly Roster Management System (WRMS)";
+        }
 
         log.info("Preparing weekly roster email for {} <{}> (Subject: '{}')",
                 emp.getFirstName() + " " + emp.getLastName(), deliveryLog.getRecipientEmail(), subject);

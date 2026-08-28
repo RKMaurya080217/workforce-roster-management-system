@@ -24,6 +24,7 @@ import com.weeklyroster.repository.RosterCycleRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterOverrideRepository;
 import com.weeklyroster.repository.RosterVersionRepository;
+import com.weeklyroster.repository.EmailDeliveryLogRepository;
 import java.time.LocalDate;
 
 @SpringBootTest
@@ -46,12 +47,18 @@ class RosterGenerationApiTest {
     @Autowired(required = false)
     private RosterVersionRepository versionRepository;
 
+    @Autowired(required = false)
+    private EmailDeliveryLogRepository emailDeliveryLogRepository;
+
     @BeforeEach
     void cleanCycles() {
         LocalDate d = LocalDate.of(2026, 8, 17);
         cycleRepository.findByStartDateAndEndDate(d, d.plusDays(6)).ifPresent(c -> {
             if (versionRepository != null) {
                 versionRepository.deleteByCycleIdNative(c.getId());
+            }
+            if (emailDeliveryLogRepository != null) {
+                emailDeliveryLogRepository.deleteByCycleIdNative(c.getId());
             }
             overrideRepository.deleteByCycleIdNative(c.getId());
             assignmentRepository.deleteByCycleIdNative(c.getId());

@@ -30,15 +30,26 @@ public class NotificationService {
     private final EmployeeRepository employeeRepository;
     private final UserRepository userRepository;
     private final EmployeeActivityLogService activityLogService;
+    private final SseEmitterService sseEmitterService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public NotificationService(NotificationRepository notificationRepository,
+                               EmployeeRepository employeeRepository,
+                               UserRepository userRepository,
+                               EmployeeActivityLogService activityLogService,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) SseEmitterService sseEmitterService) {
+        this.notificationRepository = notificationRepository;
+        this.employeeRepository = employeeRepository;
+        this.userRepository = userRepository;
+        this.activityLogService = activityLogService;
+        this.sseEmitterService = sseEmitterService;
+    }
 
     public NotificationService(NotificationRepository notificationRepository,
                                EmployeeRepository employeeRepository,
                                UserRepository userRepository,
                                EmployeeActivityLogService activityLogService) {
-        this.notificationRepository = notificationRepository;
-        this.employeeRepository = employeeRepository;
-        this.userRepository = userRepository;
-        this.activityLogService = activityLogService;
+        this(notificationRepository, employeeRepository, userRepository, activityLogService, null);
     }
 
     @Transactional
@@ -75,6 +86,11 @@ public class NotificationService {
 
         try {
             Notification saved = notificationRepository.save(notification);
+            if (sseEmitterService != null && recipientUsername != null) {
+                try {
+                    sseEmitterService.sendToUser(recipientUsername, "NOTIFICATION_RECEIVED", toResponse(saved));
+                } catch (Exception ignored) {}
+            }
             if (activityLogService != null && recipientUsername != null) {
                 if (type == NotificationType.ROSTER_PUBLISHED) {
                     activityLogService.logActivity(recipientEmployeeId, recipientUsername,

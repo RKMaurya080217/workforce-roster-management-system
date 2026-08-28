@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -50,41 +51,48 @@ public class LeaveController {
     }
 
     @GetMapping("/pending")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<LeaveResponse>> pending() {
         return ResponseEntity.ok(leaveService.pending());
     }
 
     @PutMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> approve(@PathVariable("id") Long id,
                                                  @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.approve(id, request == null ? new LeaveDecisionRequest(null) : request));
     }
 
     @PutMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> reject(@PathVariable("id") Long id,
                                                 @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.reject(id, request == null ? new LeaveDecisionRequest(null) : request));
     }
 
     @PutMapping("/{id}/modification/approve")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> approveModification(@PathVariable("id") Long id,
                                                              @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.approveModification(id, request == null ? new LeaveDecisionRequest(null) : request));
     }
 
     @PutMapping("/{id}/modification/reject")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> rejectModification(@PathVariable("id") Long id,
                                                              @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.rejectModification(id, request == null ? new LeaveDecisionRequest(null) : request));
     }
 
     @PutMapping("/{id}/cancellation/approve")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> approveCancellation(@PathVariable("id") Long id,
                                                              @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.approveCancellation(id, request == null ? new LeaveDecisionRequest(null) : request));
     }
 
     @PutMapping("/{id}/cancellation/reject")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<LeaveResponse> rejectCancellation(@PathVariable("id") Long id,
                                                              @RequestBody(required = false) LeaveDecisionRequest request) {
         return ResponseEntity.ok(leaveService.rejectCancellation(id, request == null ? new LeaveDecisionRequest(null) : request));

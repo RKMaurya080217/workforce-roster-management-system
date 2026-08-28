@@ -293,6 +293,9 @@
 
           <!-- View 3: Weekly Roster Schedule -->
           <section id="viewRoster" class="view-panel hidden"></section>
+          <!-- View 3.5: Smart Roster Command Center (Batch 39) -->
+          <section id="viewCommandCenter" class="view-panel hidden"></section>
+
 
           <!-- View 4: Shift Capacities & Settings -->
           <section id="viewShifts" class="view-panel hidden"></section>
@@ -1236,8 +1239,202 @@
     </div>
   </div>
 
+    <!-- Modal 22: Batch 38 "Why This Shift?" Explainable Roster Modal -->
+  <div id="whyThisShiftModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-md" style="max-width:620px; width:95%;">
+      <div class="modal-header" style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:#ffffff; padding:16px 20px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.3rem;">💡</span>
+          <div>
+            <h3 style="margin:0; font-size:1.15rem; color:#ffffff; font-weight:800; letter-spacing:0.02em;">WHY THIS SHIFT?</h3>
+            <span id="whyShiftSubTitle" style="font-size:0.78rem; color:#94a3b8;">Transparent Roster Decision Explanation</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="whyThisShiftModal" style="color:#ffffff;">&times;</button>
+      </div>
+
+      <div class="modal-body stack-gap" id="whyThisShiftBody" style="padding:20px; max-height:75vh; overflow-y:auto;">
+        <div class="empty-state-box"><div class="spinner"></div><p>Loading shift explanation...</p></div>
+      </div>
+
+      <div class="modal-footer" style="padding:12px 20px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" data-close-modal="whyThisShiftModal">Close Explanation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 23: Batch 38 Roster Health Dashboard Modal -->
+  <div id="rosterHealthModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-lg" style="max-width:960px; width:95%;">
+      <div class="modal-header" style="background:linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color:#ffffff; padding:16px 24px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.4rem;">🩺</span>
+          <div>
+            <h3 style="margin:0; font-size:1.2rem; color:#ffffff; font-weight:800;">ROSTER HEALTH DASHBOARD</h3>
+            <span id="rosterHealthModalCycleDates" style="font-size:0.8rem; color:#cbd5e1;">Quality Metrics, Safety Regulations & Operational Balance</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="rosterHealthModal" style="color:#ffffff;">&times;</button>
+      </div>
+
+      <div class="modal-body stack-gap" id="rosterHealthModalBody" style="padding:20px 24px; max-height:75vh; overflow-y:auto;">
+        <div class="empty-state-box"><div class="spinner"></div><p>Evaluating roster health...</p></div>
+      </div>
+
+      <div class="modal-footer" style="padding:12px 24px; background:#f8fafc; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <div id="rosterHealthFooterStatus" style="font-size:0.85rem; font-weight:700;"></div>
+        <button type="button" class="btn btn-primary btn-sm" data-close-modal="rosterHealthModal">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- App JavaScript -->
   <script src="/app.js"></script>
   <script src="/enterprise-app.js"></script>
+  <!-- Modal 11: Employee Shift Change Request Modal (Batch 41) -->
+  <div id="employeeShiftRequestModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:500px;">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span>📝</span> Request Roster Change
+        </h3>
+        <button class="modal-close" data-close-modal="employeeShiftRequestModal">&times;</button>
+      </div>
+      <form id="employeeShiftRequestForm" class="modal-body stack-gap">
+        <input type="hidden" id="empReqAssignmentId">
+
+        <div class="override-employee-badge" id="empReqAssignmentInfo">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="form-group">
+          <label for="empReqShiftSelect">Requested Shift Type <span class="req">*</span></label>
+          <select id="empReqShiftSelect" required>
+            <option value="MORNING">MORNING (07:00 - 15:00)</option>
+            <option value="GENERAL">GENERAL (09:30 - 18:00)</option>
+            <option value="EVENING">EVENING (14:00 - 22:00)</option>
+            <option value="NIGHT">NIGHT (22:00 - 07:00 next day)</option>
+            <option value="OFF">WEEKLY OFF (Rest Day)</option>
+          </select>
+        </div>
+
+        <div id="empReqPreferenceWarning" class="alert-info-box hidden" style="background:#fffbeb; border-color:#fef3c7; color:#92400e;">
+          <strong>⚠️ Preference Notice:</strong>
+          <span id="empReqPrefWarnText"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="empReqReasonInput">Reason for Request <span class="req">*</span></label>
+          <textarea id="empReqReasonInput" placeholder="e.g. Personal requirement / Family emergency / Study" required rows="2"></textarea>
+        </div>
+
+        <div class="modal-footer" style="justify-content:space-between;">
+          <div style="font-size:0.75rem; color:var(--text-muted);">
+            Need full days off? <a href="javascript:void(0)" onclick="closeModal('employeeShiftRequestModal'); switchEmployeeWorkspaceTab('leaves');" style="color:var(--primary); font-weight:700;">Apply for Leave</a>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-ghost" data-close-modal="employeeShiftRequestModal">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="submitEmpShiftReqBtn">
+              <span>Submit Request</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 12: Admin Roster Change Decision Modal with Batch 40 Impact Preview (Batch 41) -->
+  <div id="adminRosterChangeDecisionModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:560px;">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span>🔍</span> Review Shift Change Request
+        </h3>
+        <button class="modal-close" data-close-modal="adminRosterChangeDecisionModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap">
+        <input type="hidden" id="adminDecisionReqId">
+        <input type="hidden" id="adminDecisionAssignId">
+        <input type="hidden" id="adminDecisionShift">
+        <input type="hidden" id="adminDecisionOff">
+
+        <div class="override-employee-badge" id="adminDecisionReqInfo">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Embedded Batch 40 Change Impact Preview -->
+        <div id="adminDecisionImpactBox" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-top:2px;">
+          <div class="empty-state-box" style="padding:10px;">
+            <div class="spinner"></div>
+            <p style="font-size:0.78rem; margin-top:2px;">Analyzing Change Impact Preview...</p>
+          </div>
+        </div>
+
+        <div class="form-group" id="adminDecisionRemarksGroup">
+          <label for="adminDecisionRemarksInput">Admin Remarks / Justification</label>
+          <input type="text" id="adminDecisionRemarksInput" placeholder="e.g. Approved per operational staffing / Rejected due to rest rule">
+        </div>
+      </div>
+      <div class="modal-footer" id="adminDecisionModalFooter">
+        <!-- Dynamic footer buttons inserted by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 13: Version Compare & Diff Modal (Batch 42) -->
+  <div id="versionCompareModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:760px; width:92%;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.3rem;">🔀</span>
+          <div>
+            <h3 id="versionCompareTitle">Compare Roster Versions</h3>
+            <span id="versionCompareSubtitle" style="font-size:0.76rem; color:var(--text-muted);">Side-by-side revision diff and health impact</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="versionCompareModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top:14px;">
+        <div id="versionCompareSummaryBar" style="margin-bottom:14px;"></div>
+        <div class="table-wrap" id="versionCompareDiffWrapper" style="max-height:400px; overflow-y:auto;"></div>
+      </div>
+      <div class="modal-footer" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-primary btn-sm" data-close-modal="versionCompareModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 14: Safe Rollback Preview & Confirm Modal (Batch 42) -->
+  <div id="rollbackPreviewModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:580px; width:92%;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.25rem;">⏪</span>
+          <div>
+            <h3 id="rollbackModalTitle">Rollback Roster Version</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">Safe pre-commit constraint validation &amp; health evaluation</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="rollbackPreviewModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap">
+        <input type="hidden" id="rollbackTargetCycleId">
+        <input type="hidden" id="rollbackTargetVersionNum">
+
+        <div id="rollbackPreviewDetailsBox">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <div class="form-group" style="margin-top:10px;">
+          <label for="rollbackReasonInput">Rollback Reason / Justification <span class="req">*</span></label>
+          <input type="text" id="rollbackReasonInput" placeholder="e.g. Restoring baseline before scheduling conflict" required>
+        </div>
+      </div>
+      <div class="modal-footer" id="rollbackModalFooter">
+        <!-- Dynamic footer buttons inserted by JS -->
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

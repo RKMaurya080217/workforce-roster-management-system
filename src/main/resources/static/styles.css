@@ -3798,3 +3798,774 @@ input:checked + .slider:before {
   gap: 6px;
   margin-top: 16px;
 }
+/* ==========================================================================
+   Batch 36: Viewport & Table Containment & Lifecycle Badges
+   ========================================================================== */
+html, body {
+  overflow-x: hidden !important;
+  max-width: 100vw;
+}
+
+#appRoot, .app-layout, .app-main, .app-content-viewport {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.table-wrap, .table-responsive, .roster-matrix-wrap, .roster-table-container {
+  overflow-x: auto !important;
+  max-width: 100% !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.badge-tentative {
+  background-color: #fff7ed !important;
+  color: #c2410c !important;
+  border: 1px solid #ffedd5 !important;
+  font-weight: 700 !important;
+}
+
+.badge-final, .badge-locked {
+  background-color: #f0fdf4 !important;
+  color: #15803d !important;
+  border: 1px solid #dcfce7 !important;
+  font-weight: 700 !important;
+}
+
+.badge-draft {
+  background-color: #f8fafc !important;
+  color: #64748b !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 700 !important;
+}
+
+.review-window-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.review-window-banner.tentative {
+  background: #fff7ed;
+  border-left: 4px solid #ea580c;
+  color: #9a3412;
+}
+
+.review-window-banner.final {
+  background: #f0fdf4;
+  border-left: 4px solid #16a34a;
+  color: #166534;
+}
+
+.review-badge-pill {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.review-window-banner.tentative .review-badge-pill {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.review-window-banner.final .review-badge-pill {
+  background: #dcfce7;
+  color: #166534;
+}
+
+
+/* ==========================================================================
+   BATCH 38: EXPLAINABLE ROSTER & HEALTH DASHBOARD STYLES
+   ========================================================================== */
+
+.why-shift-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.why-shift-meta-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.why-shift-reason-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  border-left: 4px solid #cbd5e1;
+  background: #f8fafc;
+}
+
+.why-shift-reason-item.positive {
+  background: #f0fdf4;
+  border-left-color: #16a34a;
+}
+
+.why-shift-reason-item.warning {
+  background: #fffbeb;
+  border-left-color: #d97706;
+}
+
+.why-shift-reason-item.override {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+}
+
+.why-shift-reason-item.optimized {
+  background: #faf5ff;
+  border-left-color: #9333ea;
+}
+
+.why-shift-reason-item.info {
+  background: #f1f5f9;
+  border-left-color: #64748b;
+}
+
+.why-shift-icon {
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.why-shift-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.why-shift-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.admin-analysis-box {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-top: 14px;
+}
+
+.admin-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.admin-analysis-item {
+  background: #ffffff;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+}
+
+/* Health Dashboard Components */
+.health-overall-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  color: #ffffff;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.health-overall-banner.excellent {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+}
+
+.health-overall-banner.good {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+}
+
+.health-overall-banner.needs-improvement {
+  background: linear-gradient(135deg, #b45309 0%, #92400e 100%);
+}
+
+.health-overall-banner.invalid {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+}
+
+.health-score-large {
+  font-size: 2.6rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.health-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.health-metric-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.health-progress-track {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.health-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+.health-tabs-bar {
+  display: flex;
+  gap: 6px;
+  border-bottom: 2px solid #e2e8f0;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.health-tab-btn {
+  padding: 8px 16px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.health-tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.why-shift-cell-trigger {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.why-shift-cell-trigger:hover {
+  transform: scale(1.02);
+}
+
+
+/* ==========================================================================
+   BATCH 39: SMART ROSTER COMMAND CENTER STYLES
+   ========================================================================== */
+
+.command-center-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cc-headline-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  padding: 18px 24px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.cc-headline-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+.cc-lifecycle-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  overflow-x: auto;
+  font-size: 0.82rem;
+}
+
+.cc-lifecycle-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cc-lifecycle-step.active {
+  color: var(--primary);
+}
+
+.cc-lifecycle-step.completed {
+  color: #16a34a;
+}
+
+.cc-lifecycle-arrow {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.cc-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.cc-stat-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cc-exception-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  border-left: 4px solid #cbd5e1;
+  background: #f8fafc;
+  gap: 12px;
+}
+
+.cc-exception-item.critical {
+  background: #fef2f2;
+  border-left-color: #ef4444;
+}
+
+.cc-exception-item.warning {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+
+.cc-exception-item.info {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+}
+
+.cc-pending-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+
+/* ==========================================================================
+   BATCH 40: CHANGE IMPACT PREVIEW STYLES
+   ========================================================================== */
+
+.impact-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.impact-shift-transition {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.impact-checklist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+
+.impact-check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-main);
+}
+
+.impact-check-item.safe {
+  color: #16a34a;
+}
+
+.impact-check-item.warn {
+  color: #d97706;
+}
+
+.impact-check-item.blocked {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.impact-verdict-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin-top: 6px;
+}
+
+.impact-verdict-banner.safe {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.impact-verdict-banner.warning {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.impact-verdict-banner.blocked {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+
+/* ==========================================================================
+   BATCH 41: EMPLOYEE ROSTER REVIEW & SMART CHANGE CENTER
+   ========================================================================== */
+
+.review-hero-banner {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-left: 5px solid #f59e0b;
+}
+
+.review-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-deadline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.review-countdown-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.review-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.review-day-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.review-day-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.review-day-card .day-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.review-day-card .date-label {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.review-day-card .req-change-btn {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+}
+
+.team-review-chips-bar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.team-review-chip {
+  background: var(--bg-app);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+}
+
+.team-review-chip .chip-title {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.team-review-chip .chip-num {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+
+/* ==========================================================================
+   BATCH 42: ROSTER VERSION CONTROL & TIMELINE STYLES
+   ========================================================================== */
+
+.version-hero-card {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #fff;
+  border-radius: var(--radius-md);
+  padding: 18px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  border-left: 5px solid var(--primary);
+}
+
+.version-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  margin-top: 16px;
+}
+
+.version-timeline::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 24px;
+  width: 2px;
+  background: #e2e8f0;
+  z-index: 0;
+}
+
+.version-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+  margin-left: 10px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.version-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.version-card.current {
+  border-left: 4px solid var(--primary);
+  background: #f8fafc;
+}
+
+.version-card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.version-node-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.version-node-badge.current {
+  background: #16a34a;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3);
+}
+
+.version-node-badge.final {
+  background: #475569;
+}
+
+.version-details-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.version-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.version-type-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.version-type-tag.initial { background: #f1f5f9; color: #475569; }
+.version-type-tag.admin { background: #eff6ff; color: #2563eb; }
+.version-type-tag.employee { background: #ecfdf5; color: #059669; }
+.version-type-tag.optimization { background: #fdf4ff; color: #9333ea; }
+.version-type-tag.rollback { background: #fff7ed; color: #ea580c; }
+.version-type-tag.leave { background: #fef2f2; color: #dc2626; }
+.version-type-tag.final { background: #334155; color: #f8fafc; }
+
+.compare-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.compare-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compare-summary-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.compare-summary-val {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+}

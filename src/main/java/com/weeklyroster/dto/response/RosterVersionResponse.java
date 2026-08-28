@@ -13,5 +13,7 @@ public record RosterVersionResponse(
         String generationMode,
         String status,
         Integer affectedAssignmentsCount,
+        Integer healthScore,
+        String impactSummary,
         String snapshotData
 ) {}

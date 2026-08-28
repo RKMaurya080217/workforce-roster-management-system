@@ -37,7 +37,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/styles.css", "/app.js", "/enterprise-app.js", "/favicon.ico", "/error").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/login/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/login/**", "/api/public/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers(HttpMethod.POST, "/api/leaves").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers(HttpMethod.POST, "/api/leaves/*/modification", "/api/leaves/*/cancellation").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())

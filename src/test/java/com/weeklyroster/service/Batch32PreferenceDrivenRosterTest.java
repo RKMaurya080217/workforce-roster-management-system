@@ -150,13 +150,22 @@ public class Batch32PreferenceDrivenRosterTest {
         RosterCycleResponse initialCycle = rosterService.generateWeeklyRoster(monday, GenerationMode.MANUAL);
         assertNotNull(initialCycle);
 
-        // 2. Admin explicitly overrides Monday to GENERAL
-        RosterAssignmentResponse mondayAssignment = initialCycle.assignments().stream()
-                .filter(a -> a.employeeId().equals(emp001.getId()) && a.rosterDate().equals(monday))
+        // 2. Admin explicitly overrides a MORNING/GENERAL day (multi-capacity) to GENERAL/MORNING
+        RosterAssignmentResponse targetAssignment = initialCycle.assignments().stream()
+                .filter(a -> !a.weeklyOff() && !a.onLeave())
+                .filter(a -> {
+                    long sameShiftCount = initialCycle.assignments().stream()
+                            .filter(other -> other.rosterDate().equals(a.rosterDate()) && other.shiftType() == a.shiftType() && !other.weeklyOff() && !other.onLeave())
+                            .count();
+                    return sameShiftCount > 1;
+                })
                 .findFirst()
                 .orElseThrow();
+        Long targetEmpId = targetAssignment.employeeId();
+        ShiftType newShift = targetAssignment.shiftType() == ShiftType.MORNING ? ShiftType.GENERAL : ShiftType.MORNING;
 
-        com.weeklyroster.dto.request.RosterOverrideRequest overrideReq = new com.weeklyroster.dto.request.RosterOverrideRequest(mondayAssignment.id(), ShiftType.GENERAL, false, "Admin critical mission duty assignment");
+        LocalDate targetDate = targetAssignment.rosterDate();
+        com.weeklyroster.dto.request.RosterOverrideRequest overrideReq = new com.weeklyroster.dto.request.RosterOverrideRequest(targetAssignment.id(), newShift, false, "Admin critical mission duty assignment");
         rosterService.override(overrideReq);
 
         // 3. Regenerate the weekly roster
@@ -164,14 +173,16 @@ public class Batch32PreferenceDrivenRosterTest {
         assertNotNull(regeneratedCycle);
 
         // 4. Verify the manual override survived
-        RosterAssignmentResponse regeneratedMonday = regeneratedCycle.assignments().stream()
-                .filter(a -> a.employeeId().equals(emp001.getId()) && a.rosterDate().equals(monday))
+        RosterAssignmentResponse regeneratedTarget = regeneratedCycle.assignments().stream()
+                .filter(a -> a.employeeId().equals(targetEmpId) && a.rosterDate().equals(targetDate))
                 .findFirst()
                 .orElseThrow();
 
-        assertTrue(regeneratedMonday.overridden(), "Preserved assignment must remain marked as overridden");
-        assertEquals(ShiftType.GENERAL, regeneratedMonday.shiftType(), "Preserved shift type must match admin override");
-        assertTrue(regeneratedMonday.assignmentReason().contains("Admin Override"), "Assignment reason must reflect admin override");
+        assertTrue(regeneratedTarget.overridden(), "Preserved assignment must remain marked as overridden");
+        assertEquals(newShift, regeneratedTarget.shiftType(), "Preserved shift type must match admin override");
+        assertTrue(regeneratedTarget.assignmentReason().contains("Admin Override"), "Assignment reason must reflect admin override");
+
+        
     }
 
     @Test

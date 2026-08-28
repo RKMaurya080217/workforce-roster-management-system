@@ -200,7 +200,25 @@ public class EmployeePreferenceService {
         String prefOff = normalizeAndValidateDays(req.preferredOffDays(), "Preferred OFF Days");
         String prefWork = normalizeAndValidateDays(req.preferredWorkingDays(), "Preferred Working Days");
 
-        validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+                validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+
+        // Batch 36: Review deadline enforcement if submitting for upcoming cycle
+        if (req.effectiveFrom() != null) {
+            java.time.LocalDate effFrom = req.effectiveFrom();
+            java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
+            java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+            java.time.LocalDate today = nowIst.toLocalDate();
+            java.time.LocalDate upcomingMon = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).plusDays(7);
+
+            if (effFrom.equals(upcomingMon)) {
+                java.time.LocalDate sundayBefore = upcomingMon.minusDays(1);
+                java.time.LocalDateTime deadline = java.time.LocalDateTime.of(sundayBefore, java.time.LocalTime.of(16, 0, 0));
+                if (nowIst.toLocalDateTime().isAfter(deadline)) {
+                    throw new BusinessException("Review window closed at 4:00 PM IST. The roster is now being finalized.");
+                }
+            }
+        }
+
 
         EmployeePreference pref = new EmployeePreference();
         pref.setEmployee(employee);
@@ -246,7 +264,25 @@ public class EmployeePreferenceService {
         String prefOff = normalizeAndValidateDays(req.preferredOffDays(), "Preferred OFF Days");
         String prefWork = normalizeAndValidateDays(req.preferredWorkingDays(), "Preferred Working Days");
 
-        validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+                validateConflicts(prefShifts, avoidShifts, prefOff, prefWork);
+
+        // Batch 36: Review deadline enforcement if submitting for upcoming cycle
+        if (req.effectiveFrom() != null) {
+            java.time.LocalDate effFrom = req.effectiveFrom();
+            java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
+            java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
+            java.time.LocalDate today = nowIst.toLocalDate();
+            java.time.LocalDate upcomingMon = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).plusDays(7);
+
+            if (effFrom.equals(upcomingMon)) {
+                java.time.LocalDate sundayBefore = upcomingMon.minusDays(1);
+                java.time.LocalDateTime deadline = java.time.LocalDateTime.of(sundayBefore, java.time.LocalTime.of(16, 0, 0));
+                if (nowIst.toLocalDateTime().isAfter(deadline)) {
+                    throw new BusinessException("Review window closed at 4:00 PM IST. The roster is now being finalized.");
+                }
+            }
+        }
+
 
         pref.setPreferredShiftTypes(prefShifts);
         pref.setPreferredOffDays(prefOff);

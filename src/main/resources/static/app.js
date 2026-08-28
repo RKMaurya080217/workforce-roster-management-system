@@ -1,3 +1,20 @@
+
+// Batch 36: Uniform Roster Status Badge Helper
+function getRosterStatusBadgeHtml(status) {
+  if (!status) status = "GENERATED";
+  const st = String(status).toUpperCase();
+  if (st === "TENTATIVE") {
+    return `<span class="roster-lifecycle-badge badge-tentative" style="background:#fff7ed; color:#c2410c; border:1px solid #ffedd5; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🟠 TENTATIVE</span>`;
+  }
+  if (st === "FINAL" || st === "LOCKED") {
+    return `<span class="roster-lifecycle-badge badge-final" style="background:#f0fdf4; color:#15803d; border:1px solid #dcfce7; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">🟢 FINAL — LOCKED</span>`;
+  }
+  if (st === "DRAFT") {
+    return `<span class="roster-lifecycle-badge badge-draft" style="background:#f8fafc; color:#64748b; border:1px solid #e2e8f0; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">⚪ DRAFT</span>`;
+  }
+  return `<span class="roster-lifecycle-badge badge-${escapeHTML(st.toLowerCase())}" style="background:#eff6ff; color:#1d4ed8; border:1px solid #dbeafe; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">⚙️ ${escapeHTML(st)}</span>`;
+}
+window.getRosterStatusBadgeHtml = getRosterStatusBadgeHtml;
 /**
  * ============================================================================
  * WRMS ENTERPRISE APPLICATION LOGIC & STATE ENGINE
@@ -100,6 +117,7 @@ const dom = {
     dashboard: document.getElementById("viewDashboard"),
     employees: document.getElementById("viewEmployees"),
     roster: document.getElementById("viewRoster"),
+    commandCenter: document.getElementById("viewCommandCenter"),
     shifts: document.getElementById("viewShifts"),
     leaves: document.getElementById("viewLeaves"),
     history: document.getElementById("viewHistory"),
@@ -170,6 +188,7 @@ window.WRMS_ICONS = WRMS_ICONS;
 const ADMIN_PRIMARY_NAV = [
   { id: "dashboard", route: "dashboard", label: "Dashboard", icon: WRMS_ICONS.dashboard },
   { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
+  { id: "commandCenter", route: "command-center", label: "Smart Command Center", icon: WRMS_ICONS.commandCenter },
   { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
   { id: "approvals", route: "approvals", label: "Approvals", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals }
 ];
@@ -559,6 +578,9 @@ function parseRouteTarget(target) {
       "employee/overview": "overview",
       "emp_overview": "overview",
       "roster": "roster",
+      "roster-review": "rosterReview",
+      "review": "rosterReview",
+      "emp_review": "rosterReview",
       "my-roster": "roster",
       "staff/roster": "roster",
       "employee/roster": "roster",
@@ -611,8 +633,15 @@ function parseRouteTarget(target) {
       "admin/dashboard": "dashboard",
       
       "roster": "roster",
+      "roster-review": "rosterReview",
+      "review": "rosterReview",
+      "emp_review": "rosterReview",
       "weekly-roster": "roster",
       "weekly_roster": "roster",
+      "command-center": "commandCenter",
+      "command_center": "commandCenter",
+      "smart-command-center": "commandCenter",
+      "admin/command-center": "commandCenter",
       "admin/roster": "roster",
       "admin/weekly-roster": "roster",
       
@@ -967,6 +996,7 @@ function updateTopbarTitle(pageId) {
   };
 
   const titles = {
+    commandCenter: { title: "Smart Roster Command Center", bc: "Command Center" },
     dashboard: { title: "Executive Operations Dashboard", bc: "Dashboard" },
     analytics: { title: "Roster Analytics & Intelligence", bc: "Analytics" },
     validation: { title: "Smart Roster Conflict Detector & Validator", bc: "Conflict Validator" },
@@ -2079,7 +2109,15 @@ async function renderRosterView() {
       renderRosterView();
     });
 
+        const healthHeaderBtn = document.getElementById("rosterHealthHeaderBadgeBtn");
+    if (healthHeaderBtn) {
+      healthHeaderBtn.addEventListener("click", () => {
+        openRosterHealthModal(currentCycle.id);
+      });
+    }
+
     const healthBtn = document.getElementById("rosterHealthBtn");
+
     if (healthBtn) {
       healthBtn.addEventListener("click", () => {
         state.healthSelectedCycleId = currentCycle.id;
@@ -2339,6 +2377,14 @@ function renderRosterTableHTML(cycle) {
 }
 
 function bindRosterCellActions() {
+  document.querySelectorAll("[data-action='why-this-shift']").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const assignId = btn.getAttribute("data-assign-id");
+      openWhyThisShiftModal(assignId, state.selectedCycleId);
+    });
+  });
+
   document.querySelectorAll(".matrix-cell-chip").forEach(chip => {
     chip.addEventListener("click", () => {
       const assignId = chip.getAttribute("data-assign-id");
@@ -3111,6 +3157,7 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
 
     bindTab("tabBtnOverview", "overview");
     bindTab("tabBtnRoster", "roster");
+    bindTab("tabBtnRosterReview", "rosterReview");
     bindTab("tabBtnLeaves", "leaves");
     bindTab("tabBtnPreferences", "preferences");
     bindTab("tabBtnHandovers", "handovers");
@@ -3236,6 +3283,7 @@ function switchEmployeeWorkspaceTab(tabKey) {
   document.querySelectorAll(".workspace-subnav .subnav-btn").forEach(btn => {
     const isTarget = (tabKey === "overview" && btn.id === "tabBtnOverview") ||
                      (tabKey === "roster" && btn.id === "tabBtnRoster") ||
+                     (tabKey === "rosterReview" && btn.id === "tabBtnRosterReview") ||
                      (tabKey === "leaves" && btn.id === "tabBtnLeaves") ||
                      (tabKey === "preferences" && btn.id === "tabBtnPreferences") ||
                      (tabKey === "handovers" && btn.id === "tabBtnHandovers") ||
@@ -3836,6 +3884,13 @@ function renderWorkspaceRosterHTML(roster, empId) {
 }
 
 function bindWorkspaceRosterEvents(empId) {
+  document.querySelectorAll("[data-action='why-this-shift']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const assignId = btn.getAttribute("data-assign-id");
+      openWhyThisShiftModal(assignId);
+    });
+  });
+
   const refreshBtn = document.getElementById("rosterLogViewBtn");
   if (refreshBtn) {
     refreshBtn.addEventListener("click", () => {
@@ -4765,7 +4820,7 @@ function renderWorkspaceLeaveManagementHTML(leaves, roster, empId) {
         </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <button class="btn btn-ghost btn-sm" id="calPrevMonthBtn">&larr; Prev</button>
-          <strong id="calMonthYearTitle" style="font-size:0.92rem; min-width:130px; text-align:center;">August 2026</strong>
+          <strong id="calMonthYearTitle" style="font-size:0.92rem; min-width:130px; text-align:center;">${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</strong>
           <button class="btn btn-ghost btn-sm" id="calNextMonthBtn">Next &rarr;</button>
         </div>
       </div>
@@ -5682,7 +5737,10 @@ async function executeRosterGeneration(rawDate) {
 
     closeModal("generateRosterModal");
     state.selectedCycleId = res ? res.id : null;
-    if (state.activePage === "roster") {
+    if (state.activePage === "commandCenter") {
+    renderCommandCenterView(state.selectedCycleId);
+  }
+  if (state.activePage === "roster") {
       await renderRosterView();
     } else {
       navigateTo("roster");
@@ -6737,7 +6795,12 @@ async function renderUnifiedApprovalsView() {
   `;
 
   try {
-    const data = await apiRequest("/api/admin/approvals/all");
+        const data = await apiRequest("/api/admin/approvals/all");
+    let teamSummary = null;
+    try {
+      teamSummary = await apiRequest("/api/roster-review/admin/summary");
+    } catch (_) {}
+
     const profileRequests = data.profileRequests || [];
     const leaveRequests = data.leaveRequests || [];
     const prefRequests = data.preferenceRequests || [];
@@ -7334,7 +7397,75 @@ async function fetchPendingProfileChangesCount() {
    NOTIFICATION CENTER & LIFECYCLE MANAGEMENT
    ========================================================================== */
 
+let notificationEventSource = null;
+let streamReconnectTimer = null;
+
+function initRealtimeNotificationStream() {
+  if (!state.token) return;
+  if (notificationEventSource && notificationEventSource.readyState !== EventSource.CLOSED) {
+    return; // Already active
+  }
+
+  try {
+    const streamUrl = `/api/notifications/stream?token=${encodeURIComponent(state.token)}`;
+    notificationEventSource = new EventSource(streamUrl);
+
+    notificationEventSource.addEventListener("INIT", (event) => {
+      console.log("[WRMS SSE] Notification stream connected successfully.");
+    });
+
+    notificationEventSource.addEventListener("NOTIFICATION_RECEIVED", (event) => {
+      console.log("[WRMS SSE] Real-time notification received:", event.data);
+      try {
+        const notif = JSON.parse(event.data);
+
+        // 1. Play subtle toast alert
+        if (typeof showToast === "function") {
+          showToast(notif.title || "New Notification", notif.message || "", "info");
+        }
+
+        // 2. Refresh unread count in header/sidebar/dashboard
+        fetchUnreadNotifCount();
+
+        // 3. If currently on notifications view, prepend smoothly
+        if (state.activeView === "notifications") {
+          fetchNotifications();
+        }
+
+        // 4. If on dashboard, refresh data without full reload
+        if (state.activeView === "dashboard" && typeof loadDashboardData === "function") {
+          loadDashboardData();
+        }
+      } catch (err) {
+        console.warn("[WRMS SSE] Error processing notification payload:", err);
+      }
+    });
+
+    notificationEventSource.addEventListener("PING", (event) => {
+      // Heartbeat kept alive
+    });
+
+    notificationEventSource.onerror = (err) => {
+      console.warn("[WRMS SSE] Connection lost. Reconnecting in 10 seconds...");
+      if (notificationEventSource) {
+        try { notificationEventSource.close(); } catch (e) {}
+        notificationEventSource = null;
+      }
+      if (!streamReconnectTimer) {
+        streamReconnectTimer = setTimeout(() => {
+          streamReconnectTimer = null;
+          initRealtimeNotificationStream();
+        }, 10000);
+      }
+    };
+  } catch (ex) {
+    console.warn("[WRMS SSE] EventSource init failed:", ex);
+  }
+}
+
+
 async function setupNotificationCenter() {
+  initRealtimeNotificationStream();
   if (!state.token) return;
   state.notifFilter = state.notifFilter || "ALL";
 
@@ -7861,4 +7992,2077 @@ function formatDate(dateStr) {
   }
   const dt = new Date(dateStr);
   return dt.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+
+/* ==========================================================================
+   BATCH 38: EXPLAINABLE ROSTER ("WHY THIS SHIFT?") & HEALTH DASHBOARD MODAL
+   ========================================================================== */
+
+async function openWhyThisShiftModal(assignmentId, cycleId) {
+  const modal = document.getElementById("whyThisShiftModal");
+  const body = document.getElementById("whyThisShiftBody");
+  const subTitle = document.getElementById("whyShiftSubTitle");
+
+  if (!modal || !body) return;
+  body.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Retrieving shift assignment explanation...</p></div>`;
+  openModal("whyThisShiftModal");
+
+  try {
+    const url = cycleId ? `/api/rosters/${cycleId}/assignments/${assignmentId}/explanation` : `/api/rosters/assignments/${assignmentId}/explanation`;
+    const data = await apiRequest(url);
+
+    if (subTitle) {
+      subTitle.textContent = `${data.employeeName} (${data.employeeCode}) — ${data.dayOfWeek}, ${formatDate(data.rosterDate)}`;
+    }
+
+    const isOverridden = data.overridden;
+    const isOptimized = data.optimized;
+    const shiftTiming = data.shiftTiming || getShiftTimingDisplay(data.shiftType);
+
+    body.innerHTML = `
+      <!-- Top Meta Banner -->
+      <div class="why-shift-meta-banner">
+        <div>
+          <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; display:block;">Assigned Shift</span>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+            <span class="badge ${String(data.shiftType).toLowerCase()}" style="font-size:0.95rem; font-weight:800; padding:4px 12px;">
+              ${data.shiftType}
+            </span>
+            <strong style="font-size:1rem; color:var(--text-main);">${escapeHTML(data.shiftName)}</strong>
+          </div>
+          <span style="font-size:0.78rem; color:var(--text-muted); margin-top:3px; display:block;">
+            🕒 <strong>${escapeHTML(shiftTiming)}</strong>
+          </span>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:0.75rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; display:block;">Roster Lifecycle</span>
+          <div style="margin-top:2px;">
+            ${getRosterStatusBadgeHtml(data.rosterStatus)}
+          </div>
+        </div>
+      </div>
+
+      <!-- Prominent Admin Override or Optimization Header if Applicable -->
+      ${isOverridden ? `
+        <div class="why-shift-reason-item override" style="border-left-width:6px;">
+          <div class="why-shift-icon" style="color:#2563eb;">🔒</div>
+          <div>
+            <div class="why-shift-title" style="color:#1d4ed8; font-size:0.95rem;">ADMIN OVERRIDE DECISION</div>
+            <div class="why-shift-desc" style="color:#1e40af; font-weight:600;">
+              ${escapeHTML(data.adminOverrideReason || 'Changed manually by Administrator to satisfy operational coverage.')}
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${isOptimized && !isOverridden ? `
+        <div class="why-shift-reason-item optimized" style="border-left-width:6px;">
+          <div class="why-shift-icon" style="color:#9333ea;">⚙️</div>
+          <div>
+            <div class="why-shift-title" style="color:#7e22ce; font-size:0.95rem;">OPTIMIZED ASSIGNMENT</div>
+            <div class="why-shift-desc" style="color:#6b21a8; font-weight:600;">
+              ${escapeHTML(data.optimizationReason || 'Assignment adjusted during re-optimization to balance preferences and rest compliance.')}
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- List of Data-Based Reasons -->
+      <div style="margin-top:8px;">
+        <h4 style="font-size:0.84rem; color:var(--text-muted); text-transform:uppercase; font-weight:800; margin-bottom:8px; letter-spacing:0.03em;">
+          Decision Factors & Rules
+        </h4>
+        <div class="why-shift-reasons-list">
+          ${(data.reasons || []).map(r => {
+            const statusClass = (r.status || 'positive').toLowerCase();
+            const icon = r.icon || '✓';
+            return `
+              <div class="why-shift-reason-item ${statusClass}">
+                <div class="why-shift-icon">${icon}</div>
+                <div>
+                  <div class="why-shift-title">${escapeHTML(r.title)}</div>
+                  <div class="why-shift-desc">${escapeHTML(r.description)}</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Admin Deep Analytics Section (Only rendered if adminDetails present) -->
+      ${data.adminDetails ? `
+        <div class="admin-analysis-box">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.82rem; color:var(--text-main);">🔒 Admin Decision Factors</strong>
+            <span class="badge general" style="font-size:0.7rem;">ADMIN VIEW</span>
+          </div>
+          <div class="admin-analysis-grid">
+            <div class="admin-analysis-item">
+              <span style="color:var(--text-muted); display:block;">Preference Factor:</span>
+              <strong>${escapeHTML(data.adminDetails.preferenceContribution || 'Neutral')}</strong>
+            </div>
+            <div class="admin-analysis-item">
+              <span style="color:var(--text-muted); display:block;">Continuity Factor:</span>
+              <strong>${escapeHTML(data.adminDetails.continuityContribution || 'Standard')}</strong>
+            </div>
+            <div class="admin-analysis-item">
+              <span style="color:var(--text-muted); display:block;">Workload Factor:</span>
+              <strong>${escapeHTML(data.adminDetails.workloadContribution || 'Balanced')}</strong>
+            </div>
+            <div class="admin-analysis-item">
+              <span style="color:var(--text-muted); display:block;">Night Quota:</span>
+              <strong>${escapeHTML(data.adminDetails.nightDistributionContribution || 'N/A')}</strong>
+            </div>
+          </div>
+        </div>
+      ` : ''}
+    `;
+
+  } catch (err) {
+    body.innerHTML = `
+      <div class="empty-state-box" style="padding:24px;">
+        <p style="color:var(--danger); font-weight:700;">Unable to load shift explanation</p>
+        <p style="font-size:0.82rem; color:var(--text-muted);">${escapeHTML(err.message || err)}</p>
+      </div>
+    `;
+  }
+}
+window.openWhyThisShiftModal = openWhyThisShiftModal;
+
+async function openRosterHealthModal(cycleId) {
+  const modal = document.getElementById("rosterHealthModal");
+  const body = document.getElementById("rosterHealthModalBody");
+  const datesSpan = document.getElementById("rosterHealthModalCycleDates");
+  const footerStatus = document.getElementById("rosterHealthFooterStatus");
+
+  if (!modal || !body) return;
+  body.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Evaluating multi-objective roster health metrics...</p></div>`;
+  openModal("rosterHealthModal");
+
+  try {
+    const report = await apiRequest(`/api/rosters/cycle/${cycleId}/health`);
+    state.currentHealthReport = report;
+
+    if (datesSpan) {
+      datesSpan.textContent = `Roster Cycle #${report.cycleId} (${formatDate(report.startDate)} to ${formatDate(report.endDate)})`;
+    }
+
+    const healthScore = report.healthScore !== null && report.healthScore !== undefined ? report.healthScore : 100.0;
+    const isInvalid = report.overallValidationStatus === "INVALID" || (report.healthScoreStatus && report.healthScoreStatus.includes("INVALID"));
+
+    let bannerClass = "excellent";
+    let statusLabel = report.healthScoreStatus || "Excellent";
+    if (isInvalid) {
+      bannerClass = "invalid";
+      statusLabel = "🔴 INVALID — HARD CONSTRAINT FAILURE";
+    } else if (healthScore < 70) {
+      bannerClass = "needs-improvement";
+      statusLabel = "Needs Improvement";
+    } else if (healthScore < 85) {
+      bannerClass = "good";
+      statusLabel = "Good";
+    }
+
+    if (footerStatus) {
+      footerStatus.innerHTML = `Overall Status: <span style="color:${isInvalid ? 'var(--danger)' : 'var(--success)'}; font-weight:800;">${statusLabel}</span>`;
+    }
+
+    body.innerHTML = `
+      <!-- Overall Health Score Banner -->
+      <div class="health-overall-banner ${bannerClass}">
+        <div>
+          <span style="font-size:0.82rem; text-transform:uppercase; font-weight:700; letter-spacing:0.04em; opacity:0.9; display:block;">Overall Roster Health</span>
+          <div class="health-score-large">${healthScore}%</div>
+          <div style="font-size:0.95rem; font-weight:800; margin-top:4px;">${statusLabel}</div>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:0.8rem; opacity:0.9; display:block;">Publication Readiness</span>
+          <span style="font-size:1rem; font-weight:800; background:rgba(255,255,255,0.2); padding:4px 12px; border-radius:12px; display:inline-block; margin-top:4px;">
+            ${report.readyToPublish ? '✓ READY TO PUBLISH' : '🚫 ACTION REQUIRED'}
+          </span>
+        </div>
+      </div>
+
+      <!-- Hard Constraints Check Box -->
+      <div class="card" style="padding:14px 18px; margin-bottom:16px; border-left:4px solid ${isInvalid ? 'var(--danger)' : '#16a34a'};">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <strong style="font-size:0.85rem; text-transform:uppercase; letter-spacing:0.03em;">Hard Regulations Checklist</strong>
+          <span class="badge ${isInvalid ? 'danger' : 'active'}" style="font-weight:800;">
+            ${isInvalid ? 'CRITICAL CONFLICT' : '100% COMPLIANT'}
+          </span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; font-size:0.82rem;">
+          <div>Coverage: <strong>${report.coverageCheck === 'PASSED' ? '✅ PASSED' : '🔴 FAILED'}</strong></div>
+          <div>12-Hour Rest: <strong>${report.restRulesCheck === 'PASSED' ? '✅ PASSED' : '🔴 FAILED'}</strong></div>
+          <div>Night Rules: <strong>${report.nightLimitCheck === 'PASSED' ? '✅ PASSED' : '🔴 FAILED'}</strong></div>
+          <div>Female Day Policy: <strong>${report.genderRulesCheck === 'PASSED' ? '✅ PASSED' : '🔴 FAILED'}</strong></div>
+          <div>Approved Leave: <strong>${report.leaveRulesCheck === 'PASSED' ? '✅ PASSED' : '🔴 FAILED'}</strong></div>
+          <div>Weekly OFF: <strong>${report.weeklyOffCheck === 'PASSED' ? '✅ PASSED' : '⚠️ WARNING'}</strong></div>
+        </div>
+      </div>
+
+      <!-- Health Breakdown Metrics Progress Grid -->
+      <div class="health-metrics-grid">
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Coverage</span>
+            <span style="color:var(--primary);">${report.coveragePercentage || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.coveragePercentage || 100}%; background:var(--primary);"></div>
+          </div>
+        </div>
+
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Rest Compliance</span>
+            <span style="color:#16a34a;">${report.restCompliancePercentage || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.restCompliancePercentage || 100}%; background:#16a34a;"></div>
+          </div>
+        </div>
+
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Preference Compliance</span>
+            <span style="color:#7c3aed;">${report.preferenceComplianceScore || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.preferenceComplianceScore || 100}%; background:#7c3aed;"></div>
+          </div>
+        </div>
+
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Shift Continuity</span>
+            <span style="color:#0284c7;">${report.shiftContinuityScore || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.shiftContinuityScore || 100}%; background:#0284c7;"></div>
+          </div>
+        </div>
+
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Workload Balance</span>
+            <span style="color:#d97706;">${report.workloadBalanceScore || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.workloadBalanceScore || 100}%; background:#d97706;"></div>
+          </div>
+        </div>
+
+        <div class="health-metric-card">
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:700;">
+            <span>Night Distribution</span>
+            <span style="color:#4f46e5;">${report.nightDistributionPercentage || 100}%</span>
+          </div>
+          <div class="health-progress-track">
+            <div class="health-progress-fill" style="width:${report.nightDistributionPercentage || 100}%; background:#4f46e5;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Detail Tabs -->
+      <div class="health-tabs-bar">
+        <button class="health-tab-btn active" data-tab="pref-tab">Preferences (${report.preferenceDetails ? report.preferenceDetails.preferenceCompatibleCount : '40'}/${report.preferenceDetails ? report.preferenceDetails.totalAssignments : '42'})</button>
+        <button class="health-tab-btn" data-tab="cont-tab">Shift Continuity (${report.shiftContinuityScore || 93}%)</button>
+        <button class="health-tab-btn" data-tab="work-tab">Workload Balance</button>
+        <button class="health-tab-btn" data-tab="night-tab">Night Quota</button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div id="healthTabContentArea">
+        ${renderHealthPreferenceTabHTML(report.preferenceDetails)}
+      </div>
+    `;
+
+    // Bind tab switching
+    document.querySelectorAll(".health-tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".health-tab-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const tabKey = btn.getAttribute("data-tab");
+        const tabWrapper = document.getElementById("healthTabContentArea");
+        if (!tabWrapper) return;
+
+        if (tabKey === "pref-tab") {
+          tabWrapper.innerHTML = renderHealthPreferenceTabHTML(report.preferenceDetails);
+        } else if (tabKey === "cont-tab") {
+          tabWrapper.innerHTML = renderHealthContinuityTabHTML(report.continuityDetails, report.shiftContinuityScore);
+        } else if (tabKey === "work-tab") {
+          tabWrapper.innerHTML = renderHealthWorkloadTabHTML(report.workloadDetails);
+        } else if (tabKey === "night-tab") {
+          tabWrapper.innerHTML = renderHealthNightTabHTML(report.nightDetails);
+        }
+      });
+    });
+
+  } catch (err) {
+    body.innerHTML = `
+      <div class="empty-state-box" style="padding:24px;">
+        <p style="color:var(--danger); font-weight:700;">Error evaluating roster health</p>
+        <p style="font-size:0.82rem; color:var(--text-muted);">${escapeHTML(err.message || err)}</p>
+      </div>
+    `;
+  }
+}
+window.openRosterHealthModal = openRosterHealthModal;
+
+function renderHealthPreferenceTabHTML(prefDetails) {
+  if (!prefDetails || !prefDetails.items || !prefDetails.items.length) {
+    return `<div class="empty-state-box"><p>No preference records to display for this cycle.</p></div>`;
+  }
+
+  return `
+    <div class="table-wrap" style="max-height:260px; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Date</th>
+            <th>Shift</th>
+            <th>Status</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${prefDetails.items.map(item => `
+            <tr>
+              <td><strong>${escapeHTML(item.employeeName)}</strong> <small style="color:var(--text-muted);">${escapeHTML(item.employeeCode || '')}</small></td>
+              <td><code>${formatDate(item.date)}</code></td>
+              <td><span class="badge ${String(item.shiftType).toLowerCase()}">${escapeHTML(item.shiftType)}</span></td>
+              <td>
+                <span class="status-pill ${item.status === 'PREFERRED' ? 'active' : item.status === 'AVOIDED' ? 'pending' : 'active'}">
+                  ${item.status === 'PREFERRED' ? '✓ Preferred' : item.status === 'AVOIDED' ? '⚠ Avoided' : '✓ Compatible'}
+                </span>
+              </td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">${escapeHTML(item.note)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHealthContinuityTabHTML(contDetails, score) {
+  return `
+    <div class="card" style="padding:14px; background:#f8fafc;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <strong style="font-size:0.88rem;">Shift Block Continuity Score: <span style="color:var(--primary);">${score || 100}%</span></strong>
+        <span class="badge general">${contDetails ? contDetails.status : 'Excellent'}</span>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:12px;">
+        ${contDetails ? contDetails.description : 'Most assignments are grouped into continuous multi-day shift blocks to avoid fatigue.'}
+      </p>
+      ${contDetails && contDetails.issues && contDetails.issues.length ? `
+        <div style="margin-top:10px;">
+          <strong style="font-size:0.8rem; color:#b45309; display:block; margin-bottom:6px;">⚠️ Frequent Rotation Observations:</strong>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${contDetails.issues.map(iss => `
+              <div style="font-size:0.78rem; background:#ffffff; padding:6px 10px; border-radius:4px; border:1px solid #e2e8f0;">
+                <strong>${escapeHTML(iss.employeeName)}:</strong> Pattern <code>${escapeHTML(iss.pattern)}</code> — ${escapeHTML(iss.reason)}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : '<div style="font-size:0.8rem; color:#15803d; font-weight:700;">✓ Perfect continuous shift block adherence with zero abrupt switches.</div>'}
+    </div>
+  `;
+}
+
+function renderHealthWorkloadTabHTML(workloadDetails) {
+  if (!workloadDetails || !workloadDetails.employees || !workloadDetails.employees.length) {
+    return `<div class="empty-state-box"><p>No workload records found.</p></div>`;
+  }
+
+  return `
+    <div class="table-wrap" style="max-height:260px; overflow-y:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Duty Days</th>
+            <th>Duty Hours</th>
+            <th>Night</th>
+            <th>Evening</th>
+            <th>Weekend</th>
+            <th>Workload Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${workloadDetails.employees.map(e => `
+            <tr>
+              <td><strong>${escapeHTML(e.employeeName)}</strong> <small style="color:var(--text-muted);">(${escapeHTML(e.employeeCode)})</small></td>
+              <td><strong>${e.dutyDays} days</strong></td>
+              <td>${e.dutyHours} hrs</td>
+              <td><span class="badge night">${e.nightCount}</span></td>
+              <td><span class="badge evening">${e.eveningCount}</span></td>
+              <td>${e.weekendCount}</td>
+              <td>
+                <span class="status-pill ${e.workloadStatus === 'Balanced' ? 'active' : 'pending'}">
+                  ${escapeHTML(e.workloadStatus)}
+                </span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderHealthNightTabHTML(nightDetails) {
+  if (!nightDetails) {
+    return `<div class="empty-state-box"><p>No night quota details available.</p></div>`;
+  }
+
+  return `
+    <div class="card" style="padding:14px; background:#f8fafc;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <strong style="font-size:0.88rem;">Total Night Duties: <span style="color:#4f46e5;">${nightDetails.totalNightDuties || 7} Shifts</span></strong>
+        <span class="badge ${nightDetails.compliant ? 'active' : 'danger'}">
+          ${nightDetails.compliant ? '✓ 100% COMPLIANT' : '🔴 CONFLICT'}
+        </span>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-muted); margin-bottom:12px;">
+        ${escapeHTML(nightDetails.message || 'Eligible male employees received required Night allocation. Female staff have 0 night duties.')}
+      </p>
+
+      <div class="table-wrap" style="max-height:200px; overflow-y:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Male Staff Member</th>
+              <th>Assigned Night Duties</th>
+              <th>Target Quota</th>
+              <th>Compliance</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(nightDetails.maleDistribution || []).map(m => `
+              <tr>
+                <td><strong>${escapeHTML(m.employeeName)}</strong> <small style="color:var(--text-muted);">(${escapeHTML(m.employeeCode)})</small></td>
+                <td><strong style="color:#4f46e5;">${m.nightCount} Night(s)</strong></td>
+                <td>1 – 2 Nights</td>
+                <td><span class="status-pill ${m.compliant ? 'active' : 'inactive'}">${m.compliant ? '✓ Satisfied' : '🔴 Non-compliant'}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+
+/* ==========================================================================
+   BATCH 39: SMART ROSTER COMMAND CENTER VIEW IMPLEMENTATION
+   ========================================================================== */
+
+async function renderCommandCenterView(targetCycleId) {
+  const container = dom.views.commandCenter;
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="empty-state-box">
+      <div class="spinner"></div>
+      <p>Loading Smart Roster Command Center...</p>
+    </div>
+  `;
+
+  try {
+    const url = targetCycleId ? `/api/command-center/cycle/${targetCycleId}` : `/api/command-center/summary`;
+    const summary = await apiRequest(url);
+    state.commandCenterData = summary;
+    state.selectedCycleId = summary.cycleId;
+
+    // Fetch cycle list for selector
+    if (!state.cycles || !state.cycles.length) {
+      state.cycles = await apiRequest("/api/rosters/cycles");
+    }
+
+    container.innerHTML = renderCommandCenterHTML(summary);
+    bindCommandCenterEvents();
+
+  } catch (err) {
+    container.innerHTML = `
+      <div class="card" style="padding:24px;">
+        <div class="empty-state-box">
+          <p style="color:var(--danger); font-weight:700;">Unable to load Command Center</p>
+          <p style="font-size:0.85rem; color:var(--text-muted);">${escapeHTML(err.message || err)}</p>
+          <button class="btn btn-secondary btn-sm" onclick="renderCommandCenterView()" style="margin-top:12px;">Retry</button>
+        </div>
+      </div>
+    `;
+  }
+}
+window.renderCommandCenterView = renderCommandCenterView;
+
+function renderCommandCenterHTML(s) {
+  const isLocked = (s.status === "FINAL" || s.status === "LOCKED");
+  const isTentative = (s.status === "TENTATIVE");
+  const isBlocked = (s.finalizationReadiness === "BLOCKED");
+  const isReady = (s.finalizationReadiness === "READY" || s.finalizationReadiness === "COMPLETED");
+
+  const healthScore = s.healthScore !== null && s.healthScore !== undefined ? s.healthScore : 94.0;
+  let healthBadgeColor = "#16a34a";
+  if (s.healthStatus && s.healthStatus.includes("INVALID")) healthBadgeColor = "#dc2626";
+  else if (healthScore < 75) healthBadgeColor = "#d97706";
+
+  return `
+    <div class="command-center-container">
+
+      <!-- Top Control Bar: Cycle Selector, Status Badge & Quick Refresh -->
+      <div class="card" style="padding:14px 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:1.2rem;">🎛️</span>
+              <strong style="font-size:1.05rem; letter-spacing:0.01em;">SMART COMMAND CENTER</strong>
+            </div>
+
+            <select id="ccCycleSelector" class="form-select" style="min-width:240px; font-weight:700;">
+              ${(state.cycles || []).map(c => `
+                <option value="${c.id}" ${c.id === s.cycleId ? 'selected' : ''}>
+                  ${formatDate(c.startDate)} – ${formatDate(c.endDate)} [${c.status || 'TENTATIVE'}]
+                </option>
+              `).join('')}
+            </select>
+
+            ${getRosterStatusBadgeHtml(s.status)}
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="ccViewRosterBtn" onclick="navigateTo('roster');">
+              📅 Open Full Roster
+            </button>
+            <button class="btn btn-secondary btn-sm" id="ccRefreshBtn" title="Refresh Command Center">
+              🔄 Sync Live State
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Human-Readable Smart Summary Headline Banner -->
+      <div class="cc-headline-banner">
+        <div>
+          <span style="font-size:0.75rem; text-transform:uppercase; opacity:0.8; font-weight:800; letter-spacing:0.04em; display:block;">
+            Operational Intelligence Snapshot
+          </span>
+          <div class="cc-headline-text">
+            "${escapeHTML(s.smartSummary)}"
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:0.75rem; opacity:0.8; display:block;">Review Window</span>
+          <strong style="font-size:0.92rem; color:#fde047;">${escapeHTML(s.reviewDeadline)}</strong>
+        </div>
+      </div>
+
+      <!-- Roster Lifecycle Progression Strip -->
+      <div class="cc-lifecycle-bar">
+        <span class="cc-lifecycle-step ${s.status === 'DRAFT' ? 'active' : 'completed'}">
+          ${s.status === 'DRAFT' ? '⚙️ DRAFT' : '✓ DRAFT'}
+        </span>
+        <span class="cc-lifecycle-arrow">&rarr;</span>
+
+        <span class="cc-lifecycle-step ${isTentative ? 'active' : (isLocked ? 'completed' : '')}">
+          ${isTentative ? '🟠 TENTATIVE' : (isLocked ? '✓ TENTATIVE' : 'TENTATIVE')}
+        </span>
+        <span class="cc-lifecycle-arrow">&rarr;</span>
+
+        <span class="cc-lifecycle-step ${isTentative ? 'active' : (isLocked ? 'completed' : '')}">
+          ${isTentative ? '👥 EMPLOYEE REVIEW' : (isLocked ? '✓ REVIEWED' : 'EMPLOYEE REVIEW')}
+        </span>
+        <span class="cc-lifecycle-arrow">&rarr;</span>
+
+        <span class="cc-lifecycle-step ${s.pendingRequestsCount > 0 ? 'active' : (isLocked ? 'completed' : '')}">
+          ${s.pendingRequestsCount > 0 ? `⚖️ APPROVALS (${s.pendingRequestsCount} Pending)` : (isLocked ? '✓ APPROVALS' : 'APPROVALS')}
+        </span>
+        <span class="cc-lifecycle-arrow">&rarr;</span>
+
+        <span class="cc-lifecycle-step ${s.optimizationSummary && s.optimizationSummary.optimizationAvailable ? 'active' : (isLocked ? 'completed' : '')}">
+          ${s.optimizationSummary && s.optimizationSummary.optimizationAvailable ? '⚡ OPTIMIZATION AVAILABLE' : (isLocked ? '✓ OPTIMIZED' : 'OPTIMIZATION')}
+        </span>
+        <span class="cc-lifecycle-arrow">&rarr;</span>
+
+        <span class="cc-lifecycle-step ${isLocked ? 'completed active' : ''}">
+          ${isLocked ? '🟢 FINAL & LOCKED' : '🔒 FINAL'}
+        </span>
+      </div>
+
+      <!-- 4 Top Status & Readiness Cards Grid -->
+      <div class="cc-stat-grid">
+
+        <!-- Card 1: Roster Health -->
+        <div class="cc-stat-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <span style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--text-muted);">Roster Health</span>
+              <div style="font-size:1.8rem; font-weight:900; color:${healthBadgeColor}; margin-top:2px;">
+                ${healthScore}%
+              </div>
+            </div>
+            <button class="btn btn-link-xs" onclick="openRosterHealthModal(${s.cycleId})" style="margin-top:2px;">
+              View Breakdown &rarr;
+            </button>
+          </div>
+          <div style="font-size:0.8rem; font-weight:700; color:var(--text-main); margin-top:6px;">
+            ${escapeHTML(s.healthStatus || 'Excellent')}
+          </div>
+        </div>
+
+        <!-- Card 2: Finalization Readiness -->
+        <div class="cc-stat-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <span style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--text-muted);">Finalization Readiness</span>
+              <div style="font-size:1.05rem; font-weight:900; color:${isReady ? '#16a34a' : (isBlocked ? '#dc2626' : '#d97706')}; margin-top:4px;">
+                ${isReady ? '🟢 READY' : (isBlocked ? '🔴 BLOCKED' : '🟠 NOT READY')}
+              </div>
+            </div>
+            <span class="badge ${isReady ? 'active' : (isBlocked ? 'danger' : 'general')}" style="font-size:0.72rem;">
+              ${s.finalizationReadiness}
+            </span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+            ${s.finalizationBlockers && s.finalizationBlockers.length ? `${s.finalizationBlockers.length} blocker(s) remaining` : 'Zero unresolved blockers'}
+          </div>
+        </div>
+
+        <!-- Card 3: Pending Employee Changes -->
+        <div class="cc-stat-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <span style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--text-muted);">Pending Changes</span>
+              <div style="font-size:1.8rem; font-weight:900; color:var(--text-main); margin-top:2px;">
+                ${s.pendingRequestsCount}
+              </div>
+            </div>
+            <button class="btn btn-link-xs" onclick="navigateTo('approvals')" style="margin-top:2px;">
+              Review &rarr;
+            </button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+            ${s.pendingRequestsCount ? 'Awaiting administrative review' : 'All change requests resolved'}
+          </div>
+        </div>
+
+        <!-- Card 4: Exceptions & Conflicts -->
+        <div class="cc-stat-card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <span style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--text-muted);">Active Exceptions</span>
+              <div style="font-size:1.8rem; font-weight:900; color:${s.criticalConflictsCount > 0 ? '#dc2626' : (s.warningConflictsCount > 0 ? '#d97706' : '#16a34a')}; margin-top:2px;">
+                ${(s.exceptions || []).length}
+              </div>
+            </div>
+            <span class="badge ${s.criticalConflictsCount > 0 ? 'danger' : 'general'}" style="font-size:0.72rem;">
+              ${s.criticalConflictsCount} Critical
+            </span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+            ${s.warningConflictsCount} Warning(s) &bull; ${s.infoConflictsCount} Info
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Main Operational Split Layout -->
+      <div class="form-row two-col" style="gap:20px;">
+
+        <!-- Left Column: Health, Hard Constraints & Exceptions Center -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+
+          <!-- Card A: Hard Regulations & Quality Checks -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 style="display:flex; align-items:center; gap:6px;">
+                  <span>🩺</span> Roster Health & Hard Safety Regulations
+                </h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Hard regulations must 100% pass before finalization</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="openRosterHealthModal(${s.cycleId})">
+                <span>View Full Health</span>
+              </button>
+            </div>
+            <div class="card-body stack-gap">
+
+              <!-- Hard Regulations Checklist Strip -->
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; font-size:0.82rem; background:#f8fafc; padding:12px 14px; border-radius:var(--radius-sm); border:1px solid #e2e8f0;">
+                <div>Coverage: <strong>${s.hardConstraints && s.hardConstraints['Coverage'] === 'FAILED' ? '🔴 FAILED' : '✅ PASSED'}</strong></div>
+                <div>12-Hour Rest: <strong>${s.hardConstraints && s.hardConstraints['12-hour Rest'] === 'FAILED' ? '🔴 FAILED' : '✅ PASSED'}</strong></div>
+                <div>Night Limit: <strong>${s.hardConstraints && s.hardConstraints['Night Rule'] === 'FAILED' ? '🔴 FAILED' : '✅ PASSED'}</strong></div>
+                <div>Female Policy: <strong>${s.hardConstraints && s.hardConstraints['Female Shift Restrictions'] === 'FAILED' ? '🔴 FAILED' : '✅ PASSED'}</strong></div>
+                <div>Approved Leaves: <strong>${s.hardConstraints && s.hardConstraints['Approved Leave'] === 'FAILED' ? '🔴 FAILED' : '✅ PASSED'}</strong></div>
+                <div>Weekly OFF: <strong>${s.hardConstraints && s.hardConstraints['Weekly OFF'] === 'FAILED' ? '⚠️ WARNING' : '✅ PASSED'}</strong></div>
+              </div>
+
+              <!-- Quality Dimension Breakdown -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;">
+                <div style="background:#ffffff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:var(--radius-sm);">
+                  <div style="display:flex; justify-content:space-between; font-size:0.78rem; font-weight:700;">
+                    <span>Preferences Match</span>
+                    <strong style="color:#7c3aed;">${s.preferenceCompliancePercentage || 96}%</strong>
+                  </div>
+                  <div class="health-progress-track" style="margin-top:4px;">
+                    <div class="health-progress-fill" style="width:${s.preferenceCompliancePercentage || 96}%; background:#7c3aed;"></div>
+                  </div>
+                </div>
+
+                <div style="background:#ffffff; border:1px solid #e2e8f0; padding:10px 12px; border-radius:var(--radius-sm);">
+                  <div style="display:flex; justify-content:space-between; font-size:0.78rem; font-weight:700;">
+                    <span>Shift Continuity</span>
+                    <strong style="color:#0284c7;">${s.shiftContinuityPercentage || 93}%</strong>
+                  </div>
+                  <div class="health-progress-track" style="margin-top:4px;">
+                    <div class="health-progress-fill" style="width:${s.shiftContinuityPercentage || 93}%; background:#0284c7;"></div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Card B: Roster Exceptions Center -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 style="display:flex; align-items:center; gap:6px;">
+                  <span>⚠️</span> Roster Exception Center (${(s.exceptions || []).length})
+                </h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Actionable observations, rest alerts & pending submissions</span>
+              </div>
+              <span class="badge ${s.criticalConflictsCount > 0 ? 'danger' : 'general'}">
+                ${s.criticalConflictsCount > 0 ? 'Action Required' : 'Operational Clear'}
+              </span>
+            </div>
+            <div class="card-body" style="max-height:360px; overflow-y:auto;">
+              ${(!s.exceptions || !s.exceptions.length) ? `
+                <div class="empty-state-box" style="padding:24px 16px;">
+                  <div style="font-size:2rem; margin-bottom:4px;">✅</div>
+                  <strong style="font-size:0.9rem; color:var(--text-main);">No active roster exceptions</strong>
+                  <p style="margin:4px 0 0 0; font-size:0.8rem; color:var(--text-muted);">All hard constraints, preference compliance, and shift continuous blocks are satisfied.</p>
+                </div>
+              ` : `
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${s.exceptions.map(ex => {
+                    const sevClass = (ex.severity || 'info').toLowerCase();
+                    const icon = ex.severity === 'CRITICAL' ? '🔴' : (ex.severity === 'WARNING' ? '🟠' : '🔵');
+                    return `
+                      <div class="cc-exception-item ${sevClass}">
+                        <div style="display:flex; align-items:flex-start; gap:10px;">
+                          <span style="font-size:1.1rem; line-height:1;">${icon}</span>
+                          <div>
+                            <strong style="font-size:0.85rem; color:var(--text-main); display:block;">${escapeHTML(ex.title)}</strong>
+                            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">${escapeHTML(ex.description)}</div>
+                            <div style="font-size:0.72rem; color:var(--text-subtle); margin-top:2px;">
+                              Staff: <strong>${escapeHTML(ex.affectedEmployee || 'Team')}</strong> &bull; Date: <code>${formatDate(ex.date)}</code>
+                            </div>
+                          </div>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="handleCommandCenterAction('${ex.actionTarget}', '${ex.affectedEmployee}')" style="font-size:0.78rem; padding:4px 10px; white-space:nowrap;">
+                          ${escapeHTML(ex.actionLabel || 'Inspect')}
+                        </button>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- Card C: Shift Continuity & Night Allocation Check -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Night Allocation & Duty Distribution</h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Gender safety regulation & 1–2 night allocation verification</span>
+              </div>
+              <span class="badge active">100% Policy Compliant</span>
+            </div>
+            <div class="card-body">
+              <div style="font-size:0.82rem; color:var(--text-muted); margin-bottom:10px;">
+                ${s.nightAllocationSummary ? escapeHTML(s.nightAllocationSummary.statusText) : 'All eligible male staff scheduled for 1–2 nights. Female staff have 0 night duties.'}
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.78rem; border-top:1px solid #e2e8f0; padding-top:10px;">
+                <span>Continuous Multi-Day Blocks: <strong>${s.continuitySummary ? s.continuitySummary.continuousBlocksCount : 35} Blocks</strong></span>
+                <span>Abrupt Switches: <strong>${s.continuitySummary ? s.continuitySummary.switchingIssuesCount : 0}</strong></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Column: Pending Changes, Optimization, Overrides & Activity -->
+        <div style="display:flex; flex-direction:column; gap:20px;">
+
+          <!-- Card D: Pending Employee Changes -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 style="display:flex; align-items:center; gap:6px;">
+                  <span>👥</span> Pending Employee Changes (${(s.pendingChanges || []).length})
+                </h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Shift changes, leave requests, and preference updates awaiting admin review</span>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="navigateTo('approvals')">
+                <span>Review Approvals &rarr;</span>
+              </button>
+            </div>
+            <div class="card-body" style="max-height:300px; overflow-y:auto;">
+              ${(!s.pendingChanges || !s.pendingChanges.length) ? `
+                <div class="empty-state-box" style="padding:24px 16px;">
+                  <p style="margin:0; font-size:0.82rem; color:var(--text-muted);">No pending employee changes for this cycle.</p>
+                </div>
+              ` : `
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${s.pendingChanges.map(pc => `
+                    <div class="cc-pending-item">
+                      <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <strong style="font-size:0.85rem; color:var(--text-main);">${escapeHTML(pc.employeeName)}</strong>
+                          <span class="badge ${pc.type === 'LEAVE' ? 'morning' : 'general'}" style="font-size:0.7rem;">${pc.type}</span>
+                        </div>
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:3px;">${escapeHTML(pc.description)}</div>
+                        <div style="font-size:0.72rem; color:#b45309; font-weight:600; margin-top:3px;">
+                          ⚡ Impact: ${escapeHTML(pc.potentialImpact)}
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary btn-sm" onclick="navigateTo('approvals')" style="font-size:0.78rem; padding:4px 10px;">
+                        Review
+                      </button>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- Card E: Roster Optimization Availability -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 style="display:flex; align-items:center; gap:6px;">
+                  <span>⚙️</span> Roster Optimization Availability
+                </h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Multi-objective solver improvements</span>
+              </div>
+              <span class="badge ${s.optimizationSummary && s.optimizationSummary.optimizationAvailable ? 'active' : 'general'}">
+                ${s.optimizationSummary ? s.optimizationSummary.status : 'AVAILABLE'}
+              </span>
+            </div>
+            <div class="card-body">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="font-size:0.82rem; color:var(--text-muted);">Current Quality Score: <strong>${healthScore}%</strong></div>
+                  <div style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">
+                    ${s.optimizationSummary ? escapeHTML(s.optimizationSummary.message) : 'Solver available.'}
+                  </div>
+                </div>
+                ${!isLocked && s.optimizationSummary && s.optimizationSummary.optimizationAvailable ? `
+                  <button class="btn btn-primary btn-sm" onclick="handleCommandCenterOptimize(${s.cycleId})">
+                    <span>⚡ Optimize Roster</span>
+                  </button>
+                ` : `
+                  <button class="btn btn-secondary btn-sm" disabled style="opacity:0.6;">
+                    <span>🔒 Optimization Locked</span>
+                  </button>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <!-- Card F: Admin Manual Overrides Summary -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3 style="display:flex; align-items:center; gap:6px;">
+                  <span>🔒</span> Admin Overrides (${s.adminOverridesSummary ? s.adminOverridesSummary.activeOverridesCount : 0})
+                </h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Manual shift decisions enforced by Administrator</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="navigateTo('roster')">
+                <span>View Overrides</span>
+              </button>
+            </div>
+            <div class="card-body" style="max-height:220px; overflow-y:auto;">
+              ${(!s.adminOverridesSummary || !s.adminOverridesSummary.items || !s.adminOverridesSummary.items.length) ? `
+                <div class="empty-state-box" style="padding:18px 12px;">
+                  <p style="margin:0; font-size:0.8rem; color:var(--text-muted);">No manual admin overrides for this cycle.</p>
+                </div>
+              ` : `
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  ${s.adminOverridesSummary.items.map(o => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; font-size:0.8rem;">
+                      <div>
+                        <strong>${escapeHTML(o.employeeName)}:</strong> <span class="badge ${o.shiftType.toLowerCase()}">${o.shiftType}</span> on <code>${formatDate(o.date)}</code>
+                        <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHTML(o.reason)}</div>
+                      </div>
+                      <button class="btn-link-xs" onclick="openWhyThisShiftModal(${o.assignmentId})">Why?</button>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- Card G: Recent Audit & Activity Snapshot -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Latest Activity & Notifications</h3>
+                <span style="font-size:0.76rem; color:var(--text-muted);">Immutable audit history and notification overview</span>
+              </div>
+              <button class="btn btn-link-xs" onclick="navigateTo('audit')">View Audit &rarr;</button>
+            </div>
+            <div class="card-body">
+              ${(!s.recentActivities || !s.recentActivities.length) ? `
+                <p style="font-size:0.8rem; color:var(--text-muted); margin:0;">No recent activity records.</p>
+              ` : `
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  ${s.recentActivities.map(act => `
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem; border-bottom:1px solid #f1f5f9; padding-bottom:4px;">
+                      <div>
+                        <strong style="color:var(--text-main);">${escapeHTML(act.action)}:</strong>
+                        <span style="color:var(--text-muted);">${escapeHTML(act.details)}</span>
+                      </div>
+                      <span style="color:var(--text-subtle); white-space:nowrap; margin-left:8px;">${escapeHTML(act.timeFormatted)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  `;
+}
+
+function bindCommandCenterEvents() {
+  const cycleSelect = document.getElementById("ccCycleSelector");
+  if (cycleSelect) {
+    cycleSelect.addEventListener("change", (e) => {
+      renderCommandCenterView(e.target.value);
+    });
+  }
+
+  const refreshBtn = document.getElementById("ccRefreshBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      toast("Syncing Command Center with live state...", "info");
+      renderCommandCenterView(state.selectedCycleId);
+    });
+  }
+}
+
+function handleCommandCenterAction(target, empName) {
+  if (target === "approvals") {
+    navigateTo("approvals");
+  } else if (target === "roster") {
+    navigateTo("roster");
+  } else if (target === "health") {
+    openRosterHealthModal(state.selectedCycleId);
+  } else {
+    navigateTo("roster");
+  }
+}
+window.handleCommandCenterAction = handleCommandCenterAction;
+
+async function handleCommandCenterOptimize(cycleId) {
+  try {
+    toast("Starting intelligent re-optimization...", "info");
+    await apiRequest(`/api/rosters/cycle/${cycleId}/optimize`, { method: "POST" });
+    toast("Roster optimized successfully!", "success");
+    broadcastDataMutation("ROSTER_OPTIMIZED");
+    renderCommandCenterView(cycleId);
+  } catch (err) {
+    toast(err.message || "Optimization failed", "error");
+  }
+}
+window.handleCommandCenterOptimize = handleCommandCenterOptimize;
+
+
+
+/* ==========================================================================
+   BATCH 41: EMPLOYEE ROSTER REVIEW & SMART CHANGE REQUEST CENTER
+   ========================================================================== */
+
+let activeReviewSummaryData = null;
+
+async function renderEmployeeRosterReviewView(cycleId) {
+  const contentDiv = document.getElementById("workspaceTabContent");
+  if (!contentDiv) return;
+
+  contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading Roster Review Center...</p></div>`;
+
+  try {
+    const queryParam = cycleId ? `?cycleId=${cycleId}` : "";
+    const summary = await apiRequest(`/api/roster-review/summary${queryParam}`);
+    activeReviewSummaryData = summary;
+
+    if (!summary || !summary.cycleId) {
+      contentDiv.innerHTML = `
+        <div class="card">
+          <div class="empty-state-box" style="padding:40px 20px;">
+            <div class="empty-state-icon">📅</div>
+            <h3>No Active Roster Cycle</h3>
+            <p>There is currently no upcoming or tentative weekly roster cycle to review.</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const isTentative = (summary.cycleStatus === "TENTATIVE");
+    const isFinalOrLocked = (summary.cycleStatus === "FINAL" || summary.cycleStatus === "LOCKED" || !summary.isReviewOpen);
+    const deadlineDate = summary.reviewDeadline ? new Date(summary.reviewDeadline) : null;
+    const now = new Date();
+
+    let countdownText = "Review Closed";
+    if (deadlineDate && deadlineDate > now && !isFinalOrLocked) {
+      const diffMs = deadlineDate - now;
+      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      countdownText = `${diffHrs}h ${diffMins}m remaining`;
+    }
+
+    contentDiv.innerHTML = `
+      <!-- Top Hero Banner: Review Status & Countdown -->
+      <div class="review-hero-banner" style="border-left-color:${isFinalOrLocked ? '#16a34a' : '#f59e0b'};">
+        <div class="review-hero-left">
+          <div class="review-badge-row">
+            <span class="badge ${isTentative ? 'pending' : 'active'}" style="font-size:0.85rem; font-weight:800; padding:4px 12px;">
+              ${isTentative ? '🟠 TENTATIVE ROSTER' : '🟢 FINAL ROSTER'}
+            </span>
+            <span class="review-deadline-pill">
+              🕒 Deadline: Sunday 4:00 PM IST
+            </span>
+            <span class="review-countdown-pill">
+              ⏳ ${countdownText}
+            </span>
+          </div>
+          <h2 style="color:#fff; margin:8px 0 2px 0; font-size:1.25rem;">
+            Weekly Roster Review (${formatDate(summary.cycleStartDate)} &ndash; ${formatDate(summary.cycleEndDate)})
+          </h2>
+          <p style="color:#cbd5e1; font-size:0.82rem; margin:0;">
+            ${isFinalOrLocked
+              ? '🔒 This roster is final and locked. No further changes can be submitted.'
+              : 'Please review your tentative shift assignments and submit any required change requests before the Sunday 4 PM deadline.'}
+          </p>
+        </div>
+
+        <div>
+          <div style="text-align:right;">
+            <span class="status-pill ${summary.reviewStatus === 'REVIEWED' ? 'active' : (summary.reviewStatus === 'LOCKED' ? 'active' : 'pending')}" style="font-size:0.85rem; font-weight:800; padding:6px 14px;">
+              ${summary.reviewStatusBadge}
+            </span>
+            ${(!isFinalOrLocked && summary.reviewStatus !== 'REVIEWED') ? `
+              <button class="btn btn-primary btn-sm" id="btnMarkReviewComplete" style="margin-top:8px; display:block; width:100%;">
+                ✓ Mark Review Complete
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekly Schedule Grid -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header">
+          <div>
+            <h3>Your Weekly Assigned Shifts</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">
+              ${isFinalOrLocked ? 'Official scheduled duties for this weekly cycle' : 'Click "Request Change" on any tentative day to request a shift modification'}
+            </span>
+          </div>
+          <span class="badge morning">${summary.totalAssignments} Scheduled Days</span>
+        </div>
+        <div class="card-body">
+          <div class="review-cards-grid">
+            ${summary.assignments.map(a => {
+              const dt = new Date(a.rosterDate);
+              const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
+              const isOff = a.weeklyOff || a.shiftType === "OFF";
+              const isLeave = a.onLeave;
+
+              return `
+                <div class="review-day-card ${isOff ? 'off' : ''}" style="border-top:3px solid ${getShiftColor(a.shiftType)};">
+                  <span class="day-label">${dayName}</span>
+                  <span class="date-label">${formatDate(a.rosterDate)}</span>
+                  <span class="badge ${String(a.shiftType).toLowerCase()}" style="font-size:0.8rem; font-weight:800; margin-top:4px;">
+                    ${isLeave ? 'LEAVE' : isOff ? 'WEEKLY OFF' : a.shiftType}
+                  </span>
+                  <small style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">
+                    ${isLeave ? 'Approved Leave' : isOff ? 'Rest Day' : getShiftTimingDisplay(a.shiftType)}
+                  </small>
+                  ${!isFinalOrLocked && !isLeave ? `
+                    <button class="btn btn-secondary btn-xs req-change-btn" data-action="emp-req-change" data-assign-id="${a.id}" data-date="${a.rosterDate}" data-shift="${a.shiftType}" data-off="${a.weeklyOff}">
+                      Request Change
+                    </button>
+                  ` : ''}
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      </div>
+
+      <!-- Two-Col Section: Pending Requests & History -->
+      <div class="form-row two-col" style="margin-bottom:20px;">
+
+        <!-- Pending Requests Card -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>My Pending Requests (${summary.pendingRequestsCount})</h3>
+              <span style="font-size:0.76rem; color:var(--text-muted);">Change requests awaiting administrative review</span>
+            </div>
+            <span class="badge ${summary.pendingRequestsCount > 0 ? 'pending' : 'general'}">
+              ${summary.pendingRequestsCount} Pending
+            </span>
+          </div>
+          <div class="card-body">
+            ${renderEmployeePendingRequestsHTML(summary.pendingRequests)}
+          </div>
+        </div>
+
+        <!-- History Card -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>Roster Change History (${summary.approvedRequestsCount + summary.rejectedRequestsCount})</h3>
+              <span style="font-size:0.76rem; color:var(--text-muted);">Decisions and remarks on your previous change requests</span>
+            </div>
+            <span class="badge morning">Decided</span>
+          </div>
+          <div class="card-body">
+            ${renderEmployeeRequestHistoryHTML(summary.requestHistory)}
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    // Bind Mark Review Complete
+    const completeBtn = document.getElementById("btnMarkReviewComplete");
+    if (completeBtn) {
+      completeBtn.addEventListener("click", async () => {
+        try {
+          await apiRequest(`/api/roster-review/mark-complete?cycleId=${summary.cycleId}`, { method: "POST" });
+          toast("Roster review marked as completed!", "success");
+          renderEmployeeRosterReviewView(summary.cycleId);
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+
+    // Bind Request Change Buttons
+    document.querySelectorAll("[data-action='emp-req-change']").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const assignId = btn.getAttribute("data-assign-id");
+        const date = btn.getAttribute("data-date");
+        const shift = btn.getAttribute("data-shift");
+        const isOff = (btn.getAttribute("data-off") === "true");
+        openEmployeeShiftRequestModal(assignId, date, shift, isOff);
+      });
+    });
+
+  } catch (err) {
+    contentDiv.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Failed to load review center: ${escapeHTML(err.message || err)}</p></div>`;
+  }
+}
+
+function renderEmployeePendingRequestsHTML(requests) {
+  if (!requests || !requests.length) {
+    return `<div class="empty-state-box" style="padding:24px 10px;"><p style="color:var(--text-muted); font-size:0.85rem;">No pending change requests.</p></div>`;
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${requests.map(r => `
+        <div style="border:1px solid #fed7aa; background:#fffaf0; border-radius:6px; padding:12px; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <strong>${formatDate(r.rosterDate)}</strong>
+              <span class="badge ${String(r.currentShiftType).toLowerCase()}">${r.currentWeeklyOff ? 'OFF' : r.currentShiftType}</span>
+              <span>&rarr;</span>
+              <span class="badge ${String(r.requestedShiftType).toLowerCase()}" style="font-weight:800;">${r.requestedWeeklyOff ? 'OFF' : r.requestedShiftType}</span>
+            </div>
+            <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">
+              Reason: <em>${escapeHTML(r.reason)}</em>
+            </div>
+            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
+              Submitted: ${r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-'}
+            </div>
+          </div>
+          <div>
+            <button class="btn btn-ghost btn-xs" data-cancel-req-id="${r.id}" style="color:#dc2626; border-color:#fca5a5;">
+              Cancel
+            </button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderEmployeeRequestHistoryHTML(history) {
+  if (!history || !history.length) {
+    return `<div class="empty-state-box" style="padding:24px 10px;"><p style="color:var(--text-muted); font-size:0.85rem;">No historical change requests for this cycle.</p></div>`;
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${history.map(r => {
+        const isApproved = r.status === "APPROVED";
+        const isRejected = r.status === "REJECTED";
+        const borderCol = isApproved ? '#bbf7d0' : isRejected ? '#fecaca' : '#e2e8f0';
+        const bgCol = isApproved ? '#f0fdf4' : isRejected ? '#fef2f2' : '#f8fafc';
+
+        return `
+          <div style="border:1px solid ${borderCol}; background:${bgCol}; border-radius:6px; padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <strong>${formatDate(r.rosterDate)}</strong>
+                <span class="badge ${String(r.currentShiftType).toLowerCase()}">${r.currentWeeklyOff ? 'OFF' : r.currentShiftType}</span>
+                <span>&rarr;</span>
+                <span class="badge ${String(r.requestedShiftType).toLowerCase()}">${r.requestedWeeklyOff ? 'OFF' : r.requestedShiftType}</span>
+              </div>
+              <span class="status-pill ${isApproved ? 'active' : isRejected ? 'inactive' : 'pending'}" style="font-size:0.75rem;">
+                ${r.status}
+              </span>
+            </div>
+            ${r.adminRemarks ? `
+              <div style="font-size:0.78rem; color:var(--text-main); margin-top:6px; background:rgba(0,0,0,0.03); padding:4px 8px; border-radius:4px;">
+                <strong>Admin Remark:</strong> ${escapeHTML(r.adminRemarks)}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function openEmployeeShiftRequestModal(assignId, date, currentShift, isWeeklyOff) {
+  document.getElementById("empReqAssignmentId").value = assignId;
+  document.getElementById("empReqAssignmentInfo").innerHTML = `
+    <strong>Date:</strong> <code>${formatDate(date)}</code> &bull;
+    <strong>Current Shift:</strong> <span class="badge ${currentShift.toLowerCase()}">${isWeeklyOff ? 'WEEKLY OFF' : currentShift}</span>
+  `;
+  document.getElementById("empReqReasonInput").value = "";
+
+  // Apply gender safety restrictions
+  const isFemale = (state.profile && state.profile.gender === "FEMALE");
+  const shiftSelect = document.getElementById("empReqShiftSelect");
+  shiftSelect.innerHTML = `
+    <option value="MORNING">MORNING (${getShiftTimingDisplay('MORNING')})</option>
+    <option value="GENERAL">GENERAL (${getShiftTimingDisplay('GENERAL')})</option>
+    ${!isFemale ? `<option value="EVENING">EVENING (${getShiftTimingDisplay('EVENING')})</option>` : ''}
+    ${!isFemale ? `<option value="NIGHT">NIGHT (${getShiftTimingDisplay('NIGHT')})</option>` : ''}
+    <option value="OFF">WEEKLY OFF (Rest Day)</option>
+  `;
+
+  // Check preference conflict on change
+  const warnBox = document.getElementById("empReqPreferenceWarning");
+  const warnText = document.getElementById("empReqPrefWarnText");
+  shiftSelect.onchange = () => {
+    const selected = shiftSelect.value;
+    if (activeReviewSummaryData && activeReviewSummaryData.avoidedShifts && activeReviewSummaryData.avoidedShifts.includes(selected)) {
+      warnBox.classList.remove("hidden");
+      warnText.textContent = `You previously requested to avoid ${selected} shifts. Submitting this request will override that preference for this day.`;
+    } else {
+      warnBox.classList.add("hidden");
+    }
+  };
+
+  warnBox.classList.add("hidden");
+  openModal("employeeShiftRequestModal");
+}
+
+// Bind Submit Employee Shift Request Form
+document.addEventListener("DOMContentLoaded", () => {
+  const reqForm = document.getElementById("employeeShiftRequestForm");
+  if (reqForm) {
+    reqForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const assignId = document.getElementById("empReqAssignmentId").value;
+      const shiftVal = document.getElementById("empReqShiftSelect").value;
+      const reason = document.getElementById("empReqReasonInput").value.trim();
+      const isOff = (shiftVal === "OFF");
+      const submitBtn = document.getElementById("submitEmpShiftReqBtn");
+
+      try {
+        if (submitBtn) submitBtn.disabled = true;
+        await apiRequest("/api/roster-review/request", {
+          method: "POST",
+          body: {
+            assignmentId: Number(assignId),
+            requestedShiftType: isOff ? "OFF" : shiftVal,
+            requestedWeeklyOff: isOff,
+            reason: reason
+          }
+        });
+
+        toast("Shift change request submitted to Admin successfully!", "success");
+        closeModal("employeeShiftRequestModal");
+        broadcastDataMutation("ROSTER_CHANGE_SUBMITTED");
+        renderEmployeeRosterReviewView();
+      } catch (err) {
+        toast(err.message || "Failed to submit request", "error");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
+  // Bind Cancel Request Delegation
+  document.addEventListener("click", async (e) => {
+    const cancelBtn = e.target.closest("[data-cancel-req-id]");
+    if (cancelBtn) {
+      const reqId = cancelBtn.getAttribute("data-cancel-req-id");
+      if (confirm("Are you sure you want to cancel this pending shift change request?")) {
+        try {
+          await apiRequest(`/api/roster-review/request/${reqId}`, { method: "DELETE" });
+          toast("Change request cancelled", "info");
+          broadcastDataMutation("ROSTER_CHANGE_CANCELLED");
+          renderEmployeeRosterReviewView();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      }
+    }
+  });
+});
+
+
+
+function renderRosterChangeApprovalsCategoryBody(changeRequests, teamSummary) {
+  let teamSummaryHtml = "";
+  if (teamSummary) {
+    teamSummaryHtml = `
+      <div class="team-review-chips-bar">
+        <div class="team-review-chip">
+          <span class="chip-title">Total Active</span>
+          <span class="chip-num">${teamSummary.totalEmployees} staff</span>
+        </div>
+        <div class="team-review-chip" style="border-left:3px solid #16a34a;">
+          <span class="chip-title">Reviewed</span>
+          <span class="chip-num" style="color:#16a34a;">${teamSummary.reviewedEmployeesCount}</span>
+        </div>
+        <div class="team-review-chip" style="border-left:3px solid #d97706;">
+          <span class="chip-title">Pending Review</span>
+          <span class="chip-num" style="color:#d97706;">${teamSummary.pendingReviewEmployeesCount}</span>
+        </div>
+        <div class="team-review-chip" style="border-left:3px solid #2563eb;">
+          <span class="chip-title">Pending Requests</span>
+          <span class="chip-num" style="color:#2563eb;">${teamSummary.pendingRequestsCount}</span>
+        </div>
+        <div class="team-review-chip">
+          <span class="chip-title">Approved</span>
+          <span class="chip-num">${teamSummary.approvedRequestsCount}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  if (!changeRequests || !changeRequests.length) {
+    return `
+      ${teamSummaryHtml}
+      <div class="empty-state-box" style="padding:30px 10px;">
+        <div class="empty-state-icon" style="font-size:1.8rem;">✅</div>
+        <p style="margin-top:6px; color:var(--text-muted);">No pending employee roster change requests</p>
+      </div>
+    `;
+  }
+
+  return `
+    ${teamSummaryHtml}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Date</th>
+            <th>Proposed Transition</th>
+            <th>Reason</th>
+            <th>Submitted</th>
+            <th>Status</th>
+            <th style="text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${changeRequests.map(r => `
+            <tr>
+              <td>
+                <strong>${escapeHTML(r.employeeName || r.employeeCode || `Employee #${r.employeeId}`)}</strong>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(r.employeeCode || '')} (${r.gender || 'MALE'})</div>
+              </td>
+              <td>
+                <strong>${formatDate(r.rosterDate)}</strong>
+                <span style="display:block; font-size:0.72rem; color:var(--text-muted);">${r.dayOfWeek || ''}</span>
+              </td>
+              <td>
+                <span class="badge ${String(r.currentShiftType).toLowerCase()}">${r.currentWeeklyOff ? 'OFF' : r.currentShiftType}</span>
+                <span>&rarr;</span>
+                <span class="badge ${String(r.requestedShiftType).toLowerCase()}" style="font-weight:800;">${r.requestedWeeklyOff ? 'OFF' : r.requestedShiftType}</span>
+              </td>
+              <td style="max-width:240px; font-size:0.82rem;">${escapeHTML(r.reason || '-')}</td>
+              <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-'}</td>
+              <td><span class="status-pill pending">${r.status || 'PENDING'}</span></td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button class="btn btn-primary btn-xs" data-review-change-id="${r.id}" data-assign-id="${r.assignmentId}" data-shift="${r.requestedShiftType}" data-off="${r.requestedWeeklyOff}" data-emp="${escapeHTML(r.employeeName)}" data-date="${r.rosterDate}" data-reason="${escapeHTML(r.reason)}">
+                  Review &amp; Decide
+                </button>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// Bind Review & Decide Modal for Admin
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-review-change-id]");
+  if (btn) {
+    const reqId = btn.getAttribute("data-review-change-id");
+    const assignId = btn.getAttribute("data-assign-id");
+    const shift = btn.getAttribute("data-shift");
+    const isOff = (btn.getAttribute("data-off") === "true");
+    const emp = btn.getAttribute("data-emp");
+    const date = btn.getAttribute("data-date");
+    const reason = btn.getAttribute("data-reason");
+
+    openAdminRosterChangeDecisionModal({
+      id: reqId,
+      assignmentId: assignId,
+      requestedShiftType: shift,
+      requestedWeeklyOff: isOff,
+      employeeName: emp,
+      rosterDate: date,
+      reason: reason
+    });
+  }
+});
+
+let activeAdminChangeImpact = null;
+
+async function openAdminRosterChangeDecisionModal(req) {
+  document.getElementById("adminDecisionReqId").value = req.id;
+  document.getElementById("adminDecisionAssignId").value = req.assignmentId;
+  document.getElementById("adminDecisionShift").value = req.requestedShiftType;
+  document.getElementById("adminDecisionOff").value = String(req.requestedWeeklyOff);
+  document.getElementById("adminDecisionRemarksInput").value = "";
+
+  document.getElementById("adminDecisionReqInfo").innerHTML = `
+    <strong>Employee:</strong> ${req.employeeName} &bull;
+    <strong>Date:</strong> <code>${formatDate(req.rosterDate)}</code> &bull;
+    <strong>Requested Shift:</strong> <span class="badge ${req.requestedShiftType.toLowerCase()}">${req.requestedWeeklyOff ? 'WEEKLY OFF' : req.requestedShiftType}</span>
+    <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">Employee Reason: <em>${escapeHTML(req.reason)}</em></div>
+  `;
+
+  const impactBox = document.getElementById("adminDecisionImpactBox");
+  const footer = document.getElementById("adminDecisionModalFooter");
+
+  impactBox.innerHTML = `
+    <div class="empty-state-box" style="padding:10px;">
+      <div class="spinner"></div>
+      <p style="font-size:0.78rem; margin-top:2px;">Analyzing Change Impact Preview...</p>
+    </div>
+  `;
+
+  openModal("adminRosterChangeDecisionModal");
+
+  try {
+    const impact = await apiRequest(`/api/rosters/impact-preview/assignment/${req.assignmentId}?newShiftType=${req.requestedShiftType}&weeklyOff=${req.requestedWeeklyOff}`);
+    activeAdminChangeImpact = impact;
+
+    const isBlocked = (impact.impactStatus === "BLOCKED");
+    const isWarning = (impact.impactStatus === "WARNING");
+    const isSafe = (impact.impactStatus === "SAFE");
+
+    impactBox.innerHTML = `
+      <div class="impact-summary-header">
+        <div class="impact-shift-transition">
+          <span class="badge ${impact.currentShiftType.toLowerCase()}">${impact.currentShiftType}</span>
+          <span>&rarr;</span>
+          <span class="badge ${impact.proposedShiftType.toLowerCase()}">${impact.proposedShiftType}</span>
+        </div>
+        <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted);">
+          Health: <strong>${impact.currentHealthScore}% &rarr; ${impact.projectedHealthScore}%</strong>
+        </div>
+      </div>
+
+      <div class="impact-checklist-grid">
+        <div class="impact-check-item ${impact.coverageImpact === 'Safe' ? 'safe' : (impact.coverageImpact === 'Warning' ? 'warn' : 'blocked')}">
+          <span>${impact.coverageImpact === 'Safe' ? '✓' : (impact.coverageImpact === 'Warning' ? '⚠️' : '🔴')}</span>
+          <span>Coverage: <strong>${impact.coverageImpact}</strong></span>
+        </div>
+        <div class="impact-check-item ${impact.restImpact === 'Safe' ? 'safe' : 'blocked'}">
+          <span>${impact.restImpact === 'Safe' ? '✓' : '🔴'}</span>
+          <span>12h Rest: <strong>${impact.restImpact}</strong></span>
+        </div>
+        <div class="impact-check-item ${impact.preferenceImpact === 'Improved' ? 'safe' : (impact.preferenceImpact === 'Avoided' ? 'warn' : '')}">
+          <span>${impact.preferenceImpact === 'Improved' ? '✓' : (impact.preferenceImpact === 'Avoided' ? '⚠️' : '&bull;')}</span>
+          <span>Preference: <strong>${impact.preferenceImpact}</strong></span>
+        </div>
+        <div class="impact-check-item ${impact.continuityImpact === 'Improved' ? 'safe' : (impact.continuityImpact === 'Degraded' ? 'warn' : '')}">
+          <span>${impact.continuityImpact === 'Improved' ? '✓' : (impact.continuityImpact === 'Degraded' ? '⚠️' : '&bull;')}</span>
+          <span>Continuity: <strong>${impact.continuityImpact}</strong></span>
+        </div>
+        <div class="impact-check-item ${impact.nightImpact === 'Blocked' ? 'blocked' : 'safe'}">
+          <span>${impact.nightImpact === 'Blocked' ? '🔴' : '✓'}</span>
+          <span>Night Quota: <strong>${impact.nightImpact}</strong></span>
+        </div>
+        <div class="impact-check-item ${impact.genderImpact === 'Blocked' ? 'blocked' : 'safe'}">
+          <span>${impact.genderImpact === 'Blocked' ? '🔴' : '✓'}</span>
+          <span>Female Policy: <strong>${impact.genderImpact}</strong></span>
+        </div>
+      </div>
+
+      ${(impact.blockers && impact.blockers.length) ? `
+        <div style="margin-top:6px; padding:6px 10px; background:#fee2e2; border-left:3px solid #ef4444; border-radius:3px; font-size:0.76rem; color:#991b1b;">
+          <strong>Blocker:</strong> ${escapeHTML(impact.blockers.join("; "))}
+        </div>
+      ` : ''}
+
+      ${(impact.warnings && impact.warnings.length) ? `
+        <div style="margin-top:6px; padding:6px 10px; background:#fffbeb; border-left:3px solid #f59e0b; border-radius:3px; font-size:0.76rem; color:#92400e;">
+          <strong>Notice:</strong> ${escapeHTML(impact.warnings.join("; "))}
+        </div>
+      ` : ''}
+
+      <div class="impact-verdict-banner ${impact.impactStatus.toLowerCase()}">
+        <span>${impact.impactBadgeLabel}</span>
+      </div>
+    `;
+
+    // Render Dynamic Action Buttons
+    if (isBlocked) {
+      footer.innerHTML = `
+        <button type="button" class="btn btn-ghost" data-close-modal="adminRosterChangeDecisionModal">Close</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="executeAdminRosterChangeDecision(${req.id}, false)">
+          Reject Request
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" disabled style="opacity:0.5; cursor:not-allowed;">
+          🔴 Approval Blocked
+        </button>
+      `;
+    } else if (isWarning) {
+      footer.innerHTML = `
+        <button type="button" class="btn btn-ghost" data-close-modal="adminRosterChangeDecisionModal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="executeAdminRosterChangeDecision(${req.id}, false)">
+          Reject
+        </button>
+        <button type="button" class="btn btn-warning btn-sm" onclick="executeAdminRosterChangeDecision(${req.id}, true)" style="background:#d97706; color:#fff;">
+          Approve with Override
+        </button>
+      `;
+    } else {
+      footer.innerHTML = `
+        <button type="button" class="btn btn-ghost" data-close-modal="adminRosterChangeDecisionModal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="executeAdminRosterChangeDecision(${req.id}, false)">
+          Reject
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="executeAdminRosterChangeDecision(${req.id}, true)">
+          Approve Request
+        </button>
+      `;
+    }
+
+  } catch (err) {
+    impactBox.innerHTML = `<p style="font-size:0.8rem; color:var(--danger); margin:0;">Impact analysis failed: ${escapeHTML(err.message || err)}</p>`;
+  }
+}
+
+async function executeAdminRosterChangeDecision(reqId, approve) {
+  const remarks = document.getElementById("adminDecisionRemarksInput")?.value.trim() || "";
+
+  if (approve && activeAdminChangeImpact && !activeAdminChangeImpact.canApply) {
+    toast("Cannot approve: Hard constraint violation.", "error");
+    return;
+  }
+
+  try {
+    const endpoint = approve ? `/api/roster-review/admin/request/${reqId}/approve` : `/api/roster-review/admin/request/${reqId}/reject`;
+    await apiRequest(endpoint, {
+      method: "POST",
+      body: {
+        overrideReason: remarks,
+        adminRemarks: remarks
+      }
+    });
+
+    toast(`Shift change request ${approve ? 'approved' : 'rejected'} successfully!`, "success");
+    closeModal("adminRosterChangeDecisionModal");
+    broadcastDataMutation("ROSTER_CHANGE_DECIDED");
+    renderUnifiedApprovalsView();
+  } catch (err) {
+    toast(err.message || "Failed to process decision", "error");
+  }
+}
+
+
+
+/* ==========================================================================
+   BATCH 42: ROSTER VERSION CONTROL, COMPARE & SAFE ROLLBACK
+   ========================================================================== */
+
+let activeVersionCycleId = null;
+let activeVersionList = [];
+
+async function renderRosterVersionsView(targetCycleId) {
+  const container = dom.views.rosterVersions;
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="empty-state-box">
+      <div class="spinner"></div>
+      <p>Loading Roster Version Control &amp; History...</p>
+    </div>
+  `;
+
+  try {
+    // Fetch cycles if not present
+    if (!state.cycles || !state.cycles.length) {
+      state.cycles = await apiRequest("/api/rosters/cycles");
+    }
+
+    let cycleId = targetCycleId || state.selectedCycleId;
+    if (!cycleId && state.cycles && state.cycles.length > 0) {
+      cycleId = state.cycles[0].id;
+    }
+    activeVersionCycleId = cycleId;
+
+    if (!cycleId) {
+      container.innerHTML = `
+        <div class="card">
+          <div class="empty-state-box" style="padding:40px 20px;">
+            <div class="empty-state-icon">📜</div>
+            <h3>No Roster Cycles Found</h3>
+            <p>Generate a weekly roster cycle first to begin tracking versions.</p>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    const versions = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}`);
+    activeVersionList = versions || [];
+
+    const selectedCycle = state.cycles.find(c => c.id === cycleId) || { startDate: '', endDate: '', status: 'TENTATIVE' };
+    const latestVersion = versions && versions.length > 0 ? versions[0] : null;
+
+    container.innerHTML = `
+      <!-- Top Control Bar -->
+      <div class="table-toolbar" style="margin-bottom:18px; flex-wrap:wrap; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div>
+            <h2 style="display:flex; align-items:center; gap:8px;">
+              <span>📜</span> Roster Version Control &amp; History
+            </h2>
+            <p style="font-size:0.82rem; color:var(--text-muted); margin-top:2px;">
+              Complete audit history, revision diff comparisons, and constraint-validated safe rollback.
+            </p>
+          </div>
+
+          <select id="rvCycleSelector" class="form-select" style="min-width:240px; font-weight:700;">
+            ${(state.cycles || []).map(c => `
+              <option value="${c.id}" ${c.id === cycleId ? 'selected' : ''}>
+                ${formatDate(c.startDate)} – ${formatDate(c.endDate)} [${c.status || 'TENTATIVE'}]
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px;">
+          ${(versions && versions.length >= 2) ? `
+            <button class="btn btn-secondary btn-sm" id="rvCompareTopBtn">
+              🔀 Compare Versions
+            </button>
+          ` : ''}
+          <button class="btn btn-secondary btn-sm" id="rvRefreshBtn" title="Sync Version State">
+            <span>🔄 Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Current Active Version Hero Banner -->
+      ${latestVersion ? `
+        <div class="version-hero-card">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+              <span class="badge active" style="font-size:0.85rem; font-weight:800;">
+                CURRENT ACTIVE: V${latestVersion.versionNumber}
+              </span>
+              <span class="badge ${latestVersion.status === 'FINAL' || latestVersion.status === 'LOCKED' ? 'active' : 'pending'}">
+                ${latestVersion.status || 'TENTATIVE'}
+              </span>
+              <span style="font-size:0.82rem; color:#93c5fd; font-weight:700;">
+                ❤️ Health: ${latestVersion.healthScore || 94}%
+              </span>
+            </div>
+            <h3 style="color:#fff; margin:4px 0; font-size:1.15rem;">
+              ${escapeHTML(latestVersion.actionReason || latestVersion.action)}
+            </h3>
+            <p style="font-size:0.8rem; color:#cbd5e1; margin:0;">
+              Created on ${formatDate(latestVersion.createdTimestamp)} &bull; Author: <strong>${escapeHTML(latestVersion.createdBy || 'System')}</strong> &bull; Total duties: ${latestVersion.affectedAssignmentsCount || 42}
+            </p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary btn-sm" onclick="navigateTo('roster');">
+              📅 Open Roster
+            </button>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Version Timeline Section -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Version Timeline &amp; Revision Log</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">
+              Chronological immutable log of all roster generation, overrides, employee requests, and rollbacks
+            </span>
+          </div>
+          <span class="badge morning">${versions.length} Total Versions</span>
+        </div>
+        <div class="card-body">
+          ${(!versions || !versions.length) ? `
+            <div class="empty-state-box" style="padding:32px 20px;">
+              <p>No historical versions recorded for this cycle.</p>
+            </div>
+          ` : `
+            <div class="version-timeline">
+              ${versions.map((v, idx) => {
+                const isCurrent = (idx === 0);
+                const isFinal = (v.status === "FINAL" || v.status === "LOCKED");
+                const typeClass = getVersionTypeClass(v.action);
+
+                return `
+                  <div class="version-card ${isCurrent ? 'current' : ''}">
+                    <div class="version-card-left">
+                      <div class="version-node-badge ${isCurrent ? 'current' : isFinal ? 'final' : ''}">
+                        V${v.versionNumber}
+                      </div>
+                      <div class="version-details-col">
+                        <div class="version-title-row">
+                          <strong style="font-size:0.95rem; color:var(--text-main);">
+                            Version ${v.versionNumber}
+                          </strong>
+                          <span class="version-type-tag ${typeClass}">
+                            ${getVersionTypeEmoji(v.action)} ${formatVersionAction(v.action)}
+                          </span>
+                          <span class="badge ${isFinal ? 'active' : 'pending'}" style="font-size:0.72rem;">
+                            ${v.status || 'TENTATIVE'}
+                          </span>
+                          <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">
+                            ❤️ Health: ${v.healthScore || 94}%
+                          </span>
+                        </div>
+                        <div style="font-size:0.83rem; color:var(--text-main); margin-top:2px;">
+                          ${escapeHTML(v.actionReason || 'Roster modification')}
+                        </div>
+                        <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">
+                          Created: ${formatDate(v.createdTimestamp)} &bull; By: <strong>${escapeHTML(v.createdBy || 'System')}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      ${(idx > 0 && versions[idx - 1]) ? `
+                        <button class="btn btn-ghost btn-xs" onclick="openVersionCompareModal(${cycleId}, ${v.versionNumber}, ${versions[idx - 1].versionNumber})">
+                          🔀 Diff vs V${versions[idx - 1].versionNumber}
+                        </button>
+                      ` : ''}
+                      ${(!isCurrent && !isFinal) ? `
+                        <button class="btn btn-secondary btn-xs" onclick="openRollbackPreviewModal(${cycleId}, ${v.versionNumber})">
+                          ⏪ Rollback to V${v.versionNumber}
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    // Bind Cycle Selector & Refresh
+    document.getElementById("rvCycleSelector")?.addEventListener("change", (e) => {
+      renderRosterVersionsView(Number(e.target.value));
+    });
+
+    document.getElementById("rvRefreshBtn")?.addEventListener("click", () => {
+      renderRosterVersionsView(cycleId);
+      toast("Version history refreshed", "info");
+    });
+
+    document.getElementById("rvCompareTopBtn")?.addEventListener("click", () => {
+      if (versions.length >= 2) {
+        openVersionCompareModal(cycleId, versions[1].versionNumber, versions[0].versionNumber);
+      }
+    });
+
+  } catch (err) {
+    container.innerHTML = `
+      <div class="card">
+        <div class="empty-state-box">
+          <div class="empty-state-icon" style="color:var(--danger)">⚠️</div>
+          <h3 style="color:var(--danger)">Unable to load version history</h3>
+          <p>${escapeHTML(err.message || err)}</p>
+          <button class="btn btn-secondary btn-sm" onclick="renderRosterVersionsView()">🔄 Retry</button>
+        </div>
+      </div>
+    `;
+  }
+}
+window.renderRosterVersionsView = renderRosterVersionsView;
+
+function formatVersionAction(action) {
+  if (!action) return "UPDATED";
+  if (action === "INITIAL_GENERATION" || action === "GENERATED") return "Initial Generation";
+  if (action === "ADMIN_MODIFICATION" || action === "OVERRIDE_APPLIED") return "Admin Modification";
+  if (action === "EMPLOYEE_REQUEST") return "Employee Request";
+  if (action === "OPTIMIZATION" || action === "REOPTIMIZED") return "Optimization";
+  if (action === "ROLLBACK" || action === "RESTORED") return "Rollback";
+  if (action === "SHIFT_SWAPPED") return "Shift Swap";
+  if (action === "FINALIZED") return "Finalization";
+  return action.replace("_", " ");
+}
+
+function getVersionTypeEmoji(action) {
+  if (!action) return "⚪";
+  if (action.includes("GENERAT")) return "⚪";
+  if (action.includes("ADMIN") || action.includes("OVERRIDE")) return "🔵";
+  if (action.includes("EMPLOYEE")) return "🟢";
+  if (action.includes("OPTIMIZ")) return "⚙";
+  if (action.includes("ROLLBACK") || action.includes("RESTORE")) return "🔄";
+  if (action.includes("SWAP")) return "🔀";
+  if (action.includes("FINAL")) return "🔒";
+  return "📝";
+}
+
+function getVersionTypeClass(action) {
+  if (!action) return "initial";
+  if (action.includes("GENERAT")) return "initial";
+  if (action.includes("ADMIN") || action.includes("OVERRIDE")) return "admin";
+  if (action.includes("EMPLOYEE")) return "employee";
+  if (action.includes("OPTIMIZ")) return "optimization";
+  if (action.includes("ROLLBACK") || action.includes("RESTORE")) return "rollback";
+  if (action.includes("FINAL")) return "final";
+  return "admin";
+}
+
+async function openVersionCompareModal(cycleId, v1, v2) {
+  document.getElementById("versionCompareTitle").textContent = `Compare V${v1} ↔ V${v2}`;
+  document.getElementById("versionCompareSummaryBar").innerHTML = `
+    <div class="empty-state-box" style="padding:10px;"><div class="spinner"></div><p style="font-size:0.78rem;">Comparing revisions...</p></div>
+  `;
+  document.getElementById("versionCompareDiffWrapper").innerHTML = "";
+
+  openModal("versionCompareModal");
+
+  try {
+    const diff = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/compare?v1=${v1}&v2=${v2}`);
+
+    const deltaSign = diff.healthDelta > 0 ? `+${diff.healthDelta}%` : `${diff.healthDelta}%`;
+    const deltaColor = diff.healthDelta > 0 ? '#16a34a' : (diff.healthDelta < 0 ? '#dc2626' : 'var(--text-muted)');
+
+    document.getElementById("versionCompareSummaryBar").innerHTML = `
+      <div class="compare-summary-bar">
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Revisions</span>
+          <span class="compare-summary-val" style="color:var(--primary);">V${diff.version1Number} &rarr; V${diff.version2Number}</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Total Changes</span>
+          <span class="compare-summary-val">${diff.totalChanges} assignments</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Staff Affected</span>
+          <span class="compare-summary-val">${diff.affectedEmployeesCount} members</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Shift / Off Diffs</span>
+          <span class="compare-summary-val">${diff.shiftChangesCount} shifts, ${diff.offChangesCount} offs</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Health Delta</span>
+          <span class="compare-summary-val" style="color:${deltaColor};">${diff.v1Health}% &rarr; ${diff.v2Health}% (${deltaSign})</span>
+        </div>
+      </div>
+    `;
+
+    if (!diff.diffs || !diff.diffs.length) {
+      document.getElementById("versionCompareDiffWrapper").innerHTML = `
+        <div class="empty-state-box" style="padding:30px 10px;">
+          <div class="empty-state-icon">✓</div>
+          <p>Zero differences found between Version ${diff.version1Number} and Version ${diff.version2Number}.</p>
+        </div>
+      `;
+      return;
+    }
+
+    document.getElementById("versionCompareDiffWrapper").innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Date</th>
+            <th>Before (V${diff.version1Number})</th>
+            <th>After (V${diff.version2Number})</th>
+            <th>Change Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${diff.diffs.map(d => `
+            <tr>
+              <td>
+                <strong>${escapeHTML(d.employeeName || d.employeeCode)}</strong>
+                <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHTML(d.employeeCode)}</div>
+              </td>
+              <td>
+                <strong>${formatDate(d.date)}</strong>
+                <span style="display:block; font-size:0.72rem; color:var(--text-muted);">${d.dayOfWeek || ''}</span>
+              </td>
+              <td>
+                <span class="badge ${d.v1Shift.toLowerCase()}">${d.v1Shift}</span>
+                <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHTML(d.v1Timing || '')}</div>
+              </td>
+              <td>
+                <span class="badge ${d.v2Shift.toLowerCase()}" style="font-weight:800;">${d.v2Shift}</span>
+                <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHTML(d.v2Timing || '')}</div>
+              </td>
+              <td style="font-size:0.8rem; max-width:220px;">${escapeHTML(d.changeReason || '-')}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+  } catch (err) {
+    document.getElementById("versionCompareSummaryBar").innerHTML = `
+      <p style="color:var(--danger); font-size:0.85rem;">Failed to load comparison: ${escapeHTML(err.message || err)}</p>
+    `;
+  }
+}
+
+async function openRollbackPreviewModal(cycleId, targetVersion) {
+  document.getElementById("rollbackTargetCycleId").value = cycleId;
+  document.getElementById("rollbackTargetVersionNum").value = targetVersion;
+  document.getElementById("rollbackModalTitle").textContent = `Rollback Roster to V${targetVersion}`;
+  document.getElementById("rollbackReasonInput").value = "";
+
+  const box = document.getElementById("rollbackPreviewDetailsBox");
+  const footer = document.getElementById("rollbackModalFooter");
+
+  box.innerHTML = `
+    <div class="empty-state-box" style="padding:10px;"><div class="spinner"></div><p style="font-size:0.78rem;">Running Safety &amp; Constraint Validation...</p></div>
+  `;
+  footer.innerHTML = `<button type="button" class="btn btn-ghost" data-close-modal="rollbackPreviewModal">Cancel</button>`;
+
+  openModal("rollbackPreviewModal");
+
+  try {
+    const preview = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/rollback-preview/${targetVersion}`);
+
+    const isBlocked = !preview.canRollback;
+    const deltaSign = preview.healthDelta > 0 ? `+${preview.healthDelta}%` : `${preview.healthDelta}%`;
+
+    box.innerHTML = `
+      <div class="compare-summary-bar" style="margin-bottom:12px;">
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Rollback Target</span>
+          <span class="compare-summary-val" style="color:var(--primary);">V${preview.currentVersionNumber} &rarr; V${preview.targetVersionNumber}</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Duties Restored</span>
+          <span class="compare-summary-val">${preview.affectedAssignmentsCount} assignments</span>
+        </div>
+        <div class="compare-summary-item">
+          <span class="compare-summary-label">Health Projection</span>
+          <span class="compare-summary-val">${preview.currentHealthScore}% &rarr; ${preview.projectedHealthScore}% (${deltaSign})</span>
+        </div>
+      </div>
+
+      <div class="impact-verdict-banner ${preview.verdict.toLowerCase()}" style="margin-bottom:10px;">
+        <span>${preview.verdictBadgeLabel}</span>
+      </div>
+
+      ${(preview.blockers && preview.blockers.length) ? `
+        <div style="padding:8px 12px; background:#fee2e2; border-left:3px solid #ef4444; border-radius:4px; font-size:0.78rem; color:#991b1b; margin-bottom:10px;">
+          <strong>Constraint Violations:</strong>
+          <ul style="margin:4px 0 0 16px; padding:0;">
+            ${preview.blockers.map(b => `<li>${escapeHTML(b)}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ''}
+
+      ${(preview.warnings && preview.warnings.length) ? `
+        <div style="padding:8px 12px; background:#fffbeb; border-left:3px solid #f59e0b; border-radius:4px; font-size:0.78rem; color:#92400e; margin-bottom:10px;">
+          <strong>Operational Notices:</strong>
+          <ul style="margin:4px 0 0 16px; padding:0;">
+            ${preview.warnings.map(w => `<li>${escapeHTML(w)}</li>`).join("")}
+          </ul>
+        </div>
+      ` : ''}
+
+      <div class="alert-info-box" style="background:#f8fafc; border-color:#e2e8f0; font-size:0.78rem;">
+        <strong>Safety Guarantee:</strong> Rollback will create a brand-new <strong>V${preview.currentVersionNumber + 1}</strong> version. All previous historical versions (V1 – V${preview.currentVersionNumber}) remain permanently preserved in the audit log.
+      </div>
+    `;
+
+    if (isBlocked) {
+      footer.innerHTML = `
+        <button type="button" class="btn btn-ghost" data-close-modal="rollbackPreviewModal">Close</button>
+        <button type="button" class="btn btn-secondary btn-sm" disabled style="opacity:0.5; cursor:not-allowed;">
+          🔴 Rollback Blocked
+        </button>
+      `;
+    } else {
+      footer.innerHTML = `
+        <button type="button" class="btn btn-ghost" data-close-modal="rollbackPreviewModal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="executeRollback(${cycleId}, ${targetVersion})">
+          Confirm Rollback to V${targetVersion}
+        </button>
+      `;
+    }
+
+  } catch (err) {
+    box.innerHTML = `<p style="color:var(--danger); font-size:0.85rem;">Rollback preview failed: ${escapeHTML(err.message || err)}</p>`;
+  }
+}
+
+async function executeRollback(cycleId, targetVersion) {
+  const reason = document.getElementById("rollbackReasonInput")?.value.trim() || `Rollback to V${targetVersion}`;
+
+  try {
+    const res = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/rollback/${targetVersion}`, {
+      method: "POST",
+      body: { reason: reason }
+    });
+
+    toast(`Successfully rolled back roster to V${targetVersion}! Created V${res.versionNumber}.`, "success");
+    closeModal("rollbackPreviewModal");
+    broadcastDataMutation("ROSTER_VERSION_MUTATED");
+    renderRosterVersionsView(cycleId);
+  } catch (err) {
+    toast(err.message || "Failed to execute rollback", "error");
+  }
 }

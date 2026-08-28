@@ -46,6 +46,12 @@ public class RosterVersion {
     @Column(name = "snapshot_data", columnDefinition = "LONGTEXT")
     private String snapshotData;
 
+    @Column(name = "health_score")
+    private Integer healthScore = 94;
+
+    @Column(name = "impact_summary", length = 500)
+    private String impactSummary;
+
     public RosterVersion() {}
 
     public Long getId() { return id; }
@@ -70,4 +76,9 @@ public class RosterVersion {
     public void setAffectedAssignmentsCount(Integer affectedAssignmentsCount) { this.affectedAssignmentsCount = affectedAssignmentsCount; }
     public String getSnapshotData() { return snapshotData; }
     public void setSnapshotData(String snapshotData) { this.snapshotData = snapshotData; }
+    public Integer getHealthScore() { return healthScore; }
+    public void setHealthScore(Integer healthScore) { this.healthScore = healthScore; }
+    public String getImpactSummary() { return impactSummary; }
+    public void setImpactSummary(String impactSummary) { this.impactSummary = impactSummary; }
+
 }

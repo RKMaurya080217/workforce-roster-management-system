@@ -188,8 +188,9 @@ class Batch18FullStabilizationAndEmailIntegrityTest {
         Employee emp2 = employeeRepository.findByUserUsername("emp002").orElseThrow();
 
         // Employee requests contactNumber change
+        String newContact = "9876543299".equals(emp2.getContactNumber()) ? "9876543288" : "9876543299";
         ProfileChangeRequestResponse req = profileChangeRequestService.submitRequest(
-                new CreateProfileChangeRequest("contactNumber", "9876543210")
+                new CreateProfileChangeRequest("contactNumber", newContact)
         );
         assertEquals(ProfileChangeStatus.PENDING, req.status());
 
@@ -203,7 +204,7 @@ class Batch18FullStabilizationAndEmailIntegrityTest {
 
         // Verify profile updated in database
         Employee updatedEmp = employeeRepository.findById(emp2.getId()).orElseThrow();
-        assertEquals("9876543210", updatedEmp.getContactNumber());
+        assertEquals(newContact, updatedEmp.getContactNumber());
 
         // Verify notification delivered to employee
         authenticateEmployee("emp002");
