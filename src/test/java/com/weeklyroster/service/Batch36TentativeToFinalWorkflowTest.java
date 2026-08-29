@@ -26,9 +26,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
+@org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 @WithMockUser(username = "emp001", roles = {"EMPLOYEE", "ADMIN"})
 public class Batch36TentativeToFinalWorkflowTest {
+
+    @Autowired
+    private RosterOverrideRepository overrideRepository;
+
+    @Autowired
+    private RosterVersionRepository versionRepository;
 
     @Autowired
     private RosterSchedulerService schedulerService;
@@ -64,6 +70,12 @@ public class Batch36TentativeToFinalWorkflowTest {
 
     @BeforeEach
     void setUp() {
+        overrideRepository.deleteAll();
+        assignmentRepository.deleteAll();
+        versionRepository.deleteAll();
+        emailLogRepository.deleteAll();
+        cycleRepository.deleteAll();
+
         LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         upcomingMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusDays(7);
     }

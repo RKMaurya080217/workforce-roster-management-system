@@ -4,6 +4,30 @@ All notable changes, bug fixes, database schema refinements, and architectural s
 
 ---
 
+## [1.0.0] - Batch 52: Database Optimization, Table Consolidation & Schema Refinement (2026-08-29)
+
+### Added
+- **Database Architecture Documentation**:
+  - `WRMS Documents/Database/WRMS-Current-Database-Inventory.md`: Complete audit of all 20 existing tables.
+  - `WRMS Documents/Database/WRMS-Optimized-Database-Design.md`: Schema design consolidating overrides, activity streams, and status flags.
+  - `WRMS Documents/Database/WRMS-Database-Migration-Guide.md`: Step-by-step SQL migration and index optimization script.
+
+### Optimized & Streamlined
+- **Roster Overrides Consolidation**: Merged override tracking (`is_overridden`, `original_shift_id`, `override_reason`, `overridden_by`, `overridden_at`) directly into `roster_assignments`.
+- **Unified Audit Logs**: Unified system audit events and employee activity logs into centralized `audit_logs` store.
+- **Full Automated Regression**: All 398 tests verified passing with zero data or functional loss.
+
+## [1.0.0] - Batch 51: Live Gmail SMTP Verification + Full WRMS Runtime Scan + Final Production Validation (2026-08-29)
+
+### Added
+- **Automated Live Email Verification Suite**: Implemented `Batch51LiveEmailVerificationTest.java` verifying SMTP protocol handshake, tentative/final email dispatch, duplicate prevention, and personal schedule template rendering.
+- **Email Subsystem Verification Report**: Published `WRMS Documents/WRMS-Email-Verification-Report.md` detailing SMTP architecture, security posture, and live transmission telemetry.
+
+### Verified & Hardened
+- **Test Isolation**: Added `@DirtiesContext` and clean state lifecycle in `Batch36TentativeToFinalWorkflowTest.java`.
+- **Complete Test Suite**: All 398 automated tests passing cleanly with 100% success (0 Failures, 0 Errors, 0 Skipped).
+- **Live Production Package**: Built `target/weekly-roster-management-system-1.0.0.jar` and verified live end-to-end HTTP endpoints.
+
 ## [1.0.0] - Batch 50: WRMS Final UAT, Production Release Candidate & Full Regression (2026-08-29)
 
 ### Added
