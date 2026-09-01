@@ -110,6 +110,27 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
             }
         }
 
+                // 4. Mail environment variables mapping for Railway (MAIL_USERNAME, MAIL_APP_PASSWORD, etc.)
+        String mailHost = getFirstNonBlank(environment, "SPRING_MAIL_HOST", "MAIL_HOST", "SMTP_HOST");
+        if (mailHost != null && !mailHost.isBlank()) {
+            overrides.put("spring.mail.host", mailHost.trim());
+        }
+
+        String mailPort = getFirstNonBlank(environment, "SPRING_MAIL_PORT", "MAIL_PORT", "SMTP_PORT");
+        if (mailPort != null && !mailPort.isBlank()) {
+            overrides.put("spring.mail.port", mailPort.trim());
+        }
+
+        String mailUser = getFirstNonBlank(environment, "MAIL_USERNAME", "SPRING_MAIL_USERNAME", "SMTP_USERNAME", "SPRING_MAIL_USER");
+        if (mailUser != null && !mailUser.isBlank()) {
+            overrides.put("spring.mail.username", mailUser.trim());
+        }
+
+        String mailPass = getFirstNonBlank(environment, "MAIL_APP_PASSWORD", "SPRING_MAIL_PASSWORD", "MAIL_PASSWORD", "SMTP_PASSWORD", "SPRING_MAIL_APP_PASSWORD");
+        if (mailPass != null && !mailPass.isBlank()) {
+            overrides.put("spring.mail.password", mailPass.trim());
+        }
+
         if (!overrides.isEmpty()) {
             environment.getPropertySources().addFirst(new MapPropertySource(PROPERTY_SOURCE_NAME, overrides));
         }

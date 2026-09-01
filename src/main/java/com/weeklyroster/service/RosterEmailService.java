@@ -56,10 +56,10 @@ public class RosterEmailService {
     @Value("${spring.mail.host:smtp.gmail.com}")
     private String mailHost;
 
-    @Value("${spring.mail.username:${MAIL_USERNAME:rajatkumarmaury@gmail.com}}")
+    @Value("${spring.mail.username:${MAIL_USERNAME:${SPRING_MAIL_USERNAME:${SMTP_USERNAME:rajatkumarmaury@gmail.com}}}}")
     private String mailUsername;
 
-    @Value("${spring.mail.password:${MAIL_APP_PASSWORD:}}")
+    @Value("${spring.mail.password:${MAIL_APP_PASSWORD:${SPRING_MAIL_PASSWORD:${MAIL_PASSWORD:}}}}")
     private String mailPassword;
 
     private volatile boolean isShuttingDown = false;
@@ -395,11 +395,12 @@ public class RosterEmailService {
                 deliveryLog.setErrorMessage(ex.getMessage() != null ? ex.getMessage() : "SMTP delivery failed");
             }
         } else {
-            if (mailPassword == null || mailPassword.isBlank()) {
-                log.info("MAIL_APP_PASSWORD is not configured. Simulated roster email recorded for {}.", deliveryLog.getRecipientEmail());
-            }
-            deliveryLog.setStatus(EmailDeliveryStatus.SENT);
-            deliveryLog.setErrorMessage(null);
+            String errorMsg = (mailPassword == null || mailPassword.isBlank())
+                    ? "SMTP delivery skipped: MAIL_APP_PASSWORD / SPRING_MAIL_PASSWORD is not configured in Railway environment."
+                    : "SMTP delivery skipped: JavaMailSender is not initialized.";
+            log.warn("[WRMS EMAIL] {}", errorMsg);
+            deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
+            deliveryLog.setErrorMessage(errorMsg);
         }
 
         java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
