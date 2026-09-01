@@ -74,10 +74,11 @@ public class Batch41RosterReviewTest {
                 impactService, notificationService, auditService, healthService
         );
 
+        LocalDate upcomingMonday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
         testCycle = new RosterCycle();
         testCycle.setId(101L);
-        testCycle.setStartDate(LocalDate.of(2026, 8, 31));
-        testCycle.setEndDate(LocalDate.of(2026, 9, 6));
+        testCycle.setStartDate(upcomingMonday);
+        testCycle.setEndDate(upcomingMonday.plusDays(6));
         testCycle.setStatus(RosterStatus.TENTATIVE);
 
         User rajatUser = new User();

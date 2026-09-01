@@ -141,9 +141,16 @@ public class RosterController {
         return ResponseEntity.ok(rosterEmailService.sendTestEmail(to));
     }
 
-    @GetMapping
+    @GetMapping({"", "/cycles"})
     public ResponseEntity<List<RosterCycleResponse>> all() {
         return ResponseEntity.ok(rosterService.allCycles());
+    }
+
+    @PostMapping(value = "/cycle/{id}/optimize", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterCycleResponse> optimizeCycle(@PathVariable("id") Long id) {
+        RosterCycleResponse current = rosterService.cycle(id);
+        return ResponseEntity.ok(rosterService.generateWeeklyRoster(current.startDate(), GenerationMode.MANUAL));
     }
 
     @GetMapping("/cycle/{id}")

@@ -111,7 +111,6 @@ const dom = {
   globalRefreshBtn: document.getElementById("globalRefreshBtn"),
   toastContainer: document.getElementById("toastContainer"),
   floatingTooltip: document.getElementById("dashboardFloatingTooltip"),
-
   // View Panels
   views: {
     dashboard: document.getElementById("viewDashboard"),
@@ -146,6 +145,7 @@ const WRMS_ICONS = {
   // Navigation & Core View Icons
   dashboard: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
   roster: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>`,
+  commandCenter: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/><path d="m7 8 3 3-3 3"/><path d="M13 14h4"/></svg>`,
   employees: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   approvals: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
   leaves: `<svg class="wrms-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>`,
@@ -183,6 +183,7 @@ const WRMS_ICONS = {
   fileCsv: `<svg class="wrms-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>`
 };
 window.WRMS_ICONS = WRMS_ICONS;
+
 
 // Admin Primary Navigation Menu Items (Directly Visible)
 const ADMIN_PRIMARY_NAV = [
@@ -820,7 +821,7 @@ function setupRouter() {
 
 function renderNavigation() {
   const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
-  
+
   if (isEmployee) {
     const currentTab = state.workspaceTab || "overview";
     dom.sidebarNav.innerHTML = EMPLOYEE_NAV.map(item => {
@@ -834,9 +835,9 @@ function renderNavigation() {
         }
       }
       return `
-        <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-tab="${item.tab || ''}" title="${item.label}" aria-label="${item.label}">
-          ${item.icon}
-          <span>${item.label}</span>
+        <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-tab="${item.tab || ''}" title="${item.label || ''}" aria-label="${item.label || ''}">
+          ${item.icon || ''}
+          <span>${item.label || ''}</span>
           ${badgeHtml}
         </button>
       `;
@@ -873,9 +874,9 @@ function renderNavigation() {
       }
     }
     return `
-      <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label}" aria-label="${item.label}">
-        ${item.icon}
-        <span>${item.label}</span>
+      <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label || ''}" aria-label="${item.label || ''}">
+        ${item.icon || ''}
+        <span>${item.label || ''}</span>
         ${badgeHtml}
       </button>
     `;
@@ -884,9 +885,9 @@ function renderNavigation() {
   const moreSubItemsHtml = ADMIN_MORE_NAV.map(item => {
     const isActive = state.activePage === item.id;
     return `
-      <button class="nav-sub-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label}" aria-label="${item.label}">
-        ${item.icon}
-        <span>${item.label}</span>
+      <button class="nav-sub-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label || ''}" aria-label="${item.label || ''}">
+        ${item.icon || ''}
+        <span>${item.label || ''}</span>
       </button>
     `;
   }).join("");
@@ -894,9 +895,9 @@ function renderNavigation() {
   const moreToggleHtml = `
     <div class="nav-more-group">
       <button id="adminMoreToggleBtn" class="nav-more-toggle ${isMorePageActive ? 'has-active-child' : ''} ${isExpanded ? 'expanded' : ''}" title="More Administration Tools" aria-expanded="${isExpanded}" aria-label="Toggle More Admin Tools">
-        ${WRMS_ICONS.more}
+        ${WRMS_ICONS.more || ''}
         <span>More</span>
-        <span class="more-chevron">${isExpanded ? WRMS_ICONS.chevronUp : WRMS_ICONS.chevronDown}</span>
+        <span class="more-chevron">${isExpanded ? (WRMS_ICONS.chevronUp || '') : (WRMS_ICONS.chevronDown || '')}</span>
       </button>
       <div id="adminMoreSubMenu" class="nav-sub-menu ${isExpanded ? 'expanded' : 'collapsed'}" role="region" aria-label="Secondary Admin Tools">
         ${moreSubItemsHtml}

@@ -44,7 +44,6 @@ public class SystemHealthService {
         this.sseEmitterService = sseEmitterService;
     }
 
-    @Transactional(readOnly = true)
     public SystemHealthResponse getSystemHealth() {
         List<ComponentHealth> components = new ArrayList<>();
         boolean hasFailure = false;
@@ -69,8 +68,16 @@ public class SystemHealthService {
         }
 
         // 3. Required Master Data (Employees & Shifts)
-        long empCount = employeeRepository.count();
-        long shiftCount = shiftRepository.count();
+        long empCount = 0;
+        long shiftCount = 0;
+        if (!hasFailure) {
+            try {
+                empCount = employeeRepository.count();
+                shiftCount = shiftRepository.count();
+            } catch (Exception e) {
+                hasWarning = true;
+            }
+        }
         if (empCount >= 7 && shiftCount >= 4) {
             components.add(new ComponentHealth("Master Data Integrity", "HEALTHY", "Staff and Shifts properly populated", "Employees: " + empCount + ", Shifts: " + shiftCount));
         } else {
@@ -91,7 +98,14 @@ public class SystemHealthService {
         }
 
         // 6. Roster Scheduling Engine & Active Cycles
-        long cycleCount = cycleRepository.count();
+        long cycleCount = 0;
+        if (!hasFailure) {
+            try {
+                cycleCount = cycleRepository.count();
+            } catch (Exception e) {
+                hasWarning = true;
+            }
+        }
         components.add(new ComponentHealth("Roster Scheduling Engine", "HEALTHY", "Automated Constraint Solver ready", "Total historical cycles: " + cycleCount));
 
         String overall = hasFailure ? "FAILED" : (hasWarning ? "WARNING" : "HEALTHY");

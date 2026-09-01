@@ -40,6 +40,14 @@ public class RosterVersionController {
         return ResponseEntity.ok(versionService.compareVersions(cycleId, v1, v2));
     }
 
+    @GetMapping("/compare")
+    @Operation(summary = "Compare two specific roster versions by version IDs")
+    public ResponseEntity<VersionComparisonResponse> compareVersionsById(
+            @RequestParam("version1Id") Long version1Id,
+            @RequestParam("version2Id") Long version2Id) {
+        return ResponseEntity.ok(versionService.compareVersionsById(version1Id, version2Id));
+    }
+
     @GetMapping("/cycle/{cycleId}/version/{versionNumber}")
     @Operation(summary = "Get detailed snapshot data of a specific roster version")
     public ResponseEntity<RosterVersionResponse> getVersionDetails(

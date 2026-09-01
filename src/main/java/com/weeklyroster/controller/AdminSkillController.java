@@ -74,9 +74,9 @@ public class AdminSkillController {
         return ResponseEntity.ok(skillService.updateEmployeeSkill(id, req, auth.getName()));
     }
 
-    @DeleteMapping("/assignments/{id}")
+    @DeleteMapping({"/assignments/{id}", "/employee-skill/{id}"})
     @Operation(summary = "Remove skill assignment from employee")
-    public ResponseEntity<Void> removeAssignment(@PathVariable Long id, Authentication auth) {
+    public ResponseEntity<Void> removeAssignment(@PathVariable("id") Long id, Authentication auth) {
         skillService.removeSkillFromEmployee(id, auth.getName());
         return ResponseEntity.noContent().build();
     }

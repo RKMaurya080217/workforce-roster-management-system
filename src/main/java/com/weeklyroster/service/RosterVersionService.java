@@ -149,6 +149,17 @@ public class RosterVersionService {
     }
 
     @Transactional(readOnly = true)
+    public VersionComparisonResponse compareVersionsById(Long v1Id, Long v2Id) {
+        RosterVersion v1 = versionRepository.findById(v1Id)
+                .orElseThrow(() -> new ResourceNotFoundException("Version not found with id: " + v1Id));
+
+        RosterVersion v2 = versionRepository.findById(v2Id)
+                .orElseThrow(() -> new ResourceNotFoundException("Version not found with id: " + v2Id));
+
+        return buildComparison(v1, v2);
+    }
+
+    @Transactional(readOnly = true)
     public RollbackPreviewResponse previewRollback(Long cycleId, int targetVersionNumber) {
         RosterCycle cycle = cycleRepository.findById(cycleId)
                 .orElseThrow(() -> new ResourceNotFoundException("Roster cycle not found with id: " + cycleId));
