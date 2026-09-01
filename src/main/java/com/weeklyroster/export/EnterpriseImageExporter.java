@@ -11,7 +11,19 @@ import javax.imageio.ImageIO;
 
 public class EnterpriseImageExporter {
 
+    static {
+        System.setProperty("java.awt.headless", "true");
+    }
+
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private static Font getSafeFont(String family, int style, int size) {
+        try {
+            return new Font(family, style, size);
+        } catch (Throwable t) {
+            return new Font(Font.SANS_SERIF, style, size);
+        }
+    }
 
     public static byte[] generateImage(String title, List<String[]> rows, String format) throws IOException {
         if (rows == null || rows.isEmpty()) {
@@ -52,12 +64,12 @@ public class EnterpriseImageExporter {
         g.fillRoundRect(marginX, currentY, tableW, 90, 16, 16);
 
         // Header Title
-        g.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        g.setFont(getSafeFont("Segoe UI", Font.BOLD, 22));
         g.setColor(Color.WHITE);
         g.drawString(title, marginX + 24, currentY + 40);
 
         // Subtitle
-        g.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 13));
         g.setColor(new Color(148, 163, 184));
         g.drawString("Weekly Roster Management System (WRMS) Enterprise Export  |  Generated: " + LocalDateTime.now().format(TIME_FMT) + "  |  Rows: " + totalRows, marginX + 24, currentY + 68);
 
@@ -70,7 +82,7 @@ public class EnterpriseImageExporter {
         g.setColor(new Color(30, 41, 59)); // Slate 800
         g.fillRoundRect(marginX, currentY, tableW, colHeaderH, 8, 8);
 
-        g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
         g.setColor(Color.WHITE);
         for (int c = 0; c < colCount; c++) {
             int cellX = marginX + (c * colW);
@@ -81,7 +93,7 @@ public class EnterpriseImageExporter {
         currentY += colHeaderH;
 
         // 3. Table Rows
-        g.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 13));
         for (int r = 1; r < rows.size(); r++) {
             String[] rowData = rows.get(r);
 
@@ -105,16 +117,16 @@ public class EnterpriseImageExporter {
                 // Highlighting
                 if ("WORKING".equalsIgnoreCase(val) || "APPROVED".equalsIgnoreCase(val) || "ACTIVE".equalsIgnoreCase(val) || "YES".equalsIgnoreCase(val)) {
                     g.setColor(new Color(22, 101, 52)); // Green
-                    g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+                    g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
                 } else if ("ON_LEAVE".equalsIgnoreCase(val) || "REJECTED".equalsIgnoreCase(val) || "CRITICAL".equalsIgnoreCase(val)) {
                     g.setColor(new Color(185, 28, 28)); // Red
-                    g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+                    g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
                 } else if ("WEEKLY_OFF".equalsIgnoreCase(val) || "OFF".equalsIgnoreCase(val) || "PENDING".equalsIgnoreCase(val) || "LOCKED".equalsIgnoreCase(val)) {
                     g.setColor(new Color(180, 83, 9)); // Amber
-                    g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+                    g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
                 } else {
                     g.setColor(new Color(51, 65, 85)); // Normal text
-                    g.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+                    g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 13));
                 }
 
                 g.drawString(truncate(val, 24), cellX + 12, currentY + 23);
@@ -134,7 +146,7 @@ public class EnterpriseImageExporter {
 
         // 4. Footer
         g.setColor(new Color(148, 163, 184));
-        g.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 12));
         g.drawString("Confidential & Proprietary  |  Weekly Roster Management System (WRMS)", marginX, currentY + 30);
 
         g.dispose();

@@ -7,7 +7,6 @@ import com.weeklyroster.entity.ShiftType;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -25,8 +24,20 @@ import javax.imageio.ImageIO;
 
 public class RosterImageExporter {
 
+    static {
+        System.setProperty("java.awt.headless", "true");
+    }
+
     private static final DateTimeFormatter DISPLAY_DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
     private static final DateTimeFormatter SHORT_DATE_FMT = DateTimeFormatter.ofPattern("dd-MMM");
+
+    public static Font getSafeFont(String family, int style, int size) {
+        try {
+            return new Font(family, style, size);
+        } catch (Throwable t) {
+            return new Font(Font.SANS_SERIF, style, size);
+        }
+    }
 
     public static byte[] exportToImage(RosterCycleResponse cycle, List<Shift> shifts) throws IOException {
         int width = 1600;
@@ -103,12 +114,12 @@ public class RosterImageExporter {
         g.fillRoundRect(20, 20, width - 40, headerHeight - 30, 16, 16);
 
         // Header Title
-        g.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        g.setFont(getSafeFont("Segoe UI", Font.BOLD, 26));
         g.setColor(Color.WHITE);
         g.drawString("WRMS — Weekly Roster Schedule", 45, 62);
 
         // Cycle Subtitle
-        g.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 15));
         g.setColor(new Color(148, 163, 184));
         String sub = "Cycle: " + start.format(DISPLAY_DATE_FMT) + " – " + end.format(DISPLAY_DATE_FMT)
                 + "  |  Generated: " + (cycle.generatedAt() != null ? cycle.generatedAt().toString().replace("T", " ") : "N/A");
@@ -118,7 +129,7 @@ public class RosterImageExporter {
         String modeStr = cycle.generationMode() != null ? cycle.generationMode().name() : "MANUAL";
         g.setColor(new Color(30, 58, 138));
         g.fillRoundRect(width - 200, 42, 140, 32, 8, 8);
-        g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
         g.setColor(new Color(191, 219, 254));
         g.drawString("MODE: " + modeStr, width - 185, 63);
 
@@ -165,7 +176,7 @@ public class RosterImageExporter {
 
             // Draw header text
             g.setColor(Color.WHITE);
-            g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
             String hText = headers[i];
             drawWrappedHeader(g, hText, currX + 10, tableY + 22, colWidths[i] - 20);
 
@@ -197,16 +208,16 @@ public class RosterImageExporter {
             }
 
             // Date cell
-            g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
             g.setColor(new Color(15, 23, 42));
             g.drawString(date.format(SHORT_DATE_FMT), tableX + 15, currY + rHeight / 2 - 2);
-            g.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 11));
             g.setColor(new Color(100, 116, 139));
             g.drawString(date.format(DateTimeFormatter.ofPattern("yyyy")), tableX + 15, currY + rHeight / 2 + 14);
 
             // Day cell
             String dayName = date.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-            g.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            g.setFont(getSafeFont("Segoe UI", Font.BOLD, 13));
             g.setColor(new Color(30, 41, 59));
             g.drawString(dayName, tableX + colWidths[0] + 15, currY + rHeight / 2 + 4);
 
@@ -240,7 +251,7 @@ public class RosterImageExporter {
 
         // Footer Summary
         int footerY = currY + 28;
-        g.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 12));
         g.setColor(new Color(100, 116, 139));
         g.drawString("Official Weekly Roster Management System (WRMS) Schedule. Generated strictly adhering to 12h rest & night safety rules.", 40, footerY);
 
@@ -255,7 +266,7 @@ public class RosterImageExporter {
         if (text.contains(" (")) {
             String[] parts = text.split(" \\(", 2);
             g.drawString(parts[0], x, y);
-            g.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+            g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 11));
             g.setColor(new Color(241, 245, 249));
             g.drawString("(" + parts[1], x, y + 16);
         } else {
@@ -265,7 +276,7 @@ public class RosterImageExporter {
 
     private static void drawStaffChips(Graphics2D g, List<String> staffList, int x, int y, int w, int h, Color bg, Color textCol) {
         if (staffList == null || staffList.isEmpty()) {
-            g.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+            g.setFont(getSafeFont("Segoe UI", Font.PLAIN, 12));
             g.setColor(new Color(148, 163, 184));
             g.drawString("—", x + w / 2 - 4, y + h / 2 + 4);
             return;
@@ -282,7 +293,7 @@ public class RosterImageExporter {
             g.setColor(new Color(textCol.getRed(), textCol.getGreen(), textCol.getBlue(), 60));
             g.drawRoundRect(x + 6, startY, w - 12, chipH, 6, 6);
 
-            g.setFont(new Font("Segoe UI", Font.BOLD, 11));
+            g.setFont(getSafeFont("Segoe UI", Font.BOLD, 11));
             g.setColor(textCol);
             g.drawString(name, x + 12, startY + 15);
 

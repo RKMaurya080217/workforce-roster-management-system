@@ -4569,3 +4569,262 @@ html, body {
   font-weight: 800;
   color: var(--text-main);
 }
+
+/* ==========================================================================
+   BATCH 46: COMPLETE RESPONSIVE WEB & MOBILE NAVIGATION STABILIZATION
+   ========================================================================== */
+
+/* 1. Mobile Sidebar Backdrop Overlay */
+.sidebar-mobile-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-mobile-backdrop.active {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.sidebar-mobile-locked {
+  overflow: hidden !important;
+}
+
+/* 2. Responsive Table Containment */
+.table-wrap, .table-responsive, .roster-matrix-wrap, .roster-table-container, .card-body-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 8px;
+}
+
+.data-table, .roster-grid-table, .employee-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* 3. Export Actions & Button Groups */
+.export-actions, .topbar-actions, .card-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 4. Responsive Breakpoint <= 1024px (Tablets & Mobile) */
+@media (max-width: 1024px) {
+  .app-layout {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-sidebar {
+    position: fixed !important;
+    left: -290px !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    max-width: 85vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 1000 !important;
+    box-shadow: none;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), left 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    overflow-y: auto !important;
+  }
+
+  .app-sidebar.mobile-open {
+    left: 0 !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45) !important;
+  }
+
+  .sidebar-collapse-btn {
+    display: inline-flex !important;
+    cursor: pointer;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex !important;
+  }
+
+  .app-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    min-width: 0 !important;
+  }
+
+  .app-topbar {
+    padding: 10px 16px !important;
+    min-height: 56px;
+  }
+
+  .app-content-viewport {
+    padding: 16px 14px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+}
+
+/* 5. Responsive Breakpoint <= 768px (Standard Mobile) */
+@media (max-width: 768px) {
+  .app-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px !important;
+  }
+
+  .topbar-left {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .topbar-right {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .breadcrumbs {
+    display: none;
+  }
+
+  #pageHeadingTitle {
+    font-size: 1.1rem !important;
+  }
+
+  .app-content-viewport {
+    padding: 12px 10px !important;
+  }
+
+  .card {
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+
+  .card-header {
+    padding: 12px 14px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .card-header h2, .card-header h3 {
+    font-size: 0.95rem;
+  }
+
+  .card-body {
+    padding: 12px 14px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 10px;
+  }
+
+  .stat-card {
+    padding: 12px 14px;
+  }
+
+  .stat-number {
+    font-size: 1.5rem !important;
+  }
+
+  .form-row.two-col, .form-row.three-col {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  /* Responsive Modals */
+  .modal-dialog {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 90vh !important;
+    max-height: 90dvh !important;
+    margin: 12px auto !important;
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+  }
+
+  .modal-body {
+    overflow-y: auto !important;
+    max-height: calc(90vh - 120px) !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 14px;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+
+  .modal-footer .btn {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+
+  /* Touch-friendly Action Buttons */
+  .btn, .btn-sm {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-icon {
+    min-width: 38px;
+    min-height: 38px;
+  }
+}
+
+/* 6. Responsive Breakpoint <= 480px (Compact Mobile - 320px, 360px, 375px, 390px, 414px) */
+@media (max-width: 480px) {
+  .app-content-viewport {
+    padding: 10px 8px !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .topbar-right .date-badge {
+    display: none !important;
+  }
+
+  .export-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .nav-item {
+    padding: 12px 14px;
+    font-size: 0.92rem;
+  }
+
+  .review-window-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+}

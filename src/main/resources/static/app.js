@@ -1,4 +1,47 @@
 
+/* ==========================================================================
+   BATCH 46: MOBILE SIDEBAR & NAVIGATION STABILIZATION HELPERS
+   ========================================================================== */
+
+function closeMobileSidebar() {
+  if (dom.appSidebar) {
+    dom.appSidebar.classList.remove("mobile-open");
+  }
+  const backdrop = document.getElementById("sidebarMobileBackdrop");
+  if (backdrop) {
+    backdrop.classList.remove("active");
+  }
+  document.body.classList.remove("sidebar-mobile-locked");
+}
+window.closeMobileSidebar = closeMobileSidebar;
+
+function openMobileSidebar() {
+  if (dom.appSidebar) {
+    dom.appSidebar.classList.add("mobile-open");
+  }
+  let backdrop = document.getElementById("sidebarMobileBackdrop");
+  if (!backdrop) {
+    backdrop = document.createElement("div");
+    backdrop.id = "sidebarMobileBackdrop";
+    backdrop.className = "sidebar-mobile-backdrop";
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener("click", closeMobileSidebar);
+  }
+  backdrop.classList.add("active");
+  document.body.classList.add("sidebar-mobile-locked");
+}
+window.openMobileSidebar = openMobileSidebar;
+
+function toggleMobileSidebar() {
+  if (dom.appSidebar && dom.appSidebar.classList.contains("mobile-open")) {
+    closeMobileSidebar();
+  } else {
+    openMobileSidebar();
+  }
+}
+window.toggleMobileSidebar = toggleMobileSidebar;
+
+
 // Batch 36: Uniform Roster Status Badge Helper
 function getRosterStatusBadgeHtml(status) {
   if (!status) status = "GENERATED";
@@ -640,8 +683,11 @@ function parseRouteTarget(target) {
       "weekly-roster": "roster",
       "weekly_roster": "roster",
       "command-center": "commandCenter",
+      "commandCenter": "commandCenter",
       "command_center": "commandCenter",
       "smart-command-center": "commandCenter",
+      "smartCommandCenter": "commandCenter",
+      "admin/commandCenter": "commandCenter",
       "admin/command-center": "commandCenter",
       "admin/roster": "roster",
       "admin/weekly-roster": "roster",
@@ -762,6 +808,7 @@ function parseRouteTarget(target) {
     }
 
     const adminCanonicalHashes = {
+      commandCenter: "#/command-center",
       dashboard: "#/dashboard",
       roster: "#/weekly-roster",
       employees: "#/employees",
@@ -1031,6 +1078,9 @@ function updateTopbarTitle(pageId) {
 
 async function loadActiveView() {
   switch (state.activePage) {
+    case "commandCenter":
+      await renderCommandCenterView(state.selectedCycleId);
+      break;
     case "dashboard":
       await renderDashboardView();
       break;
@@ -8461,7 +8511,7 @@ function renderHealthNightTabHTML(nightDetails) {
 
 
 /* ==========================================================================
-   BATCH 39: SMART ROSTER COMMAND CENTER VIEW IMPLEMENTATION
+   BATCH 39/42: SMART ROSTER COMMAND CENTER VIEW IMPLEMENTATION
    ========================================================================== */
 
 async function renderCommandCenterView(targetCycleId) {
@@ -8469,9 +8519,9 @@ async function renderCommandCenterView(targetCycleId) {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="empty-state-box">
+    <div class="empty-state-box" style="padding:60px 20px;">
       <div class="spinner"></div>
-      <p>Loading Smart Roster Command Center...</p>
+      <p style="font-weight:600; color:var(--text-main); margin-top:12px;">Loading Smart Roster Command Center...</p>
     </div>
   `;
 
@@ -8483,19 +8533,45 @@ async function renderCommandCenterView(targetCycleId) {
 
     // Fetch cycle list for selector
     if (!state.cycles || !state.cycles.length) {
-      state.cycles = await apiRequest("/api/rosters/cycles");
+      try {
+        state.cycles = await apiRequest("/api/rosters/cycles");
+      } catch (_) {
+        state.cycles = [];
+      }
     }
 
     container.innerHTML = renderCommandCenterHTML(summary);
     bindCommandCenterEvents();
 
   } catch (err) {
+    const isNoCycle = (err && (err.status === 404 || (err.message && err.message.toLowerCase().includes("no active"))));
+    if (isNoCycle) {
+      container.innerHTML = `
+        <div class="card" style="padding:48px 24px; text-align:center;">
+          <div class="empty-state-box" style="margin:0 auto; max-width:480px;">
+            <div style="font-size:3.5rem; margin-bottom:12px;">🎛️</div>
+            <h3 style="font-size:1.3rem; font-weight:800; color:var(--text-main); margin-bottom:8px;">No Active Roster Cycle Found</h3>
+            <p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5; margin-bottom:24px;">
+              There is currently no active roster cycle in the system. Generate the upcoming week's roster with multi-objective constraint solving to initialize the Smart Command Center.
+            </p>
+            <button class="btn btn-primary" onclick="handleCommandCenterGenerateUpcoming()" style="padding:10px 24px; font-weight:700; font-size:0.95rem;">
+              🚀 Generate Upcoming Roster
+            </button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     container.innerHTML = `
-      <div class="card" style="padding:24px;">
-        <div class="empty-state-box">
-          <p style="color:var(--danger); font-weight:700;">Unable to load Command Center</p>
-          <p style="font-size:0.85rem; color:var(--text-muted);">${escapeHTML(err.message || err)}</p>
-          <button class="btn btn-secondary btn-sm" onclick="renderCommandCenterView()" style="margin-top:12px;">Retry</button>
+      <div class="card" style="padding:32px 24px; text-align:center;">
+        <div class="empty-state-box" style="margin:0 auto; max-width:440px;">
+          <div style="font-size:2.5rem; margin-bottom:12px;">⚠️</div>
+          <h3 style="font-size:1.15rem; font-weight:800; color:var(--danger); margin-bottom:6px;">Unable to load Smart Roster Command Center</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin-bottom:18px;">${escapeHTML(err.message || "An unexpected error occurred while fetching operational intelligence.")}</p>
+          <button class="btn btn-secondary btn-sm" onclick="renderCommandCenterView()" style="padding:8px 18px;">
+            🔄 Retry
+          </button>
         </div>
       </div>
     `;
@@ -8537,7 +8613,25 @@ function renderCommandCenterHTML(s) {
             ${getRosterStatusBadgeHtml(s.status)}
           </div>
 
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="ccGenerateUpcomingBtn" onclick="handleCommandCenterGenerateUpcoming()" title="Generate next upcoming roster cycle">
+              🚀 Generate Upcoming
+            </button>
+            ${!isLocked && s.optimizationSummary && s.optimizationSummary.optimizationAvailable ? `
+              <button class="btn btn-secondary btn-sm" onclick="handleCommandCenterOptimize(${s.cycleId})" title="Re-optimize current cycle">
+                ⚡ Optimize
+              </button>
+            ` : ''}
+            ${isTentative ? `
+              <button class="btn btn-secondary btn-sm" onclick="handleCommandCenterPublish(${s.cycleId})" title="Distribute & Publish Roster">
+                📢 Publish Roster
+              </button>
+            ` : ''}
+            ${!isLocked ? `
+              <button class="btn btn-secondary btn-sm" onclick="handleCommandCenterLock(${s.cycleId})" title="Finalize and lock roster cycle">
+                🔒 Lock & Finalize
+              </button>
+            ` : ''}
             <button class="btn btn-secondary btn-sm" id="ccViewRosterBtn" onclick="navigateTo('roster');">
               📅 Open Full Roster
             </button>
@@ -8555,12 +8649,12 @@ function renderCommandCenterHTML(s) {
             Operational Intelligence Snapshot
           </span>
           <div class="cc-headline-text">
-            "${escapeHTML(s.smartSummary)}"
+            "${escapeHTML(s.smartSummary || 'Multi-objective workforce optimization active.')}"
           </div>
         </div>
         <div style="text-align:right;">
           <span style="font-size:0.75rem; opacity:0.8; display:block;">Review Window</span>
-          <strong style="font-size:0.92rem; color:#fde047;">${escapeHTML(s.reviewDeadline)}</strong>
+          <strong style="font-size:0.92rem; color:#fde047;">${escapeHTML(s.reviewDeadline || 'Pending')}</strong>
         </div>
       </div>
 
@@ -8627,7 +8721,7 @@ function renderCommandCenterHTML(s) {
               </div>
             </div>
             <span class="badge ${isReady ? 'active' : (isBlocked ? 'danger' : 'general')}" style="font-size:0.72rem;">
-              ${s.finalizationReadiness}
+              ${s.finalizationReadiness || 'READY'}
             </span>
           </div>
           <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
@@ -8641,7 +8735,7 @@ function renderCommandCenterHTML(s) {
             <div>
               <span style="font-size:0.75rem; text-transform:uppercase; font-weight:700; color:var(--text-muted);">Pending Changes</span>
               <div style="font-size:1.8rem; font-weight:900; color:var(--text-main); margin-top:2px;">
-                ${s.pendingRequestsCount}
+                ${s.pendingRequestsCount || 0}
               </div>
             </div>
             <button class="btn btn-link-xs" onclick="navigateTo('approvals')" style="margin-top:2px;">
@@ -8663,11 +8757,11 @@ function renderCommandCenterHTML(s) {
               </div>
             </div>
             <span class="badge ${s.criticalConflictsCount > 0 ? 'danger' : 'general'}" style="font-size:0.72rem;">
-              ${s.criticalConflictsCount} Critical
+              ${s.criticalConflictsCount || 0} Critical
             </span>
           </div>
           <div style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
-            ${s.warningConflictsCount} Warning(s) &bull; ${s.infoConflictsCount} Info
+            ${s.warningConflictsCount || 0} Warning(s) &bull; ${s.infoConflictsCount || 0} Info
           </div>
         </div>
 
@@ -8902,7 +8996,7 @@ function renderCommandCenterHTML(s) {
                   ${s.adminOverridesSummary.items.map(o => `
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; font-size:0.8rem;">
                       <div>
-                        <strong>${escapeHTML(o.employeeName)}:</strong> <span class="badge ${o.shiftType.toLowerCase()}">${o.shiftType}</span> on <code>${formatDate(o.date)}</code>
+                        <strong>${escapeHTML(o.employeeName)}:</strong> <span class="badge ${o.shiftType ? o.shiftType.toLowerCase() : 'general'}">${o.shiftType}</span> on <code>${formatDate(o.date)}</code>
                         <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHTML(o.reason)}</div>
                       </div>
                       <button class="btn-link-xs" onclick="openWhyThisShiftModal(${o.assignmentId})">Why?</button>
@@ -8985,13 +9079,55 @@ async function handleCommandCenterOptimize(cycleId) {
     await apiRequest(`/api/rosters/cycle/${cycleId}/optimize`, { method: "POST" });
     toast("Roster optimized successfully!", "success");
     broadcastDataMutation("ROSTER_OPTIMIZED");
-    renderCommandCenterView(cycleId);
+    await renderCommandCenterView(cycleId);
   } catch (err) {
     toast(err.message || "Optimization failed", "error");
   }
 }
 window.handleCommandCenterOptimize = handleCommandCenterOptimize;
 
+async function handleCommandCenterGenerateUpcoming() {
+  try {
+    toast("Generating upcoming week's roster with AI constraints...", "info");
+    const res = await apiRequest("/api/command-center/generate-upcoming", { method: "POST" });
+    toast("Upcoming roster generated successfully!", "success");
+    broadcastDataMutation("ROSTER_GENERATED");
+    state.selectedCycleId = res.cycleId;
+    await renderCommandCenterView(res.cycleId);
+  } catch (err) {
+    toast(err.message || "Roster generation failed", "error");
+  }
+}
+window.handleCommandCenterGenerateUpcoming = handleCommandCenterGenerateUpcoming;
+
+async function handleCommandCenterPublish(cycleId) {
+  try {
+    toast("Publishing roster and notifying team...", "info");
+    await apiRequest(`/api/command-center/cycle/${cycleId}/publish`, { method: "POST" });
+    toast("Roster published and notifications dispatched!", "success");
+    broadcastDataMutation("ROSTER_PUBLISHED");
+    await renderCommandCenterView(cycleId);
+  } catch (err) {
+    toast(err.message || "Failed to publish roster", "error");
+  }
+}
+window.handleCommandCenterPublish = handleCommandCenterPublish;
+
+async function handleCommandCenterLock(cycleId) {
+  if (!confirm("Are you sure you want to finalize and lock this roster cycle? All duties will become immutable.")) {
+    return;
+  }
+  try {
+    toast("Finalizing and locking roster...", "info");
+    await apiRequest(`/api/command-center/cycle/${cycleId}/lock`, { method: "POST" });
+    toast("Roster finalized and locked successfully!", "success");
+    broadcastDataMutation("ROSTER_LOCKED");
+    await renderCommandCenterView(cycleId);
+  } catch (err) {
+    toast(err.message || "Failed to lock roster", "error");
+  }
+}
+window.handleCommandCenterLock = handleCommandCenterLock;
 
 
 /* ==========================================================================

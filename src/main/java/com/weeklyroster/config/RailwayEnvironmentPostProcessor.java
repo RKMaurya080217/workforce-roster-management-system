@@ -27,7 +27,12 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
+        System.setProperty("java.awt.headless", "true");
+        if (application != null) {
+            application.setHeadless(true);
+        }
         Map<String, Object> overrides = new HashMap<>();
+        overrides.put("spring.main.headless", "true");
 
         // 1. Port mapping for Railway ($PORT)
         String railwayPort = environment.getProperty("PORT");

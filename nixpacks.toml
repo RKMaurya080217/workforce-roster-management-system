@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["fontconfig", "dejavu_fonts", "openjdk17", "maven"]
+
+[phases.build]
+cmds = ["mvn clean package -DskipTests=true"]
+
+[start]
+cmd = "java -Djava.awt.headless=true -Dserver.port=$PORT -jar target/weekly-roster-management-system-1.0.0.jar"

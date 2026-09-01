@@ -8,6 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class WeeklyRosterManagementApplication {
     public static void main(String[] args) {
-        SpringApplication.run(WeeklyRosterManagementApplication.class, args);
+        System.setProperty("java.awt.headless", "true");
+        SpringApplication app = new SpringApplication(WeeklyRosterManagementApplication.class);
+        app.setHeadless(true);
+        app.run(args);
     }
 }
