@@ -123,12 +123,12 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
 
         String mailUser = getFirstNonBlank(environment, "MAIL_USERNAME", "SPRING_MAIL_USERNAME", "SMTP_USERNAME", "SPRING_MAIL_USER");
         if (mailUser != null && !mailUser.isBlank()) {
-            overrides.put("spring.mail.username", mailUser.trim());
+            overrides.put("spring.mail.username", mailUser.replace("\"", "").replace("'", "").trim());
         }
 
         String mailPass = getFirstNonBlank(environment, "MAIL_APP_PASSWORD", "SPRING_MAIL_PASSWORD", "MAIL_PASSWORD", "SMTP_PASSWORD", "SPRING_MAIL_APP_PASSWORD");
         if (mailPass != null && !mailPass.isBlank()) {
-            overrides.put("spring.mail.password", mailPass.trim());
+            overrides.put("spring.mail.password", mailPass.replace("\"", "").replace("'", "").replace(" ", "").trim());
         }
 
         if (!overrides.isEmpty()) {

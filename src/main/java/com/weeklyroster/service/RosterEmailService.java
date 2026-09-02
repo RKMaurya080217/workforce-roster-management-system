@@ -396,8 +396,8 @@ public class RosterEmailService {
             }
         } else {
             String errorMsg = (mailPassword == null || mailPassword.isBlank())
-                    ? "SMTP delivery skipped: MAIL_APP_PASSWORD / SPRING_MAIL_PASSWORD is not configured in Railway environment."
-                    : "SMTP delivery skipped: JavaMailSender is not initialized.";
+                    ? "EMAIL_NOT_CONFIGURED: MAIL_APP_PASSWORD is not configured in Railway environment variables."
+                    : "EMAIL_NOT_CONFIGURED: JavaMailSender bean is not initialized.";
             log.warn("[WRMS EMAIL] {}", errorMsg);
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
             deliveryLog.setErrorMessage(errorMsg);
