@@ -50,7 +50,11 @@ class RosterEmailServiceTest {
         cycleRepository = mock(RosterCycleRepository.class);
         assignmentRepository = mock(RosterAssignmentRepository.class);
         shiftRepository = mock(ShiftRepository.class);
-        emailService = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository);
+        com.weeklyroster.service.email.EmailDeliveryResult okResult = com.weeklyroster.service.email.EmailDeliveryResult.success("BREVO", "msg-test-123");
+        com.weeklyroster.service.email.EmailService mockEmailService = mock(com.weeklyroster.service.email.EmailService.class);
+        org.mockito.Mockito.lenient().when(mockEmailService.sendEmail(any(com.weeklyroster.service.email.EmailMessage.class))).thenReturn(okResult);
+        org.mockito.Mockito.lenient().when(mockEmailService.getActiveProviderName()).thenReturn("BREVO");
+        emailService = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, mockEmailService);
     }
 
     @Test
@@ -149,31 +153,33 @@ class RosterEmailServiceTest {
     }
 
     @Test
-    @DisplayName("Should return BLOCKED when sending test email without configured password")
+    @DisplayName("Should return FAILED when sending test email without configured provider credentials")
     void testSendTestEmail_BlockedWithoutPassword() {
-        var result = emailService.sendTestEmail("rajatkumarmaury@gmail.com");
+        RosterEmailService unconfigured = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository);
+        var result = unconfigured.sendTestEmail("rajatkumarmaury@gmail.com");
 
         assertNotNull(result);
-        assertEquals("BLOCKED", result.get("status"));
-        assertTrue(result.get("message").toString().contains("SMTP TEST BLOCKED — MAIL_USERNAME or MAIL_APP_PASSWORD is not configured"));
+        assertEquals("FAILED", result.get("status"));
+        assertTrue(result.get("message").toString().contains("EMAIL_NOT_CONFIGURED"));
     }
 
     @Test
-    @DisplayName("Should deliver test email via JavaMailSender when password is configured")
-    void testSendTestEmail_WithMailSender() {
-        org.springframework.mail.javamail.JavaMailSender mockMailSender = mock(org.springframework.mail.javamail.JavaMailSender.class);
-        jakarta.mail.internet.MimeMessage mockMime = mock(jakarta.mail.internet.MimeMessage.class);
-        when(mockMailSender.createMimeMessage()).thenReturn(mockMime);
+    @DisplayName("Should deliver test email via active provider when credentials configured")
+    void testSendTestEmail_WithConfiguredProvider() {
+        com.weeklyroster.service.email.EmailService mockEmailService = mock(com.weeklyroster.service.email.EmailService.class);
+        when(mockEmailService.getActiveProviderName()).thenReturn("BREVO");
+        when(mockEmailService.sendEmail(any(com.weeklyroster.service.email.EmailMessage.class)))
+                .thenReturn(com.weeklyroster.service.email.EmailDeliveryResult.success("BREVO", "msg-12345"));
 
-        RosterEmailService serviceWithSender = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, mockMailSender);
-        org.springframework.test.util.ReflectionTestUtils.setField(serviceWithSender, "mailPassword", "test-app-password");
-        org.springframework.test.util.ReflectionTestUtils.setField(serviceWithSender, "mailUsername", "rajatkumarmaury@gmail.com");
+        RosterEmailService serviceWithProvider = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, mockEmailService);
 
-        var result = serviceWithSender.sendTestEmail("rajatkumarmaury@gmail.com");
+        var result = serviceWithProvider.sendTestEmail("rajatkumarmaury@gmail.com");
 
         assertNotNull(result);
-        assertEquals("SENT", result.get("status"));
-        verify(mockMailSender, times(1)).send(any(jakarta.mail.internet.MimeMessage.class));
+        assertEquals("SUCCESS", result.get("status"));
+        assertEquals("BREVO", result.get("provider"));
+        assertEquals("msg-12345", result.get("messageId"));
+        verify(mockEmailService, times(1)).sendEmail(any(com.weeklyroster.service.email.EmailMessage.class));
     }
 
     private Employee createEmployee(Long id, String code, String first, String last, String email) {

@@ -975,6 +975,13 @@ function renderNavigation() {
 }
 
 function navigateTo(target, options = {}) {
+  closeMobileSidebar();
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  if (dom.appContent) {
+    dom.appContent.scrollTop = 0;
+    dom.appContent.scrollLeft = 0;
+  }
+
   const { pageId, tabKey, canonicalHash } = parseRouteTarget(target);
 
   state.activePage = pageId;

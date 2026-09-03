@@ -9,14 +9,29 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Safe startup diagnostic logger for WRMS Email / Gmail SMTP Configuration.
- * Explicitly displays whether SMTP host, port, username, and password are configured WITHOUT ever logging secret values.
+ * Safe startup diagnostic logger for WRMS Transactional Email Provider Configuration.
+ * Displays active provider (BREVO HTTPS vs SMTP Fallback) and configuration readiness without ever leaking secrets.
  */
 @Component
 @Order(2)
 public class EmailStartupDiagnosticLogger implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(EmailStartupDiagnosticLogger.class);
+
+    @Value("${email.provider:${EMAIL_PROVIDER:BREVO}}")
+    private String emailProvider;
+
+    @Value("${brevo.api.key:${BREVO_API_KEY:}}")
+    private String brevoApiKey;
+
+    @Value("${brevo.sender.email:${BREVO_SENDER_EMAIL:${spring.mail.username:${MAIL_USERNAME:rajatkumarmaury@gmail.com}}}}")
+    private String brevoSenderEmail;
+
+    @Value("${brevo.sender.name:${BREVO_SENDER_NAME:WRMS}}")
+    private String brevoSenderName;
+
+    @Value("${brevo.api.url:${brevo.api.base-url:${BREVO_API_BASE_URL:https://api.brevo.com}}}")
+    private String brevoApiUrl;
 
     @Value("${spring.mail.host:smtp.gmail.com}")
     private String mailHost;
@@ -33,23 +48,51 @@ public class EmailStartupDiagnosticLogger implements ApplicationRunner {
     @Value("${roster.auto-email.enabled:true}")
     private boolean autoEmailEnabled;
 
+    private String resolveBrevoEndpoint() {
+        if (brevoApiUrl == null || brevoApiUrl.isBlank()) {
+            return "https://api.brevo.com/v3/smtp/email";
+        }
+        String trimmed = brevoApiUrl.trim();
+        while (trimmed.endsWith("/")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        if (trimmed.endsWith("/v3/smtp/email")) {
+            return trimmed;
+        }
+        return trimmed + "/v3/smtp/email";
+    }
+
     @Override
     public void run(ApplicationArguments args) {
-        boolean hasPassword = mailPassword != null && !mailPassword.isBlank();
-        boolean hasUsername = mailUsername != null && !mailUsername.isBlank();
+        String activeProvider = "SMTP".equalsIgnoreCase(emailProvider != null ? emailProvider.trim() : "") ? "SMTP" : "BREVO";
+        boolean hasBrevoKey = brevoApiKey != null && !brevoApiKey.isBlank();
+        boolean hasSmtpPass = mailPassword != null && !mailPassword.isBlank();
 
         log.info("================================================================================");
-        log.info("  [WRMS Email / Gmail SMTP Startup Diagnostics]");
-        log.info("  SMTP Host                : {}", mailHost);
-        log.info("  SMTP Port                : {}", mailPort);
-        log.info("  SMTP Username Configured : {} ({})", hasUsername, hasUsername ? mailUsername : "NOT CONFIGURED");
-        log.info("  SMTP Password Configured : {}", hasPassword ? "true (Google App Password loaded)" : "false (MISSING - add MAIL_APP_PASSWORD in Railway variables)");
-        log.info("  STARTTLS Enabled         : true");
+        log.info("  [WRMS TRANSACTIONAL EMAIL SYSTEM DIAGNOSTICS]");
+        log.info("  Active Email Provider    : {}", activeProvider);
         log.info("  Auto-Email Distribution  : {}", autoEmailEnabled);
-        if (!hasPassword) {
-            log.warn("  [ACTION REQUIRED] MAIL_APP_PASSWORD is not set in Railway environment.");
-            log.warn("  Please add variable 'MAIL_APP_PASSWORD' with your 16-character Gmail App Password in Railway Dashboard -> Service Variables and redeploy.");
+        log.info("--------------------------------------------------------------------------------");
+        log.info("  [PRIMARY] Brevo HTTPS REST API:");
+        log.info("    API Endpoint           : {}", resolveBrevoEndpoint());
+        log.info("    API Key Configured     : {}", hasBrevoKey ? "true (BREVO_API_KEY loaded)" : "false (MISSING - add BREVO_API_KEY in Railway variables)");
+        log.info("    Sender Email           : {}", brevoSenderEmail);
+        log.info("    Sender Name            : {}", brevoSenderName);
+        log.info("--------------------------------------------------------------------------------");
+        log.info("  [FALLBACK] Gmail SMTP (Retained for future SMTP-capable environments):");
+        log.info("    SMTP Host / Port       : {}:{}", mailHost, mailPort);
+        log.info("    SMTP User Configured   : {}", mailUsername);
+        log.info("    SMTP Password Config   : {}", hasSmtpPass ? "true" : "false");
+        log.info("    SMTP Fallback Enabled  : {}", activeProvider.equals("SMTP"));
+        log.info("--------------------------------------------------------------------------------");
+
+        if (activeProvider.equals("BREVO") && !hasBrevoKey) {
+            log.warn("  [ACTION REQUIRED] BREVO_API_KEY is not set in Railway environment variables.");
+            log.warn("  Please add variable 'BREVO_API_KEY' with your Brevo API key in Railway Dashboard -> Service Variables.");
+        } else if (activeProvider.equals("SMTP") && !hasSmtpPass) {
+            log.warn("  [ACTION REQUIRED] MAIL_APP_PASSWORD is not set in Railway environment variables.");
         }
+
         log.info("================================================================================");
     }
 }

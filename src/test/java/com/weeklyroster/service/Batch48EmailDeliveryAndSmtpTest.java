@@ -6,13 +6,15 @@ import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
 import com.weeklyroster.entity.*;
 import com.weeklyroster.repository.*;
+import com.weeklyroster.service.email.BrevoEmailService;
+import com.weeklyroster.service.email.EmailService;
+import com.weeklyroster.service.email.SmtpEmailService;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.MailSendException;
@@ -52,8 +54,9 @@ public class Batch48EmailDeliveryAndSmtpTest {
     @Mock
     private JavaMailSender mailSender;
 
-    @InjectMocks
     private RosterEmailService rosterEmailService;
+    private SmtpEmailService smtpEmailService;
+    private EmailService emailService;
 
     private Employee mockEmployee;
     private Shift mockShift;
@@ -105,14 +108,23 @@ public class Batch48EmailDeliveryAndSmtpTest {
             log.setId(1L);
             return log;
         });
+
+        smtpEmailService = new SmtpEmailService(mailSender);
+        ReflectionTestUtils.setField(smtpEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(smtpEmailService, "mailPassword", "test-app-password");
+
+        BrevoEmailService brevoService = new BrevoEmailService();
+        emailService = new EmailService(brevoService, smtpEmailService);
+        ReflectionTestUtils.setField(emailService, "configuredProvider", "SMTP");
+
+        rosterEmailService = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService);
+        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "test-app-password");
     }
 
     @Test
     @DisplayName("Test 1: Genuine SMTP delivery calls JavaMailSender.send and returns SENT status")
     void testGenuineSmtpDelivery() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
-        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "test-app-password");
-
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(mockCycle, mockCycleResponse, GenerationMode.MANUAL);
@@ -128,8 +140,8 @@ public class Batch48EmailDeliveryAndSmtpTest {
     @Test
     @DisplayName("Test 2: Missing MAIL_APP_PASSWORD sets FAILED status and does NOT claim SENT")
     void testMissingPasswordDoesNotClaimSent() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
-        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", ""); // Missing password
+        ReflectionTestUtils.setField(smtpEmailService, "mailPassword", "");
+        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "");
 
         List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(mockCycle, mockCycleResponse, GenerationMode.MANUAL);
 
@@ -145,9 +157,6 @@ public class Batch48EmailDeliveryAndSmtpTest {
     @Test
     @DisplayName("Test 3: SMTP Exception sets FAILED status with error details and safe logging")
     void testSmtpExceptionSetsFailedStatus() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
-        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "test-app-password");
-
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
         doThrow(new MailSendException("535-5.7.8 Username and Password not accepted")).when(mailSender).send(any(MimeMessage.class));
 
@@ -160,17 +169,15 @@ public class Batch48EmailDeliveryAndSmtpTest {
     }
 
     @Test
-    @DisplayName("Test 4: sendTestEmail returns accurate SENT result when SMTP succeeds")
+    @DisplayName("Test 4: sendTestEmail returns accurate result when SMTP succeeds")
     void testSendTestEmailSuccess() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
-        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "test-app-password");
-
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         Map<String, Object> result = rosterEmailService.sendTestEmail("test@example.com");
 
         assertNotNull(result);
-        assertEquals("SENT", result.get("status"));
+        assertEquals("SUCCESS", result.get("status"));
+        assertEquals("SMTP", result.get("provider"));
         verify(mailSender, times(1)).send(any(MimeMessage.class));
     }
 }

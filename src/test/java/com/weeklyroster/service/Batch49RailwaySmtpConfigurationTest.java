@@ -8,13 +8,15 @@ import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
 import com.weeklyroster.entity.*;
 import com.weeklyroster.repository.*;
+import com.weeklyroster.service.email.BrevoEmailService;
+import com.weeklyroster.service.email.EmailService;
+import com.weeklyroster.service.email.SmtpEmailService;
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -56,8 +58,9 @@ public class Batch49RailwaySmtpConfigurationTest {
     @Mock
     private JavaMailSender mailSender;
 
-    @InjectMocks
     private RosterEmailService rosterEmailService;
+    private SmtpEmailService smtpEmailService;
+    private EmailService emailService;
 
     private RosterCycle mockCycle;
     private RosterCycleResponse mockCycleResponse;
@@ -107,6 +110,18 @@ public class Batch49RailwaySmtpConfigurationTest {
             log.setId(1L);
             return log;
         });
+
+        smtpEmailService = new SmtpEmailService(mailSender);
+        ReflectionTestUtils.setField(smtpEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(smtpEmailService, "mailPassword", "abcdefghijklmnop");
+
+        BrevoEmailService brevoService = new BrevoEmailService();
+        emailService = new EmailService(brevoService, smtpEmailService);
+        ReflectionTestUtils.setField(emailService, "configuredProvider", "SMTP");
+
+        rosterEmailService = new RosterEmailService(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService);
+        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "abcdefghijklmnop");
     }
 
     @Test
@@ -134,7 +149,7 @@ public class Batch49RailwaySmtpConfigurationTest {
     @Test
     @DisplayName("Test 2: Missing MAIL_APP_PASSWORD reports EMAIL_NOT_CONFIGURED")
     void testMissingPasswordReportsEmailNotConfigured() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(smtpEmailService, "mailPassword", "");
         ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "");
 
         List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(mockCycle, mockCycleResponse, GenerationMode.MANUAL);
@@ -149,9 +164,6 @@ public class Batch49RailwaySmtpConfigurationTest {
     @Test
     @DisplayName("Test 3: Configured MAIL_APP_PASSWORD executes JavaMailSender.send and marks SENT")
     void testConfiguredPasswordExecutesSend() {
-        ReflectionTestUtils.setField(rosterEmailService, "mailUsername", "rajatkumarmaury@gmail.com");
-        ReflectionTestUtils.setField(rosterEmailService, "mailPassword", "abcdefghijklmnop");
-
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(mockCycle, mockCycleResponse, GenerationMode.MANUAL);
@@ -167,6 +179,11 @@ public class Batch49RailwaySmtpConfigurationTest {
     @DisplayName("Test 4: EmailStartupDiagnosticLogger executes safely without throwing exceptions")
     void testDiagnosticLoggerExecution() {
         EmailStartupDiagnosticLogger logger = new EmailStartupDiagnosticLogger();
+        ReflectionTestUtils.setField(logger, "emailProvider", "BREVO");
+        ReflectionTestUtils.setField(logger, "brevoApiKey", "test-key");
+        ReflectionTestUtils.setField(logger, "brevoSenderEmail", "rajatkumarmaury@gmail.com");
+        ReflectionTestUtils.setField(logger, "brevoSenderName", "WRMS");
+        ReflectionTestUtils.setField(logger, "brevoApiUrl", "https://api.brevo.com/v3/smtp/email");
         ReflectionTestUtils.setField(logger, "mailHost", "smtp.gmail.com");
         ReflectionTestUtils.setField(logger, "mailPort", "587");
         ReflectionTestUtils.setField(logger, "mailUsername", "rajatkumarmaury@gmail.com");

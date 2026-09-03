@@ -10,6 +10,7 @@ import com.weeklyroster.entity.Employee;
 import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.RosterCycle;
 import com.weeklyroster.entity.Shift;
+import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.export.RosterExcelExporter;
 import com.weeklyroster.export.RosterImageExporter;
 import com.weeklyroster.repository.EmailDeliveryLogRepository;
@@ -17,7 +18,20 @@ import com.weeklyroster.repository.EmployeeRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
 import com.weeklyroster.repository.ShiftRepository;
-import jakarta.mail.internet.MimeMessage;
+import com.weeklyroster.service.email.EmailAttachment;
+import com.weeklyroster.service.email.EmailDeliveryResult;
+import com.weeklyroster.service.email.EmailMessage;
+import com.weeklyroster.service.email.EmailService;
+import com.weeklyroster.service.email.BrevoEmailService;
+import com.weeklyroster.service.email.SmtpEmailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -27,15 +41,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class RosterEmailService {
@@ -48,13 +53,10 @@ public class RosterEmailService {
     private final RosterCycleRepository cycleRepository;
     private final RosterAssignmentRepository assignmentRepository;
     private final ShiftRepository shiftRepository;
-    private final JavaMailSender mailSender;
+    private final EmailService emailService;
 
     @Value("${roster.auto-email.enabled:true}")
     private boolean autoEmailEnabled;
-
-    @Value("${spring.mail.host:smtp.gmail.com}")
-    private String mailHost;
 
     @Value("${spring.mail.username:${MAIL_USERNAME:${SPRING_MAIL_USERNAME:${SMTP_USERNAME:rajatkumarmaury@gmail.com}}}}")
     private String mailUsername;
@@ -76,13 +78,13 @@ public class RosterEmailService {
                               RosterCycleRepository cycleRepository,
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
-                              @Autowired(required = false) JavaMailSender mailSender) {
+                              EmailService emailService) {
         this.emailLogRepository = emailLogRepository;
         this.employeeRepository = employeeRepository;
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.shiftRepository = shiftRepository;
-        this.mailSender = mailSender;
+        this.emailService = emailService != null ? emailService : new EmailService(new BrevoEmailService(), new SmtpEmailService(null));
     }
 
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
@@ -90,13 +92,14 @@ public class RosterEmailService {
                               RosterCycleRepository cycleRepository,
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository) {
-        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, null);
+        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository,
+                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)));
     }
 
     /**
      * Global validation: Checks if given cycle dates match the immediate upcoming Monday to Sunday cycle.
      */
-        @Transactional
+    @Transactional
     public List<EmailDeliveryLogResponse> distributeTentativeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
         if (cycle != null) {
             cycle.setStatus(com.weeklyroster.entity.RosterStatus.TENTATIVE);
@@ -124,148 +127,123 @@ public class RosterEmailService {
     @Transactional
     public List<EmailDeliveryLogResponse> distributeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
         if (isShuttingDown) {
-            log.warn("[WRMS EMAIL] Email distribution skipped due to application shutdown in progress.");
+            log.warn("[WRMS EMAIL] Email distribution rejected: system shutdown in progress.");
             return List.of();
         }
 
-        if (cycle == null || cycle.getStartDate() == null || cycle.getEndDate() == null) {
-            log.warn("[WRMS EMAIL] Cannot distribute roster emails for null or incomplete cycle.");
+        if (mode == GenerationMode.AUTOMATIC && !isImmediateUpcomingWeek(cycle.getStartDate(), cycle.getEndDate())) {
+            log.warn("[WRMS EMAIL] Automatic email distribution skipped for cycle #{} ({} to {}). "
+                    + "Automatic distribution is STRICTLY RESTRICTED to the immediate upcoming week.",
+                    cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
             return List.of();
         }
 
-        // When mode is AUTOMATIC, enforce strict Upcoming Week Guard & Idempotency:
-        if (mode == GenerationMode.AUTOMATIC) {
-            java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
-            java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(istZone);
-            java.time.ZonedDateTime nowUtc = nowIst.withZoneSameInstant(java.time.ZoneId.of("UTC"));
-            LocalDate today = nowIst.toLocalDate();
-            LocalDate currentStart = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
-            LocalDate upcomingStart = currentStart.plusDays(7);
-            LocalDate upcomingEnd = upcomingStart.plusDays(6);
-
-            if (!isImmediateUpcomingWeek(cycle.getStartDate(), cycle.getEndDate())) {
-                log.warn("[WRMS EMAIL]\n" +
-                         "  Time: {} IST (UTC: {})\n" +
-                         "  Cycle: {} -> {}\n" +
-                         "  Status: SKIPPED\n" +
-                         "  Reason: Not immediate upcoming week (expected {} -> {})",
-                        nowIst.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
-                        nowUtc.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")),
-                        cycle.getStartDate(), cycle.getEndDate(), upcomingStart, upcomingEnd);
-                return List.of();
-            }
-
-            // Check if automated emails were already sent for this cycle
-            List<EmailDeliveryLog> sentLogs = emailLogRepository.findByCycleAndEmailTypeAndStatus(cycle, (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.FINAL || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.LOCKED) ? EmailType.FINAL_ROSTER : EmailType.TENTATIVE_ROSTER, EmailDeliveryStatus.SENT);
-            if (sentLogs == null || sentLogs.isEmpty()) {
-                sentLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
-            }
-            if (!sentLogs.isEmpty()) {
-                log.info("[WRMS EMAIL] Automated roster emails for upcoming cycle #{} ({} to {}) have already been sent ({} logs). Skipping duplicate dispatch.",
-                        cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), sentLogs.size());
-                return sentLogs.stream().map(this::toResponse).toList();
-            }
-
-            log.info("[WRMS EMAIL] Starting automated roster email distribution ONLY for upcoming cycle: {} -> {}",
-                    cycle.getStartDate(), cycle.getEndDate());
-        } else {
-            log.info("[WRMS EMAIL] Distributing weekly roster emails for cycle #{} ({} to {}) in mode {}...",
-                    cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), mode);
-        }
+        log.info("[WRMS EMAIL] Distributing weekly roster emails for cycle #{} ({} to {}) in mode {}...",
+                cycle.getId(), cycle.getStartDate(), cycle.getEndDate(), mode);
 
         List<Employee> activeEmployees = employeeRepository.findByActiveTrueOrderByIdAsc();
         List<Shift> shifts = shiftRepository.findByActiveTrueOrderByIdAsc();
 
-        // Pre-generate attachments once
         byte[] excelBytes = null;
-        byte[] imageBytes = null;
         try {
             excelBytes = RosterExcelExporter.exportToExcel(cycleResponse, shifts);
-            imageBytes = RosterImageExporter.exportToImage(cycleResponse, shifts);
-        } catch (Exception e) {
-            log.error("Failed to pre-generate email attachments for cycle {}", cycle.getId(), e);
+        } catch (Exception ex) {
+            log.error("Failed to generate roster Excel attachment: {}", ex.getMessage());
         }
 
-        // Map assignments by employeeId -> list of assignments
-        Map<Long, List<RosterAssignmentResponse>> empAssignments = cycleResponse.assignments() != null
-                ? cycleResponse.assignments().stream().collect(Collectors.groupingBy(RosterAssignmentResponse::employeeId))
-                : Map.of();
-
-        List<EmailDeliveryLog> logs = new ArrayList<>();
-
-        for (Employee emp : activeEmployees) {
-            if (isShuttingDown) {
-                log.warn("[WRMS EMAIL] Distribution interrupted by application shutdown.");
-                break;
-            }
-            List<RosterAssignmentResponse> myShifts = empAssignments.getOrDefault(emp.getId(), List.of());
-            EmailDeliveryLog entry = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode);
-            if (entry != null) {
-                logs.add(emailLogRepository.save(entry));
-            }
-        }
-
-        return logs.stream().map(this::toResponse).toList();
-    }
-
-    @Transactional
-    public List<EmailDeliveryLogResponse> retryFailedEmails(Long cycleId) {
-        RosterCycle cycle = cycleRepository.findById(cycleId)
-                .orElseThrow(() -> new IllegalArgumentException("Roster cycle not found with id: " + cycleId));
-
-        List<EmailDeliveryLog> failedLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.FAILED);
-        if (failedLogs.isEmpty()) {
-            log.info("No failed email logs to retry for cycle {}", cycleId);
-            return emailLogRepository.findByCycleOrderBySentAtDesc(cycle).stream().map(this::toResponse).toList();
-        }
-
-        List<Shift> shifts = shiftRepository.findByActiveTrueOrderByIdAsc();
-        RosterCycleResponse cycleResponse = toCycleResponse(cycle);
-
-        byte[] excelBytes = null;
         byte[] imageBytes = null;
         try {
-            excelBytes = RosterExcelExporter.exportToExcel(cycleResponse, shifts);
             imageBytes = RosterImageExporter.exportToImage(cycleResponse, shifts);
-        } catch (Exception e) {
-            log.error("Failed to generate attachments during email retry for cycle {}", cycleId, e);
+        } catch (Exception ex) {
+            log.error("Failed to generate roster PNG attachment: {}", ex.getMessage());
         }
 
-        Map<Long, List<RosterAssignmentResponse>> empAssignments = cycleResponse.assignments() != null
+        Map<Long, List<RosterAssignmentResponse>> assignmentsByEmp = cycleResponse.assignments() != null
                 ? cycleResponse.assignments().stream().collect(Collectors.groupingBy(RosterAssignmentResponse::employeeId))
                 : Map.of();
 
         List<EmailDeliveryLogResponse> results = new ArrayList<>();
 
-        for (EmailDeliveryLog failed : failedLogs) {
-            Employee emp = failed.getEmployee();
-            List<RosterAssignmentResponse> myShifts = empAssignments.getOrDefault(emp.getId(), List.of());
-            EmailDeliveryLog newLog = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, failed.getMode());
-
-            failed.setStatus(newLog.getStatus());
-            failed.setSentAt(newLog.getSentAt());
-            failed.setErrorMessage(newLog.getErrorMessage());
-            emailLogRepository.save(failed);
-            results.add(toResponse(failed));
+        for (Employee emp : activeEmployees) {
+            List<RosterAssignmentResponse> myShifts = assignmentsByEmp.getOrDefault(emp.getId(), List.of());
+            EmailDeliveryLog deliveryLog = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode);
+            results.add(toResponse(deliveryLog));
         }
 
         return results;
     }
 
-    @Transactional(readOnly = true)
-    public List<EmailDeliveryLogResponse> getEmailLogs(Long cycleId) {
-        RosterCycle cycle = cycleRepository.findById(cycleId)
-                .orElseThrow(() -> new IllegalArgumentException("Roster cycle not found with id: " + cycleId));
-        return emailLogRepository.findByCycleOrderBySentAtDesc(cycle).stream().map(this::toResponse).toList();
+    @Transactional
+    public List<EmailDeliveryLogResponse> retryFailedEmails(Long cycleId) {
+        RosterCycle cycle = cycleRepository.findById(cycleId).orElse(null);
+        if (cycle == null) {
+            log.warn("Cannot retry emails: cycle #{} not found", cycleId);
+            return List.of();
+        }
+
+        List<EmailDeliveryLog> failedLogs = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.FAILED);
+        if (failedLogs.isEmpty()) {
+            log.info("No failed email delivery logs found for cycle #{}", cycleId);
+            return List.of();
+        }
+
+        log.info("Retrying {} failed email deliveries for cycle #{}...", failedLogs.size(), cycleId);
+        List<Shift> shifts = shiftRepository.findByActiveTrueOrderByIdAsc();
+
+        RosterCycleResponse cycleResponse = buildCycleResponse(cycle);
+        byte[] excelBytes = null;
+        try {
+            excelBytes = RosterExcelExporter.exportToExcel(cycleResponse, shifts);
+        } catch (Exception ex) {
+            log.error("Failed to generate roster Excel attachment for retry: {}", ex.getMessage());
+        }
+
+        byte[] imageBytes = null;
+        try {
+            imageBytes = RosterImageExporter.exportToImage(cycleResponse, shifts);
+        } catch (Exception ex) {
+            log.error("Failed to generate roster PNG attachment for retry: {}", ex.getMessage());
+        }
+
+        Map<Long, List<RosterAssignmentResponse>> assignmentsByEmp = cycleResponse.assignments() != null
+                ? cycleResponse.assignments().stream().collect(Collectors.groupingBy(RosterAssignmentResponse::employeeId))
+                : Map.of();
+
+        List<EmailDeliveryLogResponse> retryResults = new ArrayList<>();
+
+        for (EmailDeliveryLog failedLog : failedLogs) {
+            Employee emp = failedLog.getEmployee();
+            if (emp == null || !emp.isActive()) {
+                continue;
+            }
+
+            List<RosterAssignmentResponse> myShifts = assignmentsByEmp.getOrDefault(emp.getId(), List.of());
+            EmailDeliveryLog retried = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, failedLog.getMode());
+            retryResults.add(toResponse(retried));
+        }
+
+        return retryResults;
     }
 
-    private EmailDeliveryLog sendToEmployee(RosterCycle cycle,
-                                           Employee emp,
-                                           List<RosterAssignmentResponse> myShifts,
-                                           List<Shift> shifts,
-                                           byte[] excelBytes,
-                                           byte[] imageBytes,
-                                           GenerationMode mode) {
+    @Transactional(readOnly = true)
+    public List<EmailDeliveryLogResponse> getEmailLogs(Long cycleId) {
+        RosterCycle cycle = cycleRepository.findById(cycleId).orElse(null);
+        if (cycle == null) {
+            return List.of();
+        }
+        return emailLogRepository.findByCycleOrderBySentAtDesc(cycle)
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    private EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
+                                            List<RosterAssignmentResponse> myShifts,
+                                            List<Shift> shifts,
+                                            byte[] excelBytes,
+                                            byte[] imageBytes,
+                                            GenerationMode mode) {
+
         EmailType targetEmailType = (mode == GenerationMode.AUTOMATIC && (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.TENTATIVE || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.GENERATED))
                 ? EmailType.TENTATIVE_ROSTER
                 : ((cycle.getStatus() == com.weeklyroster.entity.RosterStatus.FINAL || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.LOCKED)
@@ -363,44 +341,41 @@ public class RosterEmailService {
         log.info("Preparing weekly roster email for {} <{}> (Subject: '{}')",
                 emp.getFirstName() + " " + emp.getLastName(), deliveryLog.getRecipientEmail(), subject);
 
-        if (mailSender != null && mailPassword != null && !mailPassword.isBlank()) {
-            try {
-                MimeMessage message = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-                String from = (mailUsername != null && !mailUsername.isBlank()) ? mailUsername : "rajatkumarmaury@gmail.com";
-                helper.setFrom(from);
-                helper.setTo(deliveryLog.getRecipientEmail());
-                helper.setSubject(subject);
-                helper.setText(emailBody, false);
+        // Build HTML template
+        String htmlBody = buildHtmlEmailTemplate(emailType, emp, dateRange, personalSchedule);
 
-                String dateRangeStr = cycle.getStartDate().toString() + "_to_" + cycle.getEndDate().toString();
-                if (excelBytes != null && excelBytes.length > 0) {
-                    helper.addAttachment("WRMS_Roster_" + dateRangeStr + ".xlsx",
-                            new ByteArrayResource(excelBytes),
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-                }
-                if (imageBytes != null && imageBytes.length > 0) {
-                    helper.addAttachment("WRMS_Roster_" + dateRangeStr + ".png",
-                            new ByteArrayResource(imageBytes),
-                            "image/png");
-                }
+        // Build EmailMessage
+        EmailMessage.Builder msgBuilder = EmailMessage.builder()
+                .to(deliveryLog.getRecipientEmail(), emp.getFirstName() + " " + emp.getLastName())
+                .from(mailUsername != null && !mailUsername.isBlank() ? mailUsername : "rajatkumarmaury@gmail.com", "WRMS")
+                .subject(subject)
+                .textBody(emailBody)
+                .htmlBody(htmlBody);
 
-                mailSender.send(message);
-                log.info("Weekly roster email successfully delivered via Gmail SMTP to {}", deliveryLog.getRecipientEmail());
-                deliveryLog.setStatus(EmailDeliveryStatus.SENT);
-                deliveryLog.setErrorMessage(null);
-            } catch (Exception ex) {
-                log.error("Failed to send roster email via SMTP to {}: {}", deliveryLog.getRecipientEmail(), ex.getMessage());
-                deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
-                deliveryLog.setErrorMessage(ex.getMessage() != null ? ex.getMessage() : "SMTP delivery failed");
-            }
+        String dateRangeStr = cycle.getStartDate().toString() + "_to_" + cycle.getEndDate().toString();
+        if (excelBytes != null && excelBytes.length > 0) {
+            msgBuilder.addAttachment(new EmailAttachment(
+                    "WRMS_Roster_" + dateRangeStr + ".xlsx",
+                    excelBytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ));
+        }
+        if (imageBytes != null && imageBytes.length > 0) {
+            msgBuilder.addAttachment(new EmailAttachment(
+                    "WRMS_Roster_" + dateRangeStr + ".png",
+                    imageBytes,
+                    "image/png"
+            ));
+        }
+
+        EmailDeliveryResult result = emailService.sendEmail(msgBuilder.build());
+
+        if (result.isSuccess()) {
+            deliveryLog.setStatus(EmailDeliveryStatus.SENT);
+            deliveryLog.setErrorMessage(null);
         } else {
-            String errorMsg = (mailPassword == null || mailPassword.isBlank())
-                    ? "EMAIL_NOT_CONFIGURED: MAIL_APP_PASSWORD is not configured in Railway environment variables."
-                    : "EMAIL_NOT_CONFIGURED: JavaMailSender bean is not initialized.";
-            log.warn("[WRMS EMAIL] {}", errorMsg);
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
-            deliveryLog.setErrorMessage(errorMsg);
+            deliveryLog.setErrorMessage(result.getErrorMessage() != null ? result.getErrorMessage() : "Email delivery failed");
         }
 
         java.time.ZoneId istZone = java.time.ZoneId.of("Asia/Kolkata");
@@ -424,133 +399,157 @@ public class RosterEmailService {
                 deliveryLog.getRecipientEmail(),
                 deliveryLog.getStatus());
 
-        return deliveryLog;
+        return emailLogRepository.save(deliveryLog);
+    }
+
+    private String buildHtmlEmailTemplate(EmailType emailType, Employee emp, String dateRange, String personalSchedule) {
+        String badgeColor = "#2563eb";
+        String badgeTitle = "WEEKLY DUTY ROSTER";
+        String statusNote = "Please review your scheduled shifts below.";
+
+        if (emailType == EmailType.TENTATIVE_ROSTER) {
+            badgeColor = "#d97706";
+            badgeTitle = "🟠 TENTATIVE ROSTER — SUBJECT TO CHANGE";
+            statusNote = "This is a tentative schedule for employee review. Review deadline: <strong>Sunday 4:00 PM IST</strong>.";
+        } else if (emailType == EmailType.FINAL_ROSTER) {
+            badgeColor = "#16a34a";
+            badgeTitle = "🟢 FINAL ROSTER — LOCKED";
+            statusNote = "This is the final locked schedule. Approved changes have been applied.";
+        }
+
+        String scheduleHtml = personalSchedule.replace("\n", "<br/>");
+
+        return "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>"
+                + "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;padding:20px;background-color:#f8fafc;color:#1e293b;}"
+                + ".container{max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);}"
+                + ".header{background:#0f172a;padding:24px 28px;text-align:center;color:#ffffff;}"
+                + ".header h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-0.5px;}"
+                + ".header p{margin:6px 0 0 0;font-size:13px;color:#94a3b8;}"
+                + ".badge-banner{background:" + badgeColor + ";color:#ffffff;padding:10px 20px;text-align:center;font-weight:700;font-size:13px;letter-spacing:0.5px;}"
+                + ".content{padding:28px;}"
+                + ".greeting{font-size:16px;font-weight:600;margin-bottom:14px;color:#0f172a;}"
+                + ".notice-box{background:#f1f5f9;border-left:4px solid " + badgeColor + ";padding:12px 16px;border-radius:4px;margin-bottom:20px;font-size:13px;line-height:1.5;}"
+                + ".schedule-card{background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:18px;margin:20px 0;font-family:monospace;font-size:13px;line-height:1.6;color:#334155;}"
+                + ".attachments-box{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:14px 18px;margin-top:20px;font-size:13px;color:#475569;}"
+                + ".footer{background:#f8fafc;padding:20px 28px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#64748b;}"
+                + "</style></head><body>"
+                + "<div class='container'>"
+                + "<div class='header'><h1>Weekly Roster Management System</h1><p>Cycle: " + dateRange + "</p></div>"
+                + "<div class='badge-banner'>" + badgeTitle + "</div>"
+                + "<div class='content'>"
+                + "<div class='greeting'>Dear " + escapeHtml(emp.getFirstName()) + " " + escapeHtml(emp.getLastName()) + ",</div>"
+                + "<div class='notice-box'>" + statusNote + "</div>"
+                + "<div class='schedule-card'><strong>YOUR SCHEDULE:</strong><br/><br/>" + scheduleHtml + "</div>"
+                + "<div class='attachments-box'><strong>Attached Documents:</strong><br/>• Complete Weekly Roster Spreadsheet (.xlsx)<br/>• Weekly Roster Schedule Card (.png)</div>"
+                + "</div>"
+                + "<div class='footer'><p>This is an automated notification from Weekly Roster Management System (WRMS).</p></div>"
+                + "</div></body></html>";
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     /**
-     * Admin-controlled Gmail SMTP configuration test.
+     * Admin-controlled transactional email test.
      */
     public Map<String, Object> sendTestEmail(String toEmail) {
         String from = (mailUsername != null && !mailUsername.isBlank()) ? mailUsername : "rajatkumarmaury@gmail.com";
         String recipient = (toEmail != null && !toEmail.isBlank()) ? toEmail : from;
-        String subject = "WRMS SMTP Test";
-        String body = "WRMS Gmail SMTP configuration is working successfully.";
+        String subject = "WRMS Transactional Email Test";
+        String body = "WRMS Transactional Email configuration is working successfully via " + emailService.getActiveProviderName() + ".";
+        String html = "<p><strong>WRMS Transactional Email</strong> configuration is working successfully via <code>" + emailService.getActiveProviderName() + "</code>.</p>";
 
-        if (mailPassword == null || mailPassword.isBlank()) {
-            String notice = "SMTP TEST BLOCKED — MAIL_USERNAME or MAIL_APP_PASSWORD is not configured.";
-            log.warn("Gmail SMTP test email BLOCKED: {}", notice);
-            return Map.of(
-                    "status", "BLOCKED",
-                    "sender", from,
-                    "recipient", recipient,
-                    "subject", subject,
-                    "message", notice,
-                    "timestamp", LocalDateTime.now().toString()
-            );
-        }
+        EmailMessage message = EmailMessage.builder()
+                .to(recipient)
+                .from(from, "WRMS")
+                .subject(subject)
+                .textBody(body)
+                .htmlBody(html)
+                .build();
 
-        if (mailSender == null) {
-            return Map.of(
-                    "status", "FAILED",
-                    "sender", from,
-                    "recipient", recipient,
-                    "subject", subject,
-                    "message", "JavaMailSender bean is not available",
-                    "timestamp", LocalDateTime.now().toString()
-            );
-        }
+        EmailDeliveryResult result = emailService.sendEmail(message);
 
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
-            helper.setFrom(from);
-            helper.setTo(recipient);
-            helper.setSubject(subject);
-            helper.setText(body, false);
-            mailSender.send(message);
-            log.info("Gmail SMTP test email successfully sent to {}", recipient);
-            return Map.of(
-                    "status", "SENT",
-                    "sender", from,
-                    "recipient", recipient,
-                    "subject", subject,
-                    "message", "Test email successfully delivered via Gmail SMTP",
-                    "timestamp", LocalDateTime.now().toString()
-            );
-        } catch (Exception ex) {
-            log.error("Failed to send test email via Gmail SMTP to {}: {}", recipient, ex.getMessage(), ex);
-            return Map.of(
-                    "status", "FAILED",
-                    "sender", from,
-                    "recipient", recipient,
-                    "subject", subject,
-                    "error", ex.getMessage() != null ? ex.getMessage() : "SMTP dispatch failed",
-                    "timestamp", LocalDateTime.now().toString()
-            );
-        }
+        return Map.of(
+                "status", result.isSuccess() ? "SUCCESS" : "FAILED",
+                "provider", result.getProvider(),
+                "sender", from,
+                "recipient", recipient,
+                "subject", subject,
+                "messageId", result.getMessageId() != null ? result.getMessageId() : "N/A",
+                "message", result.isSuccess() ? "Test email sent successfully via " + result.getProvider() : result.getErrorMessage(),
+                "timestamp", LocalDateTime.now().toString()
+        );
     }
 
-    public String buildPersonalSchedule(LocalDate start, LocalDate end, List<RosterAssignmentResponse> myShifts, List<Shift> shifts) {
-        StringBuilder sb = new StringBuilder();
-        Map<LocalDate, RosterAssignmentResponse> map = myShifts.stream()
-                .collect(Collectors.toMap(RosterAssignmentResponse::rosterDate, a -> a, (a, b) -> a));
+    public String buildPersonalSchedule(LocalDate startDate, LocalDate endDate,
+                                         List<RosterAssignmentResponse> myShifts,
+                                         List<Shift> allShifts) {
+        Map<ShiftType, Shift> shiftMap = allShifts != null ? allShifts.stream()
+                .filter(s -> s.getShiftType() != null)
+                .collect(Collectors.toMap(Shift::getShiftType, s -> s, (a, b) -> a)) : Map.of();
 
-        for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
-            String dayName = d.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-            RosterAssignmentResponse a = map.get(d);
-            String shiftInfo;
-            if (a == null) {
-                shiftInfo = "OFF";
-            } else if (a.onLeave()) {
-                shiftInfo = "ON LEAVE";
-            } else if (a.weeklyOff()) {
-                shiftInfo = "WEEKLY OFF";
-            } else if (a.shiftType() != null) {
-                shiftInfo = a.shiftType().name() + " (" + getTimingString(shifts, a.shiftType()) + ")";
+        Map<LocalDate, RosterAssignmentResponse> map = myShifts != null ? myShifts.stream()
+                .filter(a -> a.rosterDate() != null)
+                .collect(Collectors.toMap(RosterAssignmentResponse::rosterDate, a -> a, (a, b) -> a)) : Map.of();
+
+        StringBuilder sb = new StringBuilder();
+        DateTimeFormatter displayFmt = DateTimeFormatter.ofPattern("dd-MMM-yyyy");
+        LocalDate curr = startDate;
+        while (!curr.isAfter(endDate)) {
+            String dayName = curr.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+            String dateStr = curr.format(displayFmt);
+            RosterAssignmentResponse assign = map.get(curr);
+
+            if (assign != null) {
+                if (assign.onLeave()) {
+                    sb.append(String.format("  • %s (%s): ON LEAVE%n", dayName, dateStr));
+                } else if (assign.weeklyOff() || assign.shiftType() == ShiftType.OFF) {
+                    sb.append(String.format("  • %s (%s): WEEKLY OFF%n", dayName, dateStr));
+                } else if (assign.shiftType() != null) {
+                    Shift s = shiftMap.get(assign.shiftType());
+                    if (s != null && s.getStartTime() != null && s.getEndTime() != null) {
+                        String timing = (assign.shiftType() == ShiftType.NIGHT)
+                                ? String.format("%s–%s next day", s.getStartTime().toString(), s.getEndTime().toString())
+                                : String.format("%s–%s", s.getStartTime().toString(), s.getEndTime().toString());
+                        sb.append(String.format("  • %s (%s): %s (%s)%n", dayName, dateStr, assign.shiftType().name(), timing));
+                    } else {
+                        sb.append(String.format("  • %s (%s): %s%n", dayName, dateStr, assign.shiftType().name()));
+                    }
+                } else {
+                    sb.append(String.format("  • %s (%s): WEEKLY OFF%n", dayName, dateStr));
+                }
             } else {
-                shiftInfo = "OFF";
+                sb.append(String.format("  • %s (%s): WEEKLY OFF%n", dayName, dateStr));
             }
-            sb.append("  * ").append(dayName).append(" (").append(d.format(DISPLAY_DATE_FMT)).append("): ").append(shiftInfo).append("\n");
+            curr = curr.plusDays(1);
         }
         return sb.toString();
     }
 
-    private String getTimingString(List<Shift> shifts, com.weeklyroster.entity.ShiftType type) {
-        if (shifts != null) {
-            for (Shift s : shifts) {
-                if (s.getShiftType() == type && s.isActive()) {
-                    if (s.getStartTime() != null && s.getEndTime() != null) {
-                        String suffix = s.isOvernight() ? " next day" : "";
-                        return s.getStartTime() + "–" + s.getEndTime() + suffix;
-                    }
-                }
-            }
-        }
-        return switch (type) {
-            case MORNING -> "07:00–15:00";
-            case GENERAL -> "09:30–18:00";
-            case EVENING -> "14:00–22:00";
-            case NIGHT -> "22:00–07:00 next day";
-            default -> "No working hours";
-        };
-    }
-
-    private RosterCycleResponse toCycleResponse(RosterCycle cycle) {
-        List<RosterAssignmentResponse> assignments = assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(cycle)
-                .stream()
-                .map(a -> new RosterAssignmentResponse(
+    private RosterCycleResponse buildCycleResponse(RosterCycle cycle) {
+        List<com.weeklyroster.entity.RosterAssignment> assignments = assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(cycle);
+        List<RosterAssignmentResponse> assignmentResponses = assignments != null ? assignments.stream().map(a ->
+                new RosterAssignmentResponse(
                         a.getId(),
-                        cycle.getId(),
+                        a.getCycle() != null ? a.getCycle().getId() : null,
                         a.getRosterDate(),
-                        a.getEmployee().getId(),
-                        a.getEmployee().getEmployeeCode(),
-                        a.getEmployee().getFirstName() + " " + a.getEmployee().getLastName(),
-                        a.getEmployee().getGender(),
-                        a.getShift().getShiftType(),
+                        a.getEmployee() != null ? a.getEmployee().getId() : null,
+                        a.getEmployee() != null ? a.getEmployee().getEmployeeCode() : "EMP",
+                        a.getEmployee() != null ? (a.getEmployee().getFirstName() + " " + a.getEmployee().getLastName()) : "Unknown",
+                        a.getEmployee() != null ? a.getEmployee().getGender() : null,
+                        a.getShift() != null ? a.getShift().getShiftType() : null,
                         a.isWeeklyOff(),
                         a.isOnLeave(),
-                        a.isOverridden()
-                )).toList();
+                        a.isOverridden(),
+                        a.getAssignmentReason()
+                )
+        ).collect(Collectors.toList()) : List.of();
 
         return new RosterCycleResponse(
                 cycle.getId(),
@@ -558,26 +557,25 @@ public class RosterEmailService {
                 cycle.getEndDate(),
                 cycle.getGeneratedAt(),
                 cycle.getGenerationMode(),
-                "SENT",
-                assignments,
+                cycle.getStatus() != null ? cycle.getStatus().name() : "GENERATED",
+                assignmentResponses,
                 null
         );
     }
 
     private EmailDeliveryLogResponse toResponse(EmailDeliveryLog log) {
-        String empName = log.getEmployee() != null ? log.getEmployee().getFirstName() + " " + log.getEmployee().getLastName() : "Unknown";
-        String empCode = log.getEmployee() != null ? log.getEmployee().getEmployeeCode() : "N/A";
         return new EmailDeliveryLogResponse(
                 log.getId(),
-                log.getCycle().getId(),
+                log.getCycle() != null ? log.getCycle().getId() : null,
                 log.getEmployee() != null ? log.getEmployee().getId() : null,
-                empCode,
-                empName,
+                log.getEmployee() != null ? log.getEmployee().getEmployeeCode() : "EMP",
+                log.getEmployee() != null ? (log.getEmployee().getFirstName() + " " + log.getEmployee().getLastName()) : "Unknown",
                 log.getRecipientEmail(),
                 log.getSentAt() != null ? log.getSentAt().toString() : null,
                 log.getStatus(),
                 log.getErrorMessage(),
-                log.getMode()
+                log.getMode(),
+                log.getEmailType()
         );
     }
 }
