@@ -182,6 +182,55 @@ class RosterEmailServiceTest {
         verify(mockEmailService, times(1)).sendEmail(any(com.weeklyroster.service.email.EmailMessage.class));
     }
 
+    @Test
+    @DisplayName("Should distribute individualized emails to all 7 active employees with independent tracking")
+    void testSevenEmployeeDynamicRosterEmailDelivery() {
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        LocalDate start = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).plusDays(7);
+        LocalDate end = start.plusDays(6);
+
+        RosterCycle cycle = new RosterCycle();
+        cycle.setId(201L);
+        cycle.setStartDate(start);
+        cycle.setEndDate(end);
+
+        List<Employee> sevenEmployees = List.of(
+                createEmployee(1L, "EMP001", "Aarav", "Sharma", "aarav@example.com"),
+                createEmployee(2L, "EMP002", "Priya", "Patel", "priya@example.com"),
+                createEmployee(3L, "EMP003", "Rahul", "Verma", "rahul@example.com"),
+                createEmployee(4L, "EMP004", "Sneha", "Reddy", "sneha@example.com"),
+                createEmployee(5L, "EMP005", "Vikram", "Singh", "vikram@example.com"),
+                createEmployee(6L, "EMP006", "Ananya", "Deshmukh", "ananya@example.com"),
+                createEmployee(7L, "EMP007", "Rohan", "Mehta", "rohan@example.com")
+        );
+
+        when(employeeRepository.findByActiveTrueOrderByIdAsc()).thenReturn(sevenEmployees);
+        when(shiftRepository.findByActiveTrueOrderByIdAsc()).thenReturn(List.of());
+        when(emailLogRepository.save(any(EmailDeliveryLog.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RosterCycleResponse cycleResp = new RosterCycleResponse(201L, start, end, LocalDateTime.now(), List.of());
+
+        List<EmailDeliveryLogResponse> logs = emailService.distributeRosterEmails(cycle, cycleResp, GenerationMode.AUTOMATIC);
+
+        assertNotNull(logs);
+        assertEquals(7, logs.size(), "Total intended recipients must be 7");
+        long sentCount = logs.stream().filter(l -> l.status() == EmailDeliveryStatus.SENT).count();
+        long failedCount = logs.stream().filter(l -> l.status() == EmailDeliveryStatus.FAILED).count();
+        assertEquals(7, sentCount, "All 7 employees must have SENT status");
+        assertEquals(0, failedCount, "Failed count must be 0");
+
+        // Verify individual recipient emails
+        assertEquals("aarav@example.com", logs.get(0).recipientEmail());
+        assertEquals("priya@example.com", logs.get(1).recipientEmail());
+        assertEquals("rahul@example.com", logs.get(2).recipientEmail());
+        assertEquals("sneha@example.com", logs.get(3).recipientEmail());
+        assertEquals("vikram@example.com", logs.get(4).recipientEmail());
+        assertEquals("ananya@example.com", logs.get(5).recipientEmail());
+        assertEquals("rohan@example.com", logs.get(6).recipientEmail());
+
+        verify(emailLogRepository, times(7)).save(any(EmailDeliveryLog.class));
+    }
+
     private Employee createEmployee(Long id, String code, String first, String last, String email) {
         Employee e = new Employee();
         e.setId(id);
