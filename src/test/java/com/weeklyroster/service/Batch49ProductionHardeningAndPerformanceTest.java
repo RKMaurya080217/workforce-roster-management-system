@@ -93,6 +93,12 @@ public class Batch49ProductionHardeningAndPerformanceTest {
         cycleRepository.deleteAll();
 
         upcomingMonday = schedulerService.calculateUpcomingWeekStart(LocalDate.now());
+        employeeRepository.findAll().forEach(e -> {
+            if (!e.isActive()) {
+                e.setActive(true);
+                employeeRepository.save(e);
+            }
+        });
     }
 
     @Test

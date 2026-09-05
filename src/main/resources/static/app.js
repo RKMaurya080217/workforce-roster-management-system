@@ -137,8 +137,12 @@ const dom = {
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
   togglePasswordBtn: document.getElementById("togglePasswordBtn"),
-  demoAdminBtn: document.getElementById("demoAdminBtn"),
-  demoEmpBtn: document.getElementById("demoEmpBtn"),
+  roleAdmin: document.getElementById("roleAdmin"),
+  roleEmployee: document.getElementById("roleEmployee"),
+  roleCardAdmin: document.getElementById("roleCardAdmin"),
+  roleCardEmployee: document.getElementById("roleCardEmployee"),
+  loginUsernameLabel: document.getElementById("loginUsernameLabel"),
+  loginSubmitBtn: document.getElementById("loginSubmitBtn"),
   sidebarNav: document.getElementById("sidebarNav"),
   sidebarUsername: document.getElementById("sidebarUsername"),
   sidebarRole: document.getElementById("sidebarRole"),
@@ -391,23 +395,57 @@ function bindGlobalEvents() {
   dom.loginForm.addEventListener("submit", handleLogin);
 
   // Toggle Password Visibility
-  dom.togglePasswordBtn.addEventListener("click", () => {
-    const isPassword = dom.loginPassword.type === "password";
-    dom.loginPassword.type = isPassword ? "text" : "password";
-  });
+  if (dom.togglePasswordBtn && dom.loginPassword) {
+    dom.togglePasswordBtn.addEventListener("click", () => {
+      const isPassword = dom.loginPassword.type === "password";
+      dom.loginPassword.type = isPassword ? "text" : "password";
+      const newLabel = isPassword ? "Hide password" : "Show password";
+      dom.togglePasswordBtn.setAttribute("title", newLabel);
+      dom.togglePasswordBtn.setAttribute("aria-label", newLabel);
+    });
+  }
 
-  // Demo Credentials Fast-Fill
-  dom.demoAdminBtn.addEventListener("click", () => {
-    dom.loginUsername.value = "admin";
-    dom.loginPassword.value = "Admin@123";
-    toast("Admin credentials filled", "info");
-  });
+  // Role Selector Switch
+  function setLoginRole(selectedRole, shouldClearUsername = false) {
+    const isAdmin = selectedRole === "ADMIN";
+    if (dom.roleAdmin) dom.roleAdmin.checked = isAdmin;
+    if (dom.roleEmployee) dom.roleEmployee.checked = !isAdmin;
+    if (dom.roleCardAdmin) dom.roleCardAdmin.classList.toggle("selected", isAdmin);
+    if (dom.roleCardEmployee) dom.roleCardEmployee.classList.toggle("selected", !isAdmin);
 
-  dom.demoEmpBtn.addEventListener("click", () => {
-    dom.loginUsername.value = "emp001";
-    dom.loginPassword.value = "password123";
-    toast("Staff credentials filled", "info");
-  });
+    if (dom.loginUsernameLabel) {
+      dom.loginUsernameLabel.textContent = isAdmin ? "Admin Username" : "Employee Code";
+    }
+    if (dom.loginUsername) {
+      dom.loginUsername.placeholder = isAdmin ? "Enter admin username" : "Enter employee code";
+      if (shouldClearUsername) {
+        dom.loginUsername.value = "";
+      }
+    }
+    if (dom.loginSubmitBtn) {
+      const btnText = dom.loginSubmitBtn.querySelector(".btn-text");
+      if (btnText) {
+        btnText.textContent = isAdmin ? "Sign In as Admin" : "Sign In as Employee";
+      }
+    }
+  }
+
+  if (dom.roleAdmin) {
+    dom.roleAdmin.addEventListener("change", () => {
+      if (dom.roleAdmin.checked) setLoginRole("ADMIN", true);
+    });
+  }
+  if (dom.roleEmployee) {
+    dom.roleEmployee.addEventListener("change", () => {
+      if (dom.roleEmployee.checked) setLoginRole("EMPLOYEE", true);
+    });
+  }
+  if (dom.roleCardAdmin) {
+    dom.roleCardAdmin.addEventListener("click", () => setLoginRole("ADMIN", false));
+  }
+  if (dom.roleCardEmployee) {
+    dom.roleCardEmployee.addEventListener("click", () => setLoginRole("EMPLOYEE", false));
+  }
 
   // Logout
   dom.logoutBtn.addEventListener("click", handleLogout);
@@ -510,20 +548,39 @@ function bindGlobalEvents() {
 
 async function handleLogin(e) {
   e.preventDefault();
-  const username = dom.loginUsername.value.trim();
-  const password = dom.loginPassword.value;
-  const submitBtn = document.getElementById("loginSubmitBtn");
-  const spinner = submitBtn.querySelector(".spinner");
+  const selectedRole = (document.querySelector('input[name="authRole"]:checked')?.value || "ADMIN").toUpperCase();
+  const username = dom.loginUsername ? dom.loginUsername.value.trim() : "";
+  const password = dom.loginPassword ? dom.loginPassword.value : "";
+  const submitBtn = dom.loginSubmitBtn || document.getElementById("loginSubmitBtn");
+  const spinner = submitBtn ? submitBtn.querySelector(".spinner") : null;
+  const btnText = submitBtn ? submitBtn.querySelector(".btn-text") : null;
+
+  if (!username || !password) {
+    toast(selectedRole === "ADMIN" ? "Please enter your admin username and password." : "Please enter your employee code and password.", "warning");
+    return;
+  }
 
   try {
-    submitBtn.disabled = true;
-    spinner.classList.remove("hidden");
+    if (submitBtn) submitBtn.disabled = true;
+    if (dom.roleAdmin) dom.roleAdmin.disabled = true;
+    if (dom.roleEmployee) dom.roleEmployee.disabled = true;
+    if (spinner) spinner.classList.remove("hidden");
+    if (btnText) btnText.textContent = "Signing in...";
 
     const res = await apiRequest("/api/auth/login", {
       method: "POST",
       body: { username, password },
       auth: false
     });
+
+    // Verify authenticated user's role against selected role
+    const actualRole = res.user && res.user.role ? res.user.role : "";
+    if (selectedRole === "ADMIN" && actualRole !== "ROLE_ADMIN") {
+      throw new Error("Invalid Admin credentials.");
+    }
+    if (selectedRole === "EMPLOYEE" && actualRole !== "ROLE_EMPLOYEE") {
+      throw new Error("Invalid employee credentials.");
+    }
 
     state.token = res.token;
     state.profile = res.user;
@@ -535,10 +592,24 @@ async function handleLogin(e) {
     resolveInitialRoute();
 
   } catch (err) {
-    toast(err.message, "error");
+    const isGenericAuthError = err.message && (
+      err.message.includes("401") ||
+      err.message.includes("Bad credentials") ||
+      err.message.includes("Unauthorized") ||
+      err.message.includes("invalid") ||
+      err.message.includes("Invalid")
+    );
+    if (isGenericAuthError) {
+      toast(selectedRole === "ADMIN" ? "Invalid Admin credentials." : "Invalid employee credentials.", "error");
+    } else {
+      toast(err.message || "Sign in failed. Please check your credentials.", "error");
+    }
   } finally {
-    submitBtn.disabled = false;
-    spinner.classList.add("hidden");
+    if (submitBtn) submitBtn.disabled = false;
+    if (dom.roleAdmin) dom.roleAdmin.disabled = false;
+    if (dom.roleEmployee) dom.roleEmployee.disabled = false;
+    if (spinner) spinner.classList.add("hidden");
+    if (btnText) btnText.textContent = selectedRole === "ADMIN" ? "Sign In as Admin" : "Sign In as Employee";
   }
 }
 

@@ -92,6 +92,12 @@ public class Batch44DeepFunctionalValidationTest {
 
         systemUpcomingMonday = schedulerService.calculateUpcomingWeekStart(LocalDate.now());
         futureMonday = LocalDate.of(2027, 3, 1); // Future Monday
+        employeeRepository.findAll().forEach(e -> {
+            if (!e.isActive()) {
+                e.setActive(true);
+                employeeRepository.save(e);
+            }
+        });
     }
 
     @Test

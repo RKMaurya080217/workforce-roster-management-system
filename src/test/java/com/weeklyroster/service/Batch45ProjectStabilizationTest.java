@@ -85,9 +85,13 @@ public class Batch45ProjectStabilizationTest {
         assignmentRepository.deleteAll();
         versionRepository.deleteAll();
         emailDeliveryLogRepository.deleteAll();
-        cycleRepository.deleteAll();
-
         upcomingMonday = schedulerService.calculateUpcomingWeekStart(LocalDate.now());
+        employeeRepository.findAll().forEach(e -> {
+            if (!e.isActive()) {
+                e.setActive(true);
+                employeeRepository.save(e);
+            }
+        });
     }
 
     @Test

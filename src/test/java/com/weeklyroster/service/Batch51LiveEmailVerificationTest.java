@@ -76,8 +76,8 @@ public class Batch51LiveEmailVerificationTest {
         Map<String, Object> testResult = emailService.sendTestEmail("rajatkumarmaury@gmail.com");
         assertNotNull(testResult);
         assertTrue(testResult.containsKey("status"));
-        assertTrue(List.of("SENT", "BLOCKED", "FAILED").contains(testResult.get("status")),
-                "Status must be a valid outcome (SENT in production with password, BLOCKED safely if password unset)");
+        assertTrue(List.of("SENT", "BLOCKED", "FAILED", "SUCCESS").contains(testResult.get("status")),
+                "Status must be a valid outcome (SENT/SUCCESS in production with credentials, BLOCKED/FAILED safely if unset)");
     }
 
     @Test

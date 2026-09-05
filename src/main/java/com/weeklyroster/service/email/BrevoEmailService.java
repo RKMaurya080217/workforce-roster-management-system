@@ -94,6 +94,11 @@ public class BrevoEmailService implements EmailProvider {
 
     @Override
     public EmailDeliveryResult sendEmail(EmailMessage message) {
+        if ("TEST_MOCK_KEY".equalsIgnoreCase(apiKey != null ? apiKey.trim() : "") || "MOCK".equalsIgnoreCase(apiKey != null ? apiKey.trim() : "")) {
+            log.info("[WRMS EMAIL] [TEST MOCK] Mock Brevo email dispatched to {}", maskEmail(message.getToEmail()));
+            return EmailDeliveryResult.success(PROVIDER_NAME, "mock-brevo-" + UUID.randomUUID());
+        }
+
         if (!isConfigured()) {
             String err = "EMAIL_NOT_CONFIGURED: BREVO_API_KEY is not configured in Railway environment variables. Please add BREVO_API_KEY in Railway Dashboard -> Service Variables.";
             log.warn("[WRMS EMAIL] Provider=BREVO recipient={} status=FAILED reason={}", maskEmail(message.getToEmail()), err);

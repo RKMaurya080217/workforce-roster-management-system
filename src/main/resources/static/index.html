@@ -22,10 +22,36 @@
     <!-- 1. AUTHENTICATION / LOGIN VIEW             -->
     <!-- ========================================== -->
     <section id="loginView" class="auth-wrapper">
-      <div class="auth-container">
+      <div class="auth-page-shell">
         
-        <!-- Left Side: Login Form -->
-        <div class="auth-card">
+        <!-- Top Application Header Bar on Login Page -->
+        <header class="auth-topbar">
+          <div class="auth-topbar-brand">
+            <div class="brand-logo small">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <div class="auth-topbar-text">
+              <strong>WRMS</strong>
+              <span class="topbar-subtext">Workforce Roster Management System</span>
+            </div>
+          </div>
+          <div class="auth-topbar-status">
+            <span class="badge-tag">Enterprise Operations v2.0</span>
+            <span class="system-status"><span class="status-dot online"></span> System Online</span>
+          </div>
+        </header>
+
+        <!-- Main Login Center Container -->
+        <main class="auth-main-stage">
+          <div class="auth-container">
+            
+            <!-- Left Side: Login Form -->
+            <div class="auth-card">
           <div class="auth-brand">
             <div class="brand-logo">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -47,14 +73,57 @@
           </div>
 
           <form id="loginForm" class="auth-form">
+            <!-- Accessible Role Selection -->
+            <div class="form-group role-selector-group">
+              <label id="roleSelectorLabel" class="role-selector-title">Choose Account Type</label>
+              <div class="role-cards-grid" role="radiogroup" aria-labelledby="roleSelectorLabel">
+                
+                <!-- Admin Role Card -->
+                <label class="role-card selected" for="roleAdmin" id="roleCardAdmin">
+                  <input type="radio" id="roleAdmin" name="authRole" value="ADMIN" checked class="role-radio-input" aria-labelledby="roleAdminTitle roleAdminDesc">
+                  <div class="role-card-radio-indicator" aria-hidden="true">
+                    <div class="role-radio-dot"></div>
+                  </div>
+                  <div class="role-card-content">
+                    <div class="role-card-header">
+                      <svg class="role-card-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                      </svg>
+                      <strong id="roleAdminTitle" class="role-card-title">Admin</strong>
+                    </div>
+                    <span id="roleAdminDesc" class="role-card-desc">Administrative access</span>
+                  </div>
+                </label>
+
+                <!-- Employee Role Card -->
+                <label class="role-card" for="roleEmployee" id="roleCardEmployee">
+                  <input type="radio" id="roleEmployee" name="authRole" value="EMPLOYEE" class="role-radio-input" aria-labelledby="roleEmployeeTitle roleEmployeeDesc">
+                  <div class="role-card-radio-indicator" aria-hidden="true">
+                    <div class="role-radio-dot"></div>
+                  </div>
+                  <div class="role-card-content">
+                    <div class="role-card-header">
+                      <svg class="role-card-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                      </svg>
+                      <strong id="roleEmployeeTitle" class="role-card-title">Employee</strong>
+                    </div>
+                    <span id="roleEmployeeDesc" class="role-card-desc">Employee roster access</span>
+                  </div>
+                </label>
+
+              </div>
+            </div>
+
             <div class="form-group">
-              <label for="loginUsername">Username / Employee Code</label>
+              <label for="loginUsername" id="loginUsernameLabel">Admin Username</label>
               <div class="input-with-icon">
                 <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                   <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                <input id="loginUsername" type="text" autocomplete="username" placeholder="e.g. admin" required value="admin">
+                <input id="loginUsername" type="text" autocomplete="username" placeholder="Enter admin username" required>
               </div>
             </div>
 
@@ -67,8 +136,8 @@
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                   <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
-                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="********" required value="Admin@123">
-                <button type="button" id="togglePasswordBtn" class="password-toggle" title="Show/Hide Password">
+                <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter password" required>
+                <button type="button" id="togglePasswordBtn" class="password-toggle" title="Show password" aria-label="Show password">
                   <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                     <circle cx="12" cy="12" r="3"></circle>
@@ -78,76 +147,165 @@
             </div>
 
             <button id="loginSubmitBtn" type="submit" class="btn btn-primary btn-block">
-              <span class="btn-text">Sign In to Dashboard</span>
+              <span class="btn-text">Sign In as Admin</span>
               <div class="spinner hidden"></div>
             </button>
           </form>
 
-          <!-- Quick Fill Demo Chips for Local Dev -->
-          <div class="demo-accounts-card">
-            <span class="demo-title">Development Fast-Login:</span>
-            <div class="demo-chips">
-              <button type="button" class="chip chip-admin" id="demoAdminBtn" title="Fill Admin Credentials">
-                <span class="chip-dot"></span> Admin (admin / Admin@123)
-              </button>
-              <button type="button" class="chip chip-emp" id="demoEmpBtn" title="Fill Employee Credentials">
-                <span class="chip-dot"></span> Staff (emp001 / password123)
-              </button>
+          <!-- Safe Development Environment Notice (Zero credentials exposed) -->
+          <div class="demo-accounts-card safe-demo-notice">
+            <div class="demo-notice-header">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <span class="demo-title">DEVELOPMENT ENVIRONMENT</span>
             </div>
+            <p class="demo-notice-text">Use authorized credentials provided by your administrator.</p>
           </div>
 
           <footer class="auth-footer">
-            <span>Weekly Roster Management System &bull; Production Ready</span>
+            <div class="auth-footer-brand">
+              <strong>WRMS</strong> &bull; Workforce Roster Management System &bull; <span class="badge-version">v2.0</span>
+            </div>
+            <div class="auth-footer-contact">
+              <span>Contact: <strong>Rajat Kumar Maurya</strong></span>
+              <span class="footer-sep">&bull;</span>
+              <a href="tel:8565005534" class="footer-link">8565005534</a>
+              <span class="footer-sep">&bull;</span>
+              <a href="mailto:rajatkumarmaury@gmail.com" class="footer-link">rajatkumarmaury@gmail.com</a>
+            </div>
+            <div class="auth-footer-copy">
+              &copy; 2026 WRMS. All Rights Reserved.
+            </div>
           </footer>
         </div>
 
-        <!-- Right Side: Product Showcase Hero -->
+        <!-- Right Side: Premium Enterprise Hero Panel -->
         <div class="auth-hero">
+          <div class="hero-bg-glow"></div>
           <div class="hero-content">
-            <div class="hero-badge">Enterprise Operations v2.0</div>
-            <h2>Automated, Fair & Constraint-Aware Scheduling</h2>
-            <p>Smart constraint fulfillment with automated shift fairness, gender compliance, consecutive rest protection, and multi-shift capacity scaling.</p>
+            <div class="hero-badge">
+              <span class="badge-dot"></span>
+              Enterprise Operations v2.0
+            </div>
+            <h2 class="hero-headline">Intelligent Workforce<br><span class="gradient-text">Roster Management</span></h2>
+            <p class="hero-subtext">Automated, fair and constraint-aware workforce scheduling designed to improve operational efficiency, staff balance and roster reliability.</p>
             
+            <!-- 4 Core Enterprise Feature Cards -->
             <div class="hero-feature-grid">
               <div class="feature-item">
                 <div class="feature-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
                 </div>
-                <div>
-                  <strong>Female Staff Protection</strong>
-                  <span>Automatic enforcement of day-only shifts</span>
-                </div>
-              </div>
-              <div class="feature-item">
-                <div class="feature-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
-                </div>
-                <div>
-                  <strong>Fair Rotation Scoring</strong>
-                  <span>Intelligent intra-week continuity & balanced offs</span>
+                <div class="feature-text">
+                  <strong>Fair Rotation</strong>
+                  <span>Balanced workforce assignments with intelligent rotation.</span>
                 </div>
               </div>
               <div class="feature-item">
                 <div class="feature-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                 </div>
-                <div>
-                  <strong>Atomic Shift Swaps</strong>
-                  <span>Instant two-way mutual shift exchanges</span>
+                <div class="feature-text">
+                  <strong>Smart Scheduling</strong>
+                  <span>Constraint-aware automated roster generation.</span>
                 </div>
               </div>
               <div class="feature-item">
                 <div class="feature-icon">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 </div>
-                <div>
+                <div class="feature-text">
+                  <strong>Staff Protection</strong>
+                  <span>Automated enforcement of rest, gender and shift safety rules.</span>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+                </div>
+                <div class="feature-text">
                   <strong>Leave Synchronization</strong>
-                  <span>Real-time roster auto-adjustment on leave approval</span>
+                  <span>Real-time roster adjustment based on approved leave.</span>
                 </div>
               </div>
             </div>
+
+            <!-- Mini Roster Capability Visualization (Abstract / Demo Capacity Preview) -->
+            <div class="hero-mini-roster">
+              <div class="mini-roster-header">
+                <div class="mini-roster-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  <span>Workforce Overview &bull; Capacity Balance</span>
+                </div>
+                <span class="mini-roster-tag">Optimal Allocation</span>
+              </div>
+              <div class="mini-roster-grid">
+                <div class="mini-roster-col">
+                  <span class="col-day">Mon</span>
+                  <span class="col-pill pill-morning">M: 2</span>
+                  <span class="col-pill pill-general">G: 2</span>
+                  <span class="col-pill pill-evening">E: 1</span>
+                  <span class="col-pill pill-night">N: 1</span>
+                </div>
+                <div class="mini-roster-col">
+                  <span class="col-day">Tue</span>
+                  <span class="col-pill pill-morning">M: 2</span>
+                  <span class="col-pill pill-general">G: 2</span>
+                  <span class="col-pill pill-evening">E: 1</span>
+                  <span class="col-pill pill-night">N: 1</span>
+                </div>
+                <div class="mini-roster-col">
+                  <span class="col-day">Wed</span>
+                  <span class="col-pill pill-morning">M: 2</span>
+                  <span class="col-pill pill-general">G: 2</span>
+                  <span class="col-pill pill-evening">E: 1</span>
+                  <span class="col-pill pill-night">N: 1</span>
+                </div>
+                <div class="mini-roster-col">
+                  <span class="col-day">Thu</span>
+                  <span class="col-pill pill-morning">M: 2</span>
+                  <span class="col-pill pill-general">G: 2</span>
+                  <span class="col-pill pill-evening">E: 1</span>
+                  <span class="col-pill pill-night">N: 1</span>
+                </div>
+                <div class="mini-roster-col">
+                  <span class="col-day">Fri</span>
+                  <span class="col-pill pill-morning">M: 2</span>
+                  <span class="col-pill pill-general">G: 2</span>
+                  <span class="col-pill pill-evening">E: 1</span>
+                  <span class="col-pill pill-night">N: 1</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hero Status Indicator -->
+            <div class="hero-status-indicator">
+              <span class="status-dot online"></span>
+              <span>Scheduling Engine Active &bull; Constraint Engine v2.0</span>
+            </div>
+
           </div>
-        </div>
+        </main>
+
+        <!-- Full Bottom Footer on Login Page -->
+        <footer class="auth-page-footer">
+          <div class="footer-primary-row">
+            <strong>WRMS</strong> &bull; Workforce Roster Management System &bull; <span class="badge-version">v2.0</span>
+          </div>
+          <div class="footer-contact-row">
+            <span>Contact: <strong>Rajat Kumar Maurya</strong></span>
+            <span class="footer-sep">&bull;</span>
+            <a href="tel:8565005534" class="footer-link">8565005534</a>
+            <span class="footer-sep">&bull;</span>
+            <a href="mailto:rajatkumarmaury@gmail.com" class="footer-link">rajatkumarmaury@gmail.com</a>
+          </div>
+          <div class="footer-copy-row">
+            &copy; 2026 WRMS. All Rights Reserved.
+          </div>
+        </footer>
 
       </div>
     </section>
@@ -351,6 +509,72 @@
           <section id="viewRosterVersions" class="view-panel hidden"></section>
 
         </div>
+
+        <!-- Shared Global Application Footer -->
+        <footer class="app-footer">
+          <div class="app-footer-container">
+            <div class="footer-col footer-col-brand">
+              <div class="footer-brand-header">
+                <div class="brand-logo small">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
+                </div>
+                <div>
+                  <strong>WRMS</strong>
+                  <span class="footer-tagline">Workforce Roster Management System</span>
+                </div>
+              </div>
+              <p class="footer-desc">Automated, fair, and constraint-aware workforce scheduling system for enterprise operations.</p>
+            </div>
+
+            <div class="footer-col footer-col-contact">
+              <span class="footer-col-title">Contact &amp; Support</span>
+              <div class="footer-contact-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Rajat Kumar Maurya</span>
+              </div>
+              <div class="footer-contact-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <a href="tel:8565005534" class="footer-link">8565005534</a>
+              </div>
+              <div class="footer-contact-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <a href="mailto:rajatkumarmaury@gmail.com" class="footer-link">rajatkumarmaury@gmail.com</a>
+              </div>
+            </div>
+
+            <div class="footer-col footer-col-meta">
+              <span class="footer-col-title">System Info</span>
+              <div class="footer-meta-item">
+                <span>Release Version:</span>
+                <span class="footer-version-badge">v2.0</span>
+              </div>
+              <div class="footer-meta-item">
+                <span>Scheduling Engine:</span>
+                <span class="footer-status-pill"><span class="status-dot online"></span> Active</span>
+              </div>
+              <div class="footer-meta-item">
+                <span>Platform:</span>
+                <span>Enterprise Cloud</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-footer-bottom">
+            <div class="footer-bottom-inner">
+              <span>&copy; 2026 WRMS. All Rights Reserved.</span>
+              <span class="footer-bottom-links">
+                <span>Workforce Roster Management System</span>
+                <span class="footer-sep">&bull;</span>
+                <span>Version 2.0</span>
+              </span>
+            </div>
+          </div>
+        </footer>
       </main>
 
     </section>
@@ -409,7 +633,7 @@
           </div>
           <div class="form-group">
             <label for="empFormPassword">Initial Password</label>
-            <input type="password" id="empFormPassword" name="password" placeholder="Defaults to password123">
+            <input type="password" id="empFormPassword" name="password" placeholder="Enter initial password">
           </div>
         </div>
 
