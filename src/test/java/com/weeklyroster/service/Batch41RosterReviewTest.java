@@ -74,7 +74,7 @@ public class Batch41RosterReviewTest {
                 impactService, notificationService, auditService, healthService
         );
 
-        LocalDate upcomingMonday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY));
+        LocalDate upcomingMonday = LocalDate.now().plusDays(14).with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
         testCycle = new RosterCycle();
         testCycle.setId(101L);
         testCycle.setStartDate(upcomingMonday);

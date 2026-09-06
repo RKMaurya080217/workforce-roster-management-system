@@ -37,7 +37,7 @@ public class UnifiedApprovalController {
         return ResponseEntity.ok(unifiedApprovalService.getAllPending());
     }
 
-    @PostMapping("/profile/{id}/approve")
+    @RequestMapping(value = "/profile/{id}/approve", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "Approve profile change request")
     public ResponseEntity<ProfileChangeRequestResponse> approveProfile(
             @PathVariable Long id,
@@ -45,7 +45,7 @@ public class UnifiedApprovalController {
         return ResponseEntity.ok(unifiedApprovalService.decideProfile(id, true, req));
     }
 
-    @PostMapping("/profile/{id}/reject")
+    @RequestMapping(value = "/profile/{id}/reject", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "Reject profile change request")
     public ResponseEntity<ProfileChangeRequestResponse> rejectProfile(
             @PathVariable Long id,
@@ -53,7 +53,7 @@ public class UnifiedApprovalController {
         return ResponseEntity.ok(unifiedApprovalService.decideProfile(id, false, req));
     }
 
-    @PostMapping("/leave/{id}/approve")
+    @RequestMapping(value = "/leave/{id}/approve", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "Approve leave request")
     public ResponseEntity<LeaveResponse> approveLeave(
             @PathVariable Long id,
@@ -61,7 +61,7 @@ public class UnifiedApprovalController {
         return ResponseEntity.ok(unifiedApprovalService.decideLeave(id, true, req));
     }
 
-    @PostMapping("/leave/{id}/reject")
+    @RequestMapping(value = "/leave/{id}/reject", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "Reject leave request")
     public ResponseEntity<LeaveResponse> rejectLeave(
             @PathVariable Long id,
@@ -69,7 +69,7 @@ public class UnifiedApprovalController {
         return ResponseEntity.ok(unifiedApprovalService.decideLeave(id, false, req));
     }
 
-    @PostMapping("/preference/{id}/decision")
+    @RequestMapping(value = "/preference/{id}/decision", method = {RequestMethod.POST, RequestMethod.PUT})
     @Operation(summary = "Decide employee shift preference request")
     public ResponseEntity<PreferenceResponse> decidePreference(
             @PathVariable Long id,

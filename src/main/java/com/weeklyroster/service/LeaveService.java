@@ -250,6 +250,16 @@ public class LeaveService {
             return approveCancellation(id, request);
         }
 
+        if (leave.getStatus() == LeaveStatus.APPROVED) {
+            throw new BusinessException("Leave request is already approved");
+        }
+        if (leave.getStatus() == LeaveStatus.REJECTED) {
+            throw new BusinessException("Cannot approve a rejected leave request");
+        }
+        if (leave.getStatus() == LeaveStatus.CANCELLED) {
+            throw new BusinessException("Cannot approve a cancelled leave request");
+        }
+
         leave.setStatus(LeaveStatus.APPROVED);
         leave.setAdminRemarks(request != null ? request.remarks() : null);
         leave.setReviewedAt(LocalDateTime.now());
@@ -309,21 +319,19 @@ public class LeaveService {
             return rejectCancellation(id, request);
         }
 
-        boolean wasApproved = leave.getStatus() == LeaveStatus.APPROVED;
+        if (leave.getStatus() == LeaveStatus.APPROVED) {
+            throw new BusinessException("Cannot reject an already approved leave request");
+        }
+        if (leave.getStatus() == LeaveStatus.REJECTED) {
+            throw new BusinessException("Leave request is already rejected");
+        }
+        if (leave.getStatus() == LeaveStatus.CANCELLED) {
+            throw new BusinessException("Cannot reject a cancelled leave request");
+        }
+
         leave.setStatus(LeaveStatus.REJECTED);
         leave.setAdminRemarks(request != null ? request.remarks() : null);
         leave.setReviewedAt(LocalDateTime.now());
-
-        if (wasApproved) {
-            List<RosterAssignment> affectedAssignments = assignmentRepository
-                    .findByEmployeeIdAndRosterDateBetween(leave.getEmployee().getId(), leave.getStartDate(), leave.getEndDate());
-            for (RosterAssignment assignment : affectedAssignments) {
-                assignment.setOnLeave(false);
-            }
-            if (!affectedAssignments.isEmpty()) {
-                assignmentRepository.saveAll(affectedAssignments);
-            }
-        }
 
         if (auditService != null) {
             auditService.log(AuditAction.LEAVE_REJECTED, "LEAVE_REQUEST", leave.getId(), null,

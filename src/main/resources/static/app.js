@@ -2310,7 +2310,7 @@ async function renderRosterView() {
         if (confirm(`Are you sure you want to delete roster cycle #${currentCycle.id} (${formatDate(currentCycle.startDate)} to ${formatDate(currentCycle.endDate)})? This action will remove un-published shift assignments safely.`)) {
           try {
             showToast("Deleting roster cycle...", "info");
-            await apiRequest(`/api/rosters/cycle/${currentCycle.id}`, "DELETE");
+            await apiRequest(`/api/rosters/cycle/${currentCycle.id}`, { method: "DELETE" });
             showToast("Roster cycle deleted successfully", "success");
             state.selectedCycleId = null;
             await renderRosterView();
@@ -2750,10 +2750,10 @@ async function renderLeavesView() {
                       <td><small style="color:var(--text-muted);">${l.modifiedAt ? new Date(l.modifiedAt).toLocaleString() : formatDate(l.requestedAt)}</small></td>
                       <td style="text-align:right;">
                         <div class="row-actions" style="justify-content:flex-end;">
-                          <button class="btn btn-primary btn-sm" data-action="mod-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.pendingStartDate)} - ${formatDate(l.pendingEndDate)}">
+                          <button type="button" class="btn btn-primary btn-sm" data-action="mod-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.pendingStartDate)} - ${formatDate(l.pendingEndDate)}">
                             Approve
                           </button>
-                          <button class="btn btn-danger btn-sm" data-action="mod-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.pendingStartDate)} - ${formatDate(l.pendingEndDate)}">
+                          <button type="button" class="btn btn-danger btn-sm" data-action="mod-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.pendingStartDate)} - ${formatDate(l.pendingEndDate)}">
                             Reject
                           </button>
                         </div>
@@ -2804,10 +2804,10 @@ async function renderLeavesView() {
                     <td><small style="color:var(--text-muted);">${l.modifiedAt ? new Date(l.modifiedAt).toLocaleString() : formatDate(l.requestedAt)}</small></td>
                     <td style="text-align:right;">
                       <div class="row-actions" style="justify-content:flex-end;">
-                        <button class="btn btn-danger btn-sm" data-action="cancel-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
+                        <button type="button" class="btn btn-danger btn-sm" data-action="cancel-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
                           Approve Cancellation
                         </button>
-                        <button class="btn btn-secondary btn-sm" data-action="cancel-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
                           Reject
                         </button>
                       </div>
@@ -2908,10 +2908,10 @@ function renderNewLeaveTableHTML(list) {
             <td><small style="color:var(--text-muted);">${l.requestedAt ? new Date(l.requestedAt).toLocaleDateString() : '-'}</small></td>
             <td style="text-align:right;">
               <div class="row-actions" style="justify-content:flex-end;">
-                <button class="btn btn-primary btn-sm" data-action="leave-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
+                <button type="button" class="btn btn-primary btn-sm" data-action="leave-decision" data-id="${l.id}" data-approve="true" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
                   Approve
                 </button>
-                <button class="btn btn-danger btn-sm" data-action="leave-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
+                <button type="button" class="btn btn-danger btn-sm" data-action="leave-decision" data-id="${l.id}" data-approve="false" data-emp="${l.employeeName}" data-dates="${formatDate(l.startDate)} - ${formatDate(l.endDate)}">
                   Reject
                 </button>
               </div>
@@ -7174,10 +7174,10 @@ function renderLeaveApprovalsCategoryBody(leaves) {
                 <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${l.requestedAt ? l.requestedAt.replace('T', ' ').substring(0, 16) : '-'}</td>
                 <td><span class="status-pill pending">${l.status}</span></td>
                 <td style="text-align:right; white-space:nowrap;">
-                  <button class="btn btn-primary btn-xs" data-approve-leave="${l.id}" data-status="${l.status}">
+                  <button type="button" class="btn btn-primary btn-xs" data-approve-leave="${l.id}" data-status="${l.status}">
                     Approve
                   </button>
-                  <button class="btn btn-secondary btn-xs" data-reject-leave="${l.id}" data-status="${l.status}" style="border-color:#ef4444; color:#dc2626;">
+                  <button type="button" class="btn btn-secondary btn-xs" data-reject-leave="${l.id}" data-status="${l.status}" style="border-color:#ef4444; color:#dc2626;">
                     Reject
                   </button>
                 </td>
@@ -7245,13 +7245,17 @@ function renderPreferenceApprovalsCategoryBody(prefs) {
 function bindUnifiedApprovalActions(container) {
   // 1. Profile actions
   container.querySelectorAll("[data-approve-profile]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-approve-profile");
       const emp = btn.getAttribute("data-emp") || "Employee";
       try {
         btn.disabled = true;
         toast(`Approving profile changes for ${emp}...`, "info");
-        await apiRequest(`/api/admin/approvals/profile/${id}/approve`, "POST", { decisionReason: "Approved by administrator" });
+        await apiRequest(`/api/admin/approvals/profile/${id}/approve`, {
+          method: "POST",
+          body: { decisionReason: "Approved by administrator" }
+        });
         toast(`Profile change request #${id} approved successfully!`, "success");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -7263,7 +7267,8 @@ function bindUnifiedApprovalActions(container) {
   });
 
   container.querySelectorAll("[data-reject-profile]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-reject-profile");
       const emp = btn.getAttribute("data-emp") || "Employee";
       const reason = prompt(`Enter rejection reason for ${emp}'s profile change:`, "Information could not be verified");
@@ -7271,7 +7276,10 @@ function bindUnifiedApprovalActions(container) {
       try {
         btn.disabled = true;
         toast(`Rejecting profile change request...`, "info");
-        await apiRequest(`/api/admin/approvals/profile/${id}/reject`, "POST", { decisionReason: reason || "Rejected by administrator" });
+        await apiRequest(`/api/admin/approvals/profile/${id}/reject`, {
+          method: "POST",
+          body: { decisionReason: reason || "Rejected by administrator" }
+        });
         toast(`Profile change request #${id} rejected`, "info");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -7284,7 +7292,8 @@ function bindUnifiedApprovalActions(container) {
 
   // 2. Leave actions
   container.querySelectorAll("[data-approve-leave]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-approve-leave");
       const status = btn.getAttribute("data-status");
       let endpoint = `/api/admin/approvals/leave/${id}/approve`;
@@ -7293,7 +7302,10 @@ function bindUnifiedApprovalActions(container) {
       try {
         btn.disabled = true;
         toast("Processing leave approval...", "info");
-        await apiRequest(endpoint, "PUT", { reason: "Approved by administrator" });
+        await apiRequest(endpoint, {
+          method: "POST",
+          body: { remarks: "Approved by administrator" }
+        });
         toast(`Leave request #${id} approved successfully!`, "success");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -7305,7 +7317,8 @@ function bindUnifiedApprovalActions(container) {
   });
 
   container.querySelectorAll("[data-reject-leave]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-reject-leave");
       const status = btn.getAttribute("data-status");
       const reason = prompt("Enter rejection reason for this leave request:", "Operational coverage requirements");
@@ -7316,7 +7329,10 @@ function bindUnifiedApprovalActions(container) {
       try {
         btn.disabled = true;
         toast("Processing leave rejection...", "info");
-        await apiRequest(endpoint, "PUT", { reason: reason || "Rejected by administrator" });
+        await apiRequest(endpoint, {
+          method: "POST",
+          body: { remarks: reason || "Rejected by administrator" }
+        });
         toast(`Leave request #${id} rejected`, "info");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -7329,12 +7345,16 @@ function bindUnifiedApprovalActions(container) {
 
   // 3. Preference actions
   container.querySelectorAll("[data-approve-pref]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-approve-pref");
       try {
         btn.disabled = true;
         toast("Approving shift preference...", "info");
-        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, "POST", { decision: "APPROVE", reviewNote: "Approved" });
+        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, {
+          method: "POST",
+          body: { decision: "APPROVE", reviewNote: "Approved" }
+        });
         toast(`Shift preference #${id} approved!`, "success");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -7346,14 +7366,18 @@ function bindUnifiedApprovalActions(container) {
   });
 
   container.querySelectorAll("[data-reject-pref]").forEach(btn => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      if (e) e.preventDefault();
       const id = btn.getAttribute("data-reject-pref");
       const reason = prompt("Enter rejection note for this shift preference:", "Conflicts with shift coverage rules");
       if (reason === null) return;
       try {
         btn.disabled = true;
         toast("Rejecting shift preference...", "info");
-        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, "POST", { decision: "REJECT", reviewNote: reason || "Rejected" });
+        await apiRequest(`/api/admin/approvals/preference/${id}/decision`, {
+          method: "POST",
+          body: { decision: "REJECT", reviewNote: reason || "Rejected" }
+        });
         toast(`Shift preference #${id} rejected`, "info");
         broadcastDataMutation("APPROVALS_CHANGED");
         await renderUnifiedApprovalsView();
@@ -8017,7 +8041,12 @@ async function handleConfirmAdminPcrDecision(e) {
    UTILITY & API HELPER
    ========================================================================== */
 
-async function apiRequest(endpoint, options = {}) {
+async function apiRequest(endpoint, options = {}, maybeBody = undefined) {
+  if (typeof options === "string") {
+    const method = options.toUpperCase();
+    const body = (maybeBody !== undefined) ? maybeBody : (arguments[2] !== undefined ? arguments[2] : undefined);
+    options = { method, body };
+  }
   const headers = { ...(options.headers || {}) };
   headers["Accept"] = "application/json";
   if (options.body) headers["Content-Type"] = "application/json";

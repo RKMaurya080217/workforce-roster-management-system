@@ -130,6 +130,16 @@ public class Batch36TentativeToFinalWorkflowTest {
 
         Employee emp = employeeRepository.findByActiveTrueOrderByIdAsc().get(0);
 
+        java.time.ZonedDateTime nowIst = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
+        boolean isSundayAfter4Pm = (nowIst.getDayOfWeek() == java.time.DayOfWeek.SUNDAY && nowIst.getHour() >= 16);
+        if (isSundayAfter4Pm) {
+            assertThrows(BusinessException.class, () -> preferenceService.submitPreference(emp.getId(), new PreferenceSubmitRequest(
+                    "MORNING", "SUNDAY", "MONDAY", "NIGHT", "Need morning duty for training", "Admin review requested",
+                    upcomingMonday, upcomingMonday.plusDays(6)
+            ), emp.getEmployeeCode() != null ? emp.getEmployeeCode() : "emp001"));
+            return;
+        }
+
         // Submit preference for upcoming cycle
         PreferenceResponse pref = preferenceService.submitPreference(emp.getId(), new PreferenceSubmitRequest(
                 "MORNING",
