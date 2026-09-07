@@ -133,6 +133,8 @@ function getShiftTimingDisplay(type) {
 const dom = {
   loginView: document.getElementById("loginView"),
   appView: document.getElementById("appView"),
+  appMain: document.querySelector(".app-main"),
+  appContent: document.querySelector(".app-content-viewport"),
   loginForm: document.getElementById("loginForm"),
   loginUsername: document.getElementById("loginUsername"),
   loginPassword: document.getElementById("loginPassword"),
@@ -1051,6 +1053,10 @@ function renderNavigation() {
 function navigateTo(target, options = {}) {
   closeMobileSidebar();
   window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  if (dom.appMain) {
+    dom.appMain.scrollTop = 0;
+    dom.appMain.scrollLeft = 0;
+  }
   if (dom.appContent) {
     dom.appContent.scrollTop = 0;
     dom.appContent.scrollLeft = 0;

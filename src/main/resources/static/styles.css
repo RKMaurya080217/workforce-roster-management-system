@@ -1051,6 +1051,7 @@ textarea {
 
 .app-footer {
   margin-top: auto;
+  flex-shrink: 0;
   background-color: #ffffff;
   border-top: 1px solid var(--border-light);
   color: var(--text-muted);
@@ -1213,9 +1214,13 @@ textarea {
 
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   width: 100%;
   max-width: 100%;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -1231,6 +1236,8 @@ textarea {
   top: 0;
   height: 100vh;
   height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   align-self: flex-start;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 50;
@@ -1625,10 +1632,17 @@ textarea {
    ========================================================================== */
 
 .app-main {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -2354,16 +2368,6 @@ input:checked + .slider:before {
   }
   .auth-hero {
     display: none;
-  }
-  .app-sidebar {
-    position: fixed;
-    left: -260px;
-    top: 0; bottom: 0;
-    z-index: 100;
-    transition: left var(--trans-normal);
-  }
-  .app-sidebar.mobile-open {
-    left: 0;
   }
   .mobile-menu-toggle {
     display: inline-flex;
@@ -3288,18 +3292,6 @@ input:checked + .slider:before {
 }
 
 @media (max-width: 992px) {
-  .app-sidebar {
-    width: var(--sidebar-width) !important;
-    position: fixed;
-    left: -260px;
-    top: 0; bottom: 0;
-    z-index: 100;
-    transition: left var(--trans-normal);
-  }
-  .app-sidebar.mobile-open {
-    left: 0;
-    box-shadow: var(--shadow-lg);
-  }
   .app-sidebar.collapsed {
     width: var(--sidebar-width) !important;
   }
@@ -5308,7 +5300,11 @@ body.sidebar-mobile-locked {
     position: relative;
     width: 100%;
     max-width: 100%;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
     overflow-x: hidden;
+    overflow-y: visible !important;
   }
 
   .app-sidebar {
@@ -5366,6 +5362,11 @@ body.sidebar-mobile-locked {
     max-width: 100% !important;
     margin-left: 0 !important;
     min-width: 0 !important;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
   }
 
   .app-topbar {
@@ -5599,7 +5600,11 @@ html, body {
     position: relative;
     width: 100%;
     max-width: 100%;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
     overflow-x: hidden;
+    overflow-y: visible !important;
   }
 
   .app-sidebar {
@@ -5648,6 +5653,11 @@ html, body {
     max-width: 100% !important;
     margin-left: 0 !important;
     min-width: 0 !important;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
   }
 
   .app-topbar {
