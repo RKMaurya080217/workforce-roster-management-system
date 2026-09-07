@@ -479,9 +479,12 @@ function bindGlobalEvents() {
   }
 
   // Mobile Menu
-  dom.mobileMenuBtn.addEventListener("click", () => {
-    dom.appSidebar.classList.toggle("mobile-open");
-  });
+  if (dom.mobileMenuBtn) {
+    dom.mobileMenuBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleMobileSidebar();
+    });
+  }
 
   // Modal Close Handlers
   document.querySelectorAll("[data-close-modal]").forEach(btn => {
@@ -968,7 +971,7 @@ function renderNavigation() {
           apiRequest("/api/activities/view-roster", { method: "POST" }).catch(() => {});
         }
         navigateTo(targetTab);
-        dom.appSidebar.classList.remove("mobile-open");
+        closeMobileSidebar();
       });
     });
     return;
@@ -1030,7 +1033,7 @@ function renderNavigation() {
     btn.addEventListener("click", () => {
       const targetRoute = btn.getAttribute("data-route") || btn.getAttribute("data-nav-id");
       navigateTo(targetRoute);
-      dom.appSidebar.classList.remove("mobile-open");
+      closeMobileSidebar();
     });
   });
 

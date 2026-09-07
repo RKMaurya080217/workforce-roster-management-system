@@ -53,8 +53,18 @@ public class ShiftHandoverController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get handover note by ID")
-    public ResponseEntity<HandoverResponse> getHandoverById(@PathVariable Long id) {
-        return ResponseEntity.ok(handoverService.getHandoverById(id));
+    public ResponseEntity<HandoverResponse> getHandoverById(@PathVariable Long id, Authentication auth) {
+        HandoverResponse res = handoverService.getHandoverById(id);
+        if (auth != null && auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            Employee emp = resolveEmployee(auth);
+            boolean isCreator = res.fromEmployeeId() != null && res.fromEmployeeId().equals(emp.getId());
+            boolean isReliever = res.toEmployeeId() != null && res.toEmployeeId().equals(emp.getId());
+            boolean isOpen = res.toEmployeeId() == null;
+            if (!isCreator && !isReliever && !isOpen) {
+                throw new com.weeklyroster.exception.BusinessException("Access denied: You are not authorized to view this shift handover.");
+            }
+        }
+        return ResponseEntity.ok(res);
     }
 
     @PostMapping
@@ -78,18 +88,30 @@ public class ShiftHandoverController {
     @Operation(summary = "Acknowledge an incoming shift handover note")
     public ResponseEntity<HandoverResponse> acknowledgeHandoverPost(@PathVariable Long id,
                                                                    @RequestParam(required = false) String remarks,
+                                                                   @RequestBody(required = false) java.util.Map<String, Object> body,
                                                                    Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), remarks, auth.getName()));
+        String finalRemarks = remarks;
+        if ((finalRemarks == null || finalRemarks.isBlank()) && body != null) {
+            Object bRemarks = body.get("remarks");
+            if (bRemarks != null) finalRemarks = bRemarks.toString();
+        }
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth.getName()));
     }
 
     @PutMapping("/{id}/acknowledge")
     @Operation(summary = "Acknowledge an incoming shift handover note")
     public ResponseEntity<HandoverResponse> acknowledgeHandoverPut(@PathVariable Long id,
                                                                   @RequestParam(required = false) String remarks,
+                                                                  @RequestBody(required = false) java.util.Map<String, Object> body,
                                                                   Authentication auth) {
         Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), remarks, auth.getName()));
+        String finalRemarks = remarks;
+        if ((finalRemarks == null || finalRemarks.isBlank()) && body != null) {
+            Object bRemarks = body.get("remarks");
+            if (bRemarks != null) finalRemarks = bRemarks.toString();
+        }
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth.getName()));
     }
 
     private Employee resolveEmployee(Authentication auth) {

@@ -53,7 +53,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/handovers", "/api/handovers/**").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers("/api/skills", "/api/skills/**").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers("/api/workload/me").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
-                        .requestMatchers(HttpMethod.GET, "/api/shifts", "/api/employees/*", "/api/rosters/cycle/*/export/*", "/api/dashboard/day-view", "/api/dashboard/employee-view").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
+                        .requestMatchers(HttpMethod.GET, "/api/shifts", "/api/employees", "/api/employees/*", "/api/employees/**", "/api/rosters/cycle/*/export/*", "/api/dashboard/day-view", "/api/dashboard/employee-view").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers("/api/**").hasAuthority(Role.ROLE_ADMIN.name())
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

@@ -1314,7 +1314,7 @@ async function renderEmployeeHandoversTabHTML() {
       apiRequest("/api/handovers/my"),
       apiRequest("/api/handovers/incoming"),
       apiRequest("/api/shifts"),
-      apiRequest("/api/employees")
+      apiRequest("/api/employees/active").catch(() => apiRequest("/api/employees"))
     ]);
 
     // Pre-populate handover modal shifts & employees
@@ -1336,7 +1336,7 @@ async function renderEmployeeHandoversTabHTML() {
             <p class="text-muted" style="margin:0; font-size:0.84rem;">Document shift completions, hand over pending tasks, and review incoming transition notes</p>
           </div>
           <button class="btn btn-primary btn-sm" onclick="openHandoverCreateModal()">
-            <span>âž• Create Handover Note</span>
+            <span>➕ Create Handover Note</span>
           </button>
         </div>
       </div>
@@ -1366,13 +1366,13 @@ async function renderEmployeeHandoversTabHTML() {
                     <td><strong>${formatDate(h.handoverDate)}</strong><br><span class="badge" style="background:#e0f2fe; color:#0369a1;">${escapeHTML(h.shiftName)}</span></td>
                     <td><strong>${escapeHTML(h.fromEmployeeName)}</strong></td>
                     <td><span class="badge prio-${h.priority}">${h.priority}</span></td>
-                    <td style="max-width:220px; font-weight:600;">${escapeHTML(h.shiftSummary)}</td>
+                    <td style="max-width:220px; font-weight:600;">${escapeHTML(h.summary || h.shiftSummary || "")}</td>
                     <td style="max-width:220px; font-size:0.82rem; color:var(--text-muted);">${escapeHTML(h.pendingTasks || "-")}</td>
                     <td><span class="badge status-${h.status}">${h.status}</span></td>
                     <td>
-                      ${h.status !== 'COMPLETED' ? `
+                      ${(h.status === 'OPEN' || h.status === 'PENDING') ? `
                         <button class="btn btn-success btn-xs" onclick="completeHandover(${h.id})">Acknowledge</button>
-                      ` : '✔ ï¸ Done'}
+                      ` : '<span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">✔ Acknowledged</span>'}
                     </td>
                   </tr>
                 `).join("")}
@@ -1405,7 +1405,7 @@ async function renderEmployeeHandoversTabHTML() {
                     <td><strong>${formatDate(h.handoverDate)}</strong><br><span class="badge" style="background:#e0f2fe; color:#0369a1;">${escapeHTML(h.shiftName)}</span></td>
                     <td>${h.toEmployeeName ? `<strong>${escapeHTML(h.toEmployeeName)}</strong>` : '<span class="text-muted">Open</span>'}</td>
                     <td><span class="badge prio-${h.priority}">${h.priority}</span></td>
-                    <td style="max-width:260px;">${escapeHTML(h.shiftSummary)}</td>
+                    <td style="max-width:260px;">${escapeHTML(h.summary || h.shiftSummary || "")}</td>
                     <td><span class="badge status-${h.status}">${h.status}</span></td>
                     <td>${formatDate(h.createdAt)}</td>
                   </tr>
@@ -1416,7 +1416,7 @@ async function renderEmployeeHandoversTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸  Error loading handovers: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1432,11 +1432,11 @@ function openHandoverCreateModal() {
 
 async function completeHandover(id) {
   try {
-    await apiRequest(`/api/handovers/${id}`, {
-      method: "PUT",
-      body: { status: "COMPLETED" }
+    await apiRequest(`/api/handovers/${id}/acknowledge`, {
+      method: "POST",
+      body: { remarks: "Acknowledged by reliever" }
     });
-    toast("Handover acknowledged and marked COMPLETED!", "success");
+    toast("Handover acknowledged successfully!", "success");
     switchEmployeeWorkspaceTab("handovers");
   } catch (err) {
     toast(err.message, "error");
@@ -1599,7 +1599,18 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         await apiRequest("/api/handovers", {
           method: "POST",
-          body: { handoverDate, shiftId, toEmployeeId, priority, shiftSummary, pendingTasks, completedTasks, notes }
+          body: {
+            handoverDate,
+            shiftId,
+            toEmployeeId,
+            priority,
+            summary: shiftSummary,
+            shiftSummary,
+            pendingTasks,
+            completedTasks,
+            importantNotes: notes,
+            notes
+          }
         });
         toast("Shift handover note saved successfully!", "success");
         document.getElementById("handoverModal").classList.add("hidden");
