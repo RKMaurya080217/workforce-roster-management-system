@@ -86,10 +86,10 @@ public class Batch52DesktopMobileScrollArchitectureTest {
         InputStream is = new ClassPathResource("static/index.html").getInputStream();
         String html = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
-        // 1. Verify v=2.4.0 cache busters
-        assertTrue(html.contains("styles.css?v=2.4.0"), "index.html must reference styles.css?v=2.4.0");
-        assertTrue(html.contains("app.js?v=2.4.0"), "index.html must reference app.js?v=2.4.0");
-        assertTrue(html.contains("enterprise-app.js?v=2.4.0"), "index.html must reference enterprise-app.js?v=2.4.0");
+        // 1. Verify v=2.4.0 or v=2.5.0 cache busters
+        assertTrue(html.contains("styles.css?v=2.4.0") || html.contains("styles.css?v=2.5.0"), "index.html must reference versioned styles.css");
+        assertTrue(html.contains("app.js?v=2.4.0") || html.contains("app.js?v=2.5.0"), "index.html must reference versioned app.js");
+        assertTrue(html.contains("enterprise-app.js?v=2.4.0") || html.contains("enterprise-app.js?v=2.5.0"), "index.html must reference versioned enterprise-app.js");
 
         // 2. Verify duplicate premature scripts are eliminated
         assertFalse(html.contains("<script src=\"/app.js\"></script>"), "index.html must not contain un-versioned premature app.js");

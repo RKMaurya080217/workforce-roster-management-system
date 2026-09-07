@@ -126,6 +126,73 @@ body {
   flex-direction: column;
 }
 
+/* ==========================================================================
+   BATCH 53: AUTHENTICATED APPLICATION SHELL VIEWPORT LOCK
+   ========================================================================== */
+html.app-authenticated,
+body.app-authenticated {
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  overflow: hidden !important;
+}
+
+body.app-authenticated #appRoot {
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  width: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+}
+
+body.app-authenticated .app-layout {
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: row !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+}
+
+body.app-authenticated .app-sidebar {
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.app-authenticated .sidebar-nav {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.app-authenticated .app-main {
+  height: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
 code, kbd, samp, pre {
   font-family: 'JetBrains Mono', monospace;
 }
@@ -1232,8 +1299,7 @@ textarea {
   flex-direction: column;
   justify-content: flex-start;
   border-right: 1px solid #1e293b;
-  position: sticky;
-  top: 0;
+  position: static;
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
@@ -1241,6 +1307,7 @@ textarea {
   align-self: flex-start;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 50;
+  flex: 0 0 var(--sidebar-width);
   flex-shrink: 0;
   overflow: hidden;
   box-sizing: border-box;
@@ -5300,11 +5367,12 @@ body.sidebar-mobile-locked {
     position: relative;
     width: 100%;
     max-width: 100%;
-    height: auto !important;
-    min-height: 100vh;
-    max-height: none !important;
-    overflow-x: hidden;
-    overflow-y: visible !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: row !important;
   }
 
   .app-sidebar {
@@ -5362,11 +5430,16 @@ body.sidebar-mobile-locked {
     max-width: 100% !important;
     margin-left: 0 !important;
     min-width: 0 !important;
-    height: auto !important;
-    min-height: 100vh;
-    max-height: none !important;
-    overflow-y: visible !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
     overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .app-topbar {
@@ -5600,11 +5673,12 @@ html, body {
     position: relative;
     width: 100%;
     max-width: 100%;
-    height: auto !important;
-    min-height: 100vh;
-    max-height: none !important;
-    overflow-x: hidden;
-    overflow-y: visible !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: row !important;
   }
 
   .app-sidebar {
@@ -5653,11 +5727,22 @@ html, body {
     max-width: 100% !important;
     margin-left: 0 !important;
     min-width: 0 !important;
-    height: auto !important;
-    min-height: 100vh;
-    max-height: none !important;
-    overflow-y: visible !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
     overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Unconstrained surfaces that require natural vertical flow */
+  .auth-page-shell, .modal-overflow-visible {
+    height: auto !important;
+    overflow-y: visible !important;
   }
 
   .app-topbar {

@@ -619,6 +619,10 @@ async function handleLogin(e) {
 }
 
 function handleLogout(silent = false) {
+  try {
+    document.documentElement.classList.remove("app-authenticated");
+    document.body.classList.remove("app-authenticated");
+  } catch (_) {}
   sessionStorage.removeItem("wrmsToken");
   sessionStorage.removeItem("wrmsProfile");
   state.token = "";
@@ -635,12 +639,20 @@ function handleLogout(silent = false) {
 }
 
 function showLogin() {
+  try {
+    document.documentElement.classList.remove("app-authenticated");
+    document.body.classList.remove("app-authenticated");
+  } catch (_) {}
   dom.loginView.classList.remove("hidden");
   dom.appView.classList.add("hidden");
   hideFloatingPopover();
 }
 
 function showWorkspace() {
+  try {
+    document.documentElement.classList.add("app-authenticated");
+    document.body.classList.add("app-authenticated");
+  } catch (_) {}
   dom.loginView.classList.add("hidden");
   dom.appView.classList.remove("hidden");
 
