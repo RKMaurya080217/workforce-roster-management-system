@@ -81,7 +81,7 @@ class Batch30RosterLifecycleAndStatusManagementTest {
         assertEquals("AUTOMATIC", RosterLifecycleUtil.resolveSource(GenerationMode.AUTOMATIC));
         assertEquals("MANUAL_ADMIN", RosterLifecycleUtil.resolveSource(GenerationMode.MANUAL));
 
-        LocalDate monday = LocalDate.of(2026, 9, 14);
+        LocalDate monday = LocalDate.now().plusWeeks(3).with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
         RosterCycleResponse resp = rosterService.generateWeeklyRoster(monday, GenerationMode.MANUAL);
         assertEquals("MANUAL_ADMIN", resp.source());
         assertEquals("FUTURE", resp.classification());

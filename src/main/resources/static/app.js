@@ -6395,7 +6395,7 @@ async function handleConfirmLeaveDecision(e) {
   try {
     btn.disabled = true;
     await apiRequest(endpoint, {
-      method: "PUT",
+      method: "POST",
       body: { remarks }
     });
     toast(approve ? "Leave request approved successfully" : "Leave request rejected", "success");
@@ -7301,6 +7301,7 @@ function bindUnifiedApprovalActions(container) {
       if (status === 'PENDING_CANCELLATION') endpoint = `/api/leaves/${id}/cancellation/approve`;
       try {
         btn.disabled = true;
+        btn.textContent = "Approving...";
         toast("Processing leave approval...", "info");
         await apiRequest(endpoint, {
           method: "POST",
@@ -7311,6 +7312,7 @@ function bindUnifiedApprovalActions(container) {
         await renderUnifiedApprovalsView();
       } catch (err) {
         btn.disabled = false;
+        btn.textContent = "Approve";
         toast(`Failed to approve leave: ${err.message}`, "error");
       }
     });
@@ -7328,6 +7330,7 @@ function bindUnifiedApprovalActions(container) {
       if (status === 'PENDING_CANCELLATION') endpoint = `/api/leaves/${id}/cancellation/reject`;
       try {
         btn.disabled = true;
+        btn.textContent = "Rejecting...";
         toast("Processing leave rejection...", "info");
         await apiRequest(endpoint, {
           method: "POST",
@@ -7338,6 +7341,7 @@ function bindUnifiedApprovalActions(container) {
         await renderUnifiedApprovalsView();
       } catch (err) {
         btn.disabled = false;
+        btn.textContent = "Reject";
         toast(`Failed to reject leave: ${err.message}`, "error");
       }
     });
@@ -8047,6 +8051,9 @@ async function apiRequest(endpoint, options = {}, maybeBody = undefined) {
     const body = (maybeBody !== undefined) ? maybeBody : (arguments[2] !== undefined ? arguments[2] : undefined);
     options = { method, body };
   }
+  if (options && options.body && !options.method) {
+    options.method = "POST";
+  }
   const headers = { ...(options.headers || {}) };
   headers["Accept"] = "application/json";
   if (options.body) headers["Content-Type"] = "application/json";
@@ -8062,7 +8069,7 @@ async function apiRequest(endpoint, options = {}, maybeBody = undefined) {
   let response;
   try {
     response = await fetch(endpoint, {
-      method: options.method || "GET",
+      method: (options.method || "GET").toUpperCase(),
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal

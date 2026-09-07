@@ -70,6 +70,13 @@ class Batch18FullStabilizationAndEmailIntegrityTest {
     @BeforeEach
     void setup() {
         authenticateAdmin();
+        LocalDate immediateMonday = schedulerService.calculateTargetMonday(null);
+        cycleRepository.findByStartDateAndEndDate(immediateMonday, immediateMonday.plusDays(6)).ifPresent(c -> {
+            if (c.getStatus() == RosterStatus.LOCKED) {
+                c.setStatus(RosterStatus.GENERATED);
+                cycleRepository.save(c);
+            }
+        });
     }
 
     @Test

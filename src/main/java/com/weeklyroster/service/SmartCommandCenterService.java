@@ -418,8 +418,10 @@ public class SmartCommandCenterService {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public SmartCommandCenterResponse generateUpcomingRoster() {
-        LocalDate upcomingMonday = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
-                .with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+        LocalDate todayIst = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        LocalDate upcomingMonday = rosterSchedulerService != null
+                ? rosterSchedulerService.calculateUpcomingWeekStart(todayIst)
+                : todayIst.with(TemporalAdjusters.next(DayOfWeek.MONDAY));
         if (rosterSchedulerService != null) {
             rosterSchedulerService.executeAutoGeneration(upcomingMonday);
         } else if (rosterService != null) {

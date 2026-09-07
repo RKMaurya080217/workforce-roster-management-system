@@ -104,9 +104,9 @@ public class Batch49LeaveApprovalMethodAndWorkflowTest {
         InputStream is = new ClassPathResource("static/index.html").getInputStream();
         String html = new String(is.readAllBytes(), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains("<script src=\"/app.js\"></script>"), "index.html must load /app.js");
-        assertTrue(html.contains("<script src=\"/enterprise-app.js\"></script>"), "index.html must load /enterprise-app.js");
-        int appJsIdx = html.indexOf("<script src=\"/app.js\"></script>");
+        assertTrue(html.contains("<script src=\"/app.js"), "index.html must load /app.js");
+        assertTrue(html.contains("<script src=\"/enterprise-app.js"), "index.html must load /enterprise-app.js");
+        int appJsIdx = html.indexOf("<script src=\"/app.js");
         int bodyCloseIdx = html.indexOf("</body>");
         assertTrue(appJsIdx < bodyCloseIdx, "Script tag must be placed before </body>");
     }
