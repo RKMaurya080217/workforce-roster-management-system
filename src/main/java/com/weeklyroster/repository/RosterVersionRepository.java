@@ -17,6 +17,6 @@ public interface RosterVersionRepository extends JpaRepository<RosterVersion, Lo
     int countByCycleId(Long cycleId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "DELETE FROM roster_versions WHERE cycle_id = :cycleId", nativeQuery = true)
+    @Query(value = "DELETE FROM system_audit_logs WHERE log_type = 'ROSTER_VERSION' AND cycle_id = :cycleId", nativeQuery = true)
     void deleteByCycleIdNative(@Param("cycleId") Long cycleId);
 }

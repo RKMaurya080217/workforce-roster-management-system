@@ -4,46 +4,35 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "employee_activity_logs", indexes = {
-    @Index(name = "idx_emp_act_emp_id", columnList = "employee_id"),
-    @Index(name = "idx_emp_act_username", columnList = "username"),
-    @Index(name = "idx_emp_act_category", columnList = "category"),
-    @Index(name = "idx_emp_act_created_at", columnList = "created_at")
-})
-public class EmployeeActivityLog {
+@DiscriminatorValue("EMPLOYEE_ACTIVITY")
+public class EmployeeActivityLog extends SystemAuditLogEntry {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "employee_id")
+    @Column(name = "activity_employee_id")
     private Long employeeId;
 
-    @Column(nullable = false, length = 100)
+    @Column(length = 100)
     private String username;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
+    @Column(name = "activity_category", length = 50)
     private ActivityCategory category;
 
-    @Column(nullable = false, length = 80)
+    @Column(name = "activity_action", length = 80)
     private String action;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(name = "activity_status", length = 30)
     private ActivityStatus status;
 
-    @Column(nullable = false, length = 500)
+    @Column(name = "activity_description", length = 500)
     private String description;
 
-    @Column(length = 100)
+    @Column(name = "activity_source", length = 100)
     private String source = "WEB";
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
     public Long getEmployeeId() { return employeeId; }
     public void setEmployeeId(Long employeeId) { this.employeeId = employeeId; }
     public String getUsername() { return username; }

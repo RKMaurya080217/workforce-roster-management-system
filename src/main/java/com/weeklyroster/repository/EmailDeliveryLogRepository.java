@@ -39,10 +39,10 @@ public interface EmailDeliveryLogRepository extends JpaRepository<EmailDeliveryL
     void deleteByCycleDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "DELETE FROM email_delivery_logs WHERE cycle_id = :cycleId", nativeQuery = true)
+    @Query(value = "DELETE FROM system_audit_logs WHERE log_type = 'EMAIL_DELIVERY' AND cycle_id = :cycleId", nativeQuery = true)
     void deleteByCycleIdNative(@Param("cycleId") Long cycleId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "DELETE el FROM email_delivery_logs el JOIN roster_cycles rc ON el.cycle_id = rc.id WHERE rc.start_date <= :endDate AND rc.end_date >= :startDate", nativeQuery = true)
+    @Query(value = "DELETE FROM system_audit_logs WHERE log_type = 'EMAIL_DELIVERY' AND cycle_id IN (SELECT rc.id FROM roster_cycles rc WHERE rc.start_date <= :endDate AND rc.end_date >= :startDate)", nativeQuery = true)
     void deleteByDateRangeNative(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

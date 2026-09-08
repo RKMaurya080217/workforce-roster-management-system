@@ -5,18 +5,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "employee_preferences", indexes = {
-    @Index(name = "idx_emp_pref_emp", columnList = "employee_id"),
-    @Index(name = "idx_emp_pref_status", columnList = "status")
-})
-public class EmployeePreference {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@DiscriminatorValue("SHIFT_PREFERENCE")
+public class EmployeePreference extends EmployeeWorkflowRequest {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "employee_id", nullable = false)
+    @JoinColumn(name = "employee_id")
     private Employee employee;
 
     @Column(name = "preferred_shift_types", length = 150)
@@ -34,14 +27,14 @@ public class EmployeePreference {
     @Column(name = "temporary_restrictions", length = 1000)
     private String temporaryRestrictions;
 
-    @Column(length = 1000)
+    @Column(name = "pref_remarks", length = 1000)
     private String remarks;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
+    @Column(name = "preference_status", length = 30)
     private PreferenceStatus status = PreferenceStatus.PENDING;
 
-    @Column(name = "admin_remarks", length = 1000)
+    @Column(name = "pref_admin_remarks", length = 1000)
     private String adminRemarks;
 
     @Column(name = "effective_from")
@@ -50,19 +43,17 @@ public class EmployeePreference {
     @Column(name = "effective_to")
     private LocalDate effectiveTo;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "pref_created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "reviewed_at")
+    @Column(name = "pref_reviewed_at")
     private LocalDateTime reviewedAt;
 
-    @Column(name = "reviewed_by", length = 100)
+    @Column(name = "pref_reviewed_by", length = 100)
     private String reviewedBy;
 
     public EmployeePreference() {}
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
     public Employee getEmployee() { return employee; }
     public void setEmployee(Employee employee) { this.employee = employee; }
     public String getPreferredShiftTypes() { return preferredShiftTypes; }

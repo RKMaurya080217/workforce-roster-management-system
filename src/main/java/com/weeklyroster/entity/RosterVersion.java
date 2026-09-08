@@ -4,39 +4,32 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "roster_versions", indexes = {
-    @Index(name = "idx_roster_version_cycle", columnList = "cycle_id"),
-    @Index(name = "idx_roster_version_num", columnList = "cycle_id, version_number")
-})
-public class RosterVersion {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@DiscriminatorValue("ROSTER_VERSION")
+public class RosterVersion extends SystemAuditLogEntry {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "cycle_id", nullable = false)
+    @JoinColumn(name = "cycle_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private RosterCycle cycle;
 
-    @Column(name = "version_number", nullable = false)
-    private int versionNumber;
+    @Column(name = "version_number")
+    private Integer versionNumber = 1;
 
-    @Column(nullable = false, length = 50)
+    @Column(name = "version_action", length = 50)
     private String action;
 
     @Column(name = "action_reason", length = 500)
     private String actionReason;
 
-    @Column(name = "created_timestamp", nullable = false)
+    @Column(name = "created_timestamp")
     private LocalDateTime createdTimestamp = LocalDateTime.now();
 
     @Column(name = "created_by", length = 100)
     private String createdBy;
 
-    @Column(name = "generation_mode", length = 30)
+    @Column(name = "version_mode", length = 30)
     private String generationMode;
 
-    @Column(name = "status", length = 30)
+    @Column(name = "version_status", length = 30)
     private String status;
 
     @Column(name = "affected_assignments_count")
@@ -54,12 +47,10 @@ public class RosterVersion {
 
     public RosterVersion() {}
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
     public RosterCycle getCycle() { return cycle; }
     public void setCycle(RosterCycle cycle) { this.cycle = cycle; }
-    public int getVersionNumber() { return versionNumber; }
-    public void setVersionNumber(int versionNumber) { this.versionNumber = versionNumber; }
+    public Integer getVersionNumber() { return versionNumber; }
+    public void setVersionNumber(Integer versionNumber) { this.versionNumber = versionNumber; }
     public String getAction() { return action; }
     public void setAction(String action) { this.action = action; }
     public String getActionReason() { return actionReason; }
@@ -80,5 +71,4 @@ public class RosterVersion {
     public void setHealthScore(Integer healthScore) { this.healthScore = healthScore; }
     public String getImpactSummary() { return impactSummary; }
     public void setImpactSummary(String impactSummary) { this.impactSummary = impactSummary; }
-
 }

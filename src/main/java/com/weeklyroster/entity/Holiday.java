@@ -5,32 +5,25 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "holidays", indexes = {
-    @Index(name = "idx_holiday_date", columnList = "holiday_date", unique = true),
-    @Index(name = "idx_holiday_active", columnList = "active")
-})
-public class Holiday {
+@DiscriminatorValue("HOLIDAY")
+public class Holiday extends MasterReferenceItem {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false, length = 150)
+    @Column(name = "holiday_name", length = 150)
     private String name;
 
-    @Column(name = "holiday_date", nullable = false, unique = true)
+    @Column(name = "holiday_date")
     private LocalDate holidayDate;
 
-    @Column(length = 500)
+    @Column(name = "holiday_description", length = 500)
     private String description;
 
-    @Column(nullable = false)
-    private boolean active = true;
+    @Column(name = "holiday_active")
+    private Boolean active = true;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "holiday_created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    @Column(name = "updated_at")
+    @Column(name = "holiday_updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
     public Holiday() {}
@@ -44,16 +37,15 @@ public class Holiday {
         this.updatedAt = LocalDateTime.now();
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public LocalDate getHolidayDate() { return holidayDate; }
     public void setHolidayDate(LocalDate holidayDate) { this.holidayDate = holidayDate; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
-    public boolean isActive() { return active; }
-    public void setActive(boolean active) { this.active = active; }
+    public boolean isActive() { return active != null && active; }
+    public Boolean getActive() { return active; }
+    public void setActive(Boolean active) { this.active = active; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

@@ -34,7 +34,7 @@ public class EmployeeActivityLogService {
         this.employeeRepository = employeeRepository;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public EmployeeActivityLog logActivity(Long employeeId,
                                            String username,
                                            ActivityCategory category,
@@ -45,10 +45,9 @@ public class EmployeeActivityLogService {
     }
 
     /**
-     * Records a new activity log entry. Runs in a separate transaction to ensure activity is
-     * recorded even if the calling transaction fails or rolls back (e.g. failed login).
+     * Records a new activity log entry.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public EmployeeActivityLog logActivity(Long employeeId,
                                            String username,
                                            ActivityCategory category,

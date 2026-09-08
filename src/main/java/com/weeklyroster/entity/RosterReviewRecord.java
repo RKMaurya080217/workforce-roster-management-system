@@ -4,22 +4,18 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "roster_review_records")
-public class RosterReviewRecord {
+@DiscriminatorValue("ROSTER_REVIEW")
+public class RosterReviewRecord extends SystemAuditLogEntry {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "employee_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "employee_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Employee employee;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "cycle_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cycle_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private RosterCycle cycle;
 
-    @Column(name = "reviewed_at", nullable = false)
+    @Column(name = "reviewed_at")
     private LocalDateTime reviewedAt = LocalDateTime.now();
 
     public RosterReviewRecord() {}
@@ -30,15 +26,10 @@ public class RosterReviewRecord {
         this.reviewedAt = LocalDateTime.now();
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
     public Employee getEmployee() { return employee; }
     public void setEmployee(Employee employee) { this.employee = employee; }
-
     public RosterCycle getCycle() { return cycle; }
     public void setCycle(RosterCycle cycle) { this.cycle = cycle; }
-
     public LocalDateTime getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
 }

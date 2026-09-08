@@ -26,7 +26,7 @@ public class AuditService {
         this.auditLogRepository = auditLogRepository;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditLog log(AuditAction action,
                         String entityType,
                         Long entityId,

@@ -1,9 +1,12 @@
 package com.weeklyroster.entity;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -49,6 +52,16 @@ public class RosterAssignment {
 
 	@Column(name = "assignment_reason", length = 255)
 	private String assignmentReason;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "previous_shift_type", length = 30)
+	private ShiftType previousShiftType;
+
+	@Column(name = "override_reason", length = 500)
+	private String overrideReason;
+
+	@Column(name = "override_created_at")
+	private LocalDateTime overrideCreatedAt;
 
 	public Long getId() {
 		return id;
@@ -120,5 +133,29 @@ public class RosterAssignment {
 
 	public void setAssignmentReason(String assignmentReason) {
 		this.assignmentReason = assignmentReason;
+	}
+
+	public ShiftType getPreviousShiftType() {
+		return previousShiftType;
+	}
+
+	public void setPreviousShiftType(ShiftType previousShiftType) {
+		this.previousShiftType = previousShiftType;
+	}
+
+	public String getOverrideReason() {
+		return overrideReason;
+	}
+
+	public void setOverrideReason(String overrideReason) {
+		this.overrideReason = overrideReason;
+	}
+
+	public LocalDateTime getOverrideCreatedAt() {
+		return overrideCreatedAt;
+	}
+
+	public void setOverrideCreatedAt(LocalDateTime overrideCreatedAt) {
+		this.overrideCreatedAt = overrideCreatedAt;
 	}
 }

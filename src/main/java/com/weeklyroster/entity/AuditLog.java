@@ -4,29 +4,20 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "audit_logs", indexes = {
-    @Index(name = "idx_audit_cycle", columnList = "cycle_id"),
-    @Index(name = "idx_audit_employee", columnList = "employee_id"),
-    @Index(name = "idx_audit_action", columnList = "action"),
-    @Index(name = "idx_audit_timestamp", columnList = "timestamp")
-})
-public class AuditLog {
+@DiscriminatorValue("AUDIT")
+public class AuditLog extends SystemAuditLogEntry {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "audit_timestamp")
+    private LocalDateTime timestamp = LocalDateTime.now();
 
-    @Column(nullable = false)
-    private LocalDateTime timestamp;
-
-    @Column(nullable = false, length = 100)
+    @Column(length = 100)
     private String actor;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
+    @Column(name = "audit_action", length = 50)
     private AuditAction action;
 
-    @Column(nullable = false, length = 50)
+    @Column(name = "entity_type", length = 50)
     private String entityType;
 
     @Column(name = "entity_id")
@@ -47,14 +38,12 @@ public class AuditLog {
     @Column(name = "new_value", length = 1000)
     private String newValue;
 
-    @Column(length = 1000)
+    @Column(name = "reason", length = 1000)
     private String reason;
 
-    @Column(nullable = false, length = 30)
-    private String source = "MANUAL"; // MANUAL, AUTOMATIC, SYSTEM
+    @Column(name = "source", length = 30)
+    private String source = "MANUAL";
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
     public LocalDateTime getTimestamp() { return timestamp; }
     public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
     public String getActor() { return actor; }
