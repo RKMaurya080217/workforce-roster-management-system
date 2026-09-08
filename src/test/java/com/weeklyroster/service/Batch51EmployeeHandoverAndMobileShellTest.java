@@ -103,7 +103,7 @@ public class Batch51EmployeeHandoverAndMobileShellTest {
         morningShift.setCapacity(2);
 
         shiftHandoverController = new ShiftHandoverController(handoverService, employeeRepository);
-        adminShiftHandoverController = new AdminShiftHandoverController(handoverService);
+        adminShiftHandoverController = new AdminShiftHandoverController(handoverService, employeeRepository);
     }
 
     private void authenticateAsEmployee(String username, Employee emp) {

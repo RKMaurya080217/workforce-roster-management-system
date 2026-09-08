@@ -551,6 +551,7 @@ async function renderAdminHandoversView() {
           <p class="text-muted">Digital shift logbook, transition briefings, pending action items, and reliever acknowledgments</p>
         </div>
         <div class="header-actions">
+          <button class="btn btn-primary btn-sm" onclick="openHandoverCreateModal()"><span>➕ Create Shift Handover</span></button>
           <button class="btn btn-secondary btn-sm" onclick="renderAdminHandoversView()"><span>🔄 Refresh</span></button>
         </div>
       </div>
@@ -1420,13 +1421,50 @@ async function renderEmployeeHandoversTabHTML() {
   }
 }
 
-function openHandoverCreateModal() {
+async function populateHandoverDropdowns() {
+  try {
+    const [shifts, employees] = await Promise.all([
+      apiRequest("/api/shifts"),
+      apiRequest("/api/employees/active").catch(() => apiRequest("/api/employees"))
+    ]);
+
+    const shiftSelect = document.getElementById("handoverShift");
+    if (shiftSelect && (shiftSelect.children.length === 0 || !shiftSelect.value)) {
+      shiftSelect.innerHTML = shifts.map(s => `<option value="${s.id}">${escapeHTML(s.shiftName)} (${s.timingDisplay || s.shiftType})</option>`).join("");
+    }
+
+    const toEmpSelect = document.getElementById("handoverToEmployee");
+    if (toEmpSelect && (toEmpSelect.children.length === 0 || toEmpSelect.options.length <= 1)) {
+      toEmpSelect.innerHTML = `<option value="">-- Open to oncoming reliever --</option>` +
+        employees.map(e => `<option value="${e.id}">${escapeHTML(e.firstName)} ${escapeHTML(e.lastName || '')} (${e.employeeCode})</option>`).join("");
+    }
+
+    const fromEmpSelect = document.getElementById("handoverFromEmployee");
+    if (fromEmpSelect && (fromEmpSelect.children.length === 0 || fromEmpSelect.options.length === 0)) {
+      fromEmpSelect.innerHTML = employees.map(e => `<option value="${e.id}">${escapeHTML(e.firstName)} ${escapeHTML(e.lastName || '')} (${e.employeeCode})</option>`).join("");
+    }
+  } catch (err) {
+    console.warn("Could not pre-populate handover dropdowns:", err.message);
+  }
+}
+
+async function openHandoverCreateModal() {
   document.getElementById("handoverFormId").value = "";
   document.getElementById("handoverDate").value = new Date().toISOString().split('T')[0];
   document.getElementById("handoverSummary").value = "";
   document.getElementById("handoverPendingTasks").value = "";
   document.getElementById("handoverCompletedTasks").value = "";
   document.getElementById("handoverNotes").value = "";
+
+  await populateHandoverDropdowns();
+
+  const fromRow = document.getElementById("handoverFromStaffRow");
+  const isAdmin = (state.profile && (state.profile.role === "ROLE_ADMIN" || state.profile.role === "ADMIN")) ||
+                  (sessionStorage.getItem("wrmsRole") === "ROLE_ADMIN");
+  if (fromRow) {
+    fromRow.style.display = isAdmin ? "block" : "none";
+  }
+
   document.getElementById("handoverModal").classList.remove("hidden");
 }
 
@@ -1590,6 +1628,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const shiftId = parseInt(document.getElementById("handoverShift").value, 10);
       const toEmpVal = document.getElementById("handoverToEmployee").value;
       const toEmployeeId = toEmpVal ? parseInt(toEmpVal, 10) : null;
+      const fromEmpElem = document.getElementById("handoverFromEmployee");
+      const fromEmpVal = (fromEmpElem && fromEmpElem.offsetParent !== null) ? fromEmpElem.value : null;
+      const fromEmployeeId = fromEmpVal ? parseInt(fromEmpVal, 10) : null;
       const priority = document.getElementById("handoverPriority").value;
       const shiftSummary = document.getElementById("handoverSummary").value;
       const pendingTasks = document.getElementById("handoverPendingTasks").value;
@@ -1597,24 +1638,35 @@ document.addEventListener("DOMContentLoaded", () => {
       const notes = document.getElementById("handoverNotes").value;
 
       try {
+        const payload = {
+          handoverDate,
+          shiftId,
+          toEmployeeId,
+          priority,
+          summary: shiftSummary,
+          pendingTasks,
+          completedTasks,
+          importantNotes: notes
+        };
+        if (fromEmployeeId) {
+          payload.fromEmployeeId = fromEmployeeId;
+        }
+
         await apiRequest("/api/handovers", {
           method: "POST",
-          body: {
-            handoverDate,
-            shiftId,
-            toEmployeeId,
-            priority,
-            summary: shiftSummary,
-            shiftSummary,
-            pendingTasks,
-            completedTasks,
-            importantNotes: notes,
-            notes
-          }
+          body: payload
         });
         toast("Shift handover note saved successfully!", "success");
         document.getElementById("handoverModal").classList.add("hidden");
-        switchEmployeeWorkspaceTab("handovers");
+        const isAdmin = (state.profile && (state.profile.role === "ROLE_ADMIN" || state.profile.role === "ADMIN")) ||
+                        (sessionStorage.getItem("wrmsRole") === "ROLE_ADMIN");
+        if (isAdmin) {
+          if (typeof renderAdminHandoversView === "function") {
+            renderAdminHandoversView();
+          }
+        } else {
+          switchEmployeeWorkspaceTab("handovers");
+        }
       } catch (err) {
         toast(err.message, "error");
       }

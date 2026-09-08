@@ -70,9 +70,9 @@ public class ShiftHandoverController {
     @PostMapping
     @Operation(summary = "Create a shift handover note")
     public ResponseEntity<HandoverResponse> createHandover(@Valid @RequestBody CreateHandoverRequest req, Authentication auth) {
-        Employee emp = resolveEmployee(auth);
+        Long fromEmployeeId = resolveFromEmployeeId(auth, req.fromEmployeeId());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(handoverService.createHandover(emp.getId(), req, auth.getName()));
+                .body(handoverService.createHandover(fromEmployeeId, req, auth != null ? auth.getName() : "system"));
     }
 
     @PutMapping("/{id}")
@@ -80,8 +80,13 @@ public class ShiftHandoverController {
     public ResponseEntity<HandoverResponse> updateHandover(@PathVariable Long id,
                                                            @RequestBody UpdateHandoverRequest req,
                                                            Authentication auth) {
-        Employee emp = resolveEmployee(auth);
-        return ResponseEntity.ok(handoverService.updateHandover(id, emp.getId(), false, req, auth.getName()));
+        boolean isAdmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        Long empId = null;
+        if (!isAdmin) {
+            Employee emp = resolveEmployee(auth);
+            empId = emp.getId();
+        }
+        return ResponseEntity.ok(handoverService.updateHandover(id, empId, isAdmin, req, auth != null ? auth.getName() : "system"));
     }
 
     @PostMapping("/{id}/acknowledge")
@@ -96,7 +101,7 @@ public class ShiftHandoverController {
             Object bRemarks = body.get("remarks");
             if (bRemarks != null) finalRemarks = bRemarks.toString();
         }
-        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth.getName()));
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth != null ? auth.getName() : "system"));
     }
 
     @PutMapping("/{id}/acknowledge")
@@ -111,11 +116,32 @@ public class ShiftHandoverController {
             Object bRemarks = body.get("remarks");
             if (bRemarks != null) finalRemarks = bRemarks.toString();
         }
-        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth.getName()));
+        return ResponseEntity.ok(handoverService.acknowledgeHandover(id, emp.getId(), finalRemarks, auth != null ? auth.getName() : "system"));
+    }
+
+    private Long resolveFromEmployeeId(Authentication auth, Long requestedFromEmployeeId) {
+        boolean isAdmin = auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        if (isAdmin) {
+            if (requestedFromEmployeeId != null) {
+                Employee fromEmp = employeeRepository.findById(requestedFromEmployeeId)
+                        .orElseThrow(() -> new ResourceNotFoundException("From Employee not found with id: " + requestedFromEmployeeId));
+                return fromEmp.getId();
+            }
+            String username = auth.getName();
+            return employeeRepository.findByUserUsernameIgnoreCase(username)
+                    .or(() -> employeeRepository.findByEmployeeCodeIgnoreCase(username))
+                    .or(() -> employeeRepository.findByActiveTrueOrderByIdAsc().stream().findFirst())
+                    .or(() -> employeeRepository.findAll().stream().findFirst())
+                    .map(Employee::getId)
+                    .orElseThrow(() -> new ResourceNotFoundException("No employee profile available in the system."));
+        }
+
+        Employee emp = resolveEmployee(auth);
+        return emp.getId();
     }
 
     private Employee resolveEmployee(Authentication auth) {
-        String username = auth.getName();
+        String username = auth != null ? auth.getName() : "";
         return employeeRepository.findByUserUsernameIgnoreCase(username)
                 .or(() -> employeeRepository.findByEmployeeCodeIgnoreCase(username))
                 .orElseThrow(() -> new ResourceNotFoundException("No employee profile associated with: " + username));
