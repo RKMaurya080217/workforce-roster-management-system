@@ -360,36 +360,57 @@ async function syncApplicationState() {
   } catch (e) {}
 }
 
+async function triggerSyncCheck() {
+  if (!state.token || !state.profile) return;
+  try {
+    if (state.profile.role === "ROLE_ADMIN") {
+      const summary = await apiRequest("/api/admin/approvals/summary");
+      const prevTotal = state.totalPendingApprovalsCount || 0;
+      const newTotal = summary.totalPending || 0;
+      state.totalPendingApprovalsCount = newTotal;
+      state.pendingProfileChangesCount = summary.profileRequestsCount || 0;
+
+      if (prevTotal !== newTotal) {
+        renderNavigation();
+        if (state.activePage === "approvals") {
+          await renderUnifiedApprovalsView();
+        } else if (state.activePage === "dashboard") {
+          await renderDashboardView();
+        }
+      }
+    }
+    if (typeof fetchUnreadNotificationCount === "function") {
+      fetchUnreadNotificationCount();
+    }
+  } catch (e) {}
+}
+
+let visibilityListenerAttached = false;
+
 function startDataSyncPolling() {
   if (state.syncPollingIntervalId) {
     clearInterval(state.syncPollingIntervalId);
     state.syncPollingIntervalId = null;
   }
 
-  state.syncPollingIntervalId = setInterval(async () => {
-    if (!state.token || !state.profile) return;
-    try {
-      if (state.profile.role === "ROLE_ADMIN") {
-        const summary = await apiRequest("/api/admin/approvals/summary");
-        const prevTotal = state.totalPendingApprovalsCount || 0;
-        const newTotal = summary.totalPending || 0;
-        state.totalPendingApprovalsCount = newTotal;
-        state.pendingProfileChangesCount = summary.profileRequestsCount || 0;
+  // Bind visibility change listener once: auto-sync immediately when returning to tab
+  if (!visibilityListenerAttached && typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && state.token && state.profile) {
+        triggerSyncCheck();
+      }
+    });
+    visibilityListenerAttached = true;
+  }
 
-        if (prevTotal !== newTotal) {
-          renderNavigation();
-          if (state.activePage === "approvals") {
-            await renderUnifiedApprovalsView();
-          } else if (state.activePage === "dashboard") {
-            await renderDashboardView();
-          }
-        }
-      }
-      if (typeof fetchUnreadNotificationCount === "function") {
-        fetchUnreadNotificationCount();
-      }
-    } catch (e) {}
-  }, 10000);
+  // Adaptive interval: 30s when SSE is connected, 15s fallback when reconnecting
+  const pollIntervalMs = (typeof EventSource !== "undefined" && notificationEventSource && notificationEventSource.readyState === EventSource.OPEN) ? 30000 : 15000;
+
+  state.syncPollingIntervalId = setInterval(async () => {
+    // If tab is in background (hidden), completely skip polling to conserve Railway resources
+    if (typeof document !== "undefined" && document.hidden) return;
+    await triggerSyncCheck();
+  }, pollIntervalMs);
 }
 
 function bindGlobalEvents() {

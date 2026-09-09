@@ -21,8 +21,8 @@ RUN apt-get update && \
 # Copy the built JAR from builder stage
 COPY --from=builder /app/target/weekly-roster-management-system-1.0.0.jar app.jar
 
-# Enforce Java Headless mode for AWT font operations
-ENV JAVA_OPTS="-Djava.awt.headless=true"
+# Container-aware JVM memory & CPU optimization for Railway (SerialGC + Dynamic RAM bounds)
+ENV JAVA_OPTS="-Djava.awt.headless=true -XX:+UseSerialGC -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=25.0 -XX:MinRAMPercentage=25.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
 
 # Default container port
 EXPOSE 8080

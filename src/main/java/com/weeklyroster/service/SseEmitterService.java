@@ -17,6 +17,7 @@ public class SseEmitterService {
 
     private static final Logger log = LoggerFactory.getLogger(SseEmitterService.class);
     private static final Long DEFAULT_TIMEOUT = 180_000L; // 3 minutes
+    private static final int MAX_EMITTERS_PER_USER = 3; // Prevent connection leaks across multiple browser tabs
 
     private final Map<String, CopyOnWriteArrayList<SseEmitter>> userEmitters = new ConcurrentHashMap<>();
 
@@ -25,8 +26,17 @@ public class SseEmitterService {
             throw new IllegalArgumentException("Username is required for SSE subscription");
         }
 
+        CopyOnWriteArrayList<SseEmitter> list = userEmitters.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>());
+        // Gracefully evict oldest emitter if limit is exceeded (e.g. repeated page refreshes / orphaned tabs)
+        while (list.size() >= MAX_EMITTERS_PER_USER) {
+            SseEmitter oldest = list.remove(0);
+            try {
+                oldest.complete();
+            } catch (Exception ignored) {}
+        }
+
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
-        userEmitters.computeIfAbsent(username, k -> new CopyOnWriteArrayList<>()).add(emitter);
+        list.add(emitter);
 
         emitter.onCompletion(() -> removeEmitter(username, emitter));
         emitter.onTimeout(() -> removeEmitter(username, emitter));
@@ -86,18 +96,27 @@ public class SseEmitterService {
     public void sendHeartbeat() {
         if (userEmitters.isEmpty()) return;
 
+        Map<String, Object> pingPayload = Map.of("ping", true, "timestamp", System.currentTimeMillis());
+
         for (Map.Entry<String, CopyOnWriteArrayList<SseEmitter>> entry : userEmitters.entrySet()) {
             String user = entry.getKey();
-            for (SseEmitter emitter : entry.getValue()) {
+            CopyOnWriteArrayList<SseEmitter> emitters = entry.getValue();
+            if (emitters == null || emitters.isEmpty()) {
+                continue;
+            }
+            for (SseEmitter emitter : emitters) {
                 try {
                     emitter.send(SseEmitter.event()
                             .name("PING")
-                            .data(Map.of("ping", true, "timestamp", System.currentTimeMillis())));
+                            .data(pingPayload));
                 } catch (Exception e) {
                     removeEmitter(user, emitter);
                 }
             }
         }
+
+        // Prune any empty user keys to keep memory minimal
+        userEmitters.entrySet().removeIf(e -> e.getValue().isEmpty());
     }
 
     private void removeEmitter(String username, SseEmitter emitter) {

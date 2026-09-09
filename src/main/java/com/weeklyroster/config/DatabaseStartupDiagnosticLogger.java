@@ -25,8 +25,11 @@ public class DatabaseStartupDiagnosticLogger implements ApplicationRunner {
     @Value("${server.port:8080}")
     private String serverPort;
 
-    @Value("${spring.datasource.hikari.maximum-pool-size:10}")
+    @Value("${spring.datasource.hikari.maximum-pool-size:6}")
     private int maxPoolSize;
+
+    @Value("${spring.datasource.hikari.minimum-idle:1}")
+    private int minIdle;
 
     @Value("${spring.datasource.hikari.connection-timeout:20000}")
     private long connectionTimeout;
@@ -39,7 +42,7 @@ public class DatabaseStartupDiagnosticLogger implements ApplicationRunner {
         log.info("  Target Database   : {}", sanitizedTarget);
         log.info("  Database Username : {}", datasourceUsername != null && !datasourceUsername.isBlank() ? datasourceUsername : "N/A");
         log.info("  Server HTTP Port  : {}", serverPort);
-        log.info("  HikariCP Settings : max-pool-size={}, conn-timeout={}ms", maxPoolSize, connectionTimeout);
+        log.info("  HikariCP Settings : max-pool-size={}, min-idle={}, conn-timeout={}ms", maxPoolSize, minIdle, connectionTimeout);
         log.info("================================================================================");
     }
 
