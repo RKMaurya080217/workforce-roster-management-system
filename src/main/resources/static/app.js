@@ -7296,7 +7296,10 @@ function bindUnifiedApprovalActions(container) {
         toast(`Approving profile changes for ${emp}...`, "info");
         await apiRequest(`/api/admin/approvals/profile/${id}/approve`, {
           method: "POST",
-          body: { decisionReason: "Approved by administrator" }
+          body: {
+            adminRemarks: "Approved by administrator",
+            decisionReason: "Approved by administrator"
+          }
         });
         toast(`Profile change request #${id} approved successfully!`, "success");
         broadcastDataMutation("APPROVALS_CHANGED");
@@ -7320,7 +7323,10 @@ function bindUnifiedApprovalActions(container) {
         toast(`Rejecting profile change request...`, "info");
         await apiRequest(`/api/admin/approvals/profile/${id}/reject`, {
           method: "POST",
-          body: { decisionReason: reason || "Rejected by administrator" }
+          body: {
+            adminRemarks: reason || "Rejected by administrator",
+            decisionReason: reason || "Rejected by administrator"
+          }
         });
         toast(`Profile change request #${id} rejected`, "info");
         broadcastDataMutation("APPROVALS_CHANGED");
@@ -7399,7 +7405,12 @@ function bindUnifiedApprovalActions(container) {
         toast("Approving shift preference...", "info");
         await apiRequest(`/api/admin/approvals/preference/${id}/decision`, {
           method: "POST",
-          body: { decision: "APPROVE", reviewNote: "Approved" }
+          body: {
+            status: "APPROVED",
+            decision: "APPROVE",
+            adminRemarks: "Approved by administrator",
+            reviewNote: "Approved by administrator"
+          }
         });
         toast(`Shift preference #${id} approved!`, "success");
         broadcastDataMutation("APPROVALS_CHANGED");
@@ -7422,7 +7433,12 @@ function bindUnifiedApprovalActions(container) {
         toast("Rejecting shift preference...", "info");
         await apiRequest(`/api/admin/approvals/preference/${id}/decision`, {
           method: "POST",
-          body: { decision: "REJECT", reviewNote: reason || "Rejected" }
+          body: {
+            status: "REJECTED",
+            decision: "REJECT",
+            adminRemarks: reason || "Rejected by administrator",
+            reviewNote: reason || "Rejected by administrator"
+          }
         });
         toast(`Shift preference #${id} rejected`, "info");
         broadcastDataMutation("APPROVALS_CHANGED");
