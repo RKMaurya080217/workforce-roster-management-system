@@ -113,17 +113,19 @@ class Batch22FreshResetTest {
         System.out.println("  shift_handovers: " + handoversBefore);
 
         // 2. Perform targeted cleanup in strict foreign-key order
-        jdbcTemplate.execute("DELETE FROM email_delivery_logs");
-        jdbcTemplate.execute("DELETE FROM employee_activity_logs");
+        jdbcTemplate.execute("DELETE FROM system_audit_logs");
+        jdbcTemplate.execute("DELETE FROM employee_requests");
         jdbcTemplate.execute("DELETE FROM notifications");
-        jdbcTemplate.execute("DELETE FROM audit_logs");
-        jdbcTemplate.execute("DELETE FROM profile_change_requests");
         jdbcTemplate.execute("DELETE FROM leave_requests");
         jdbcTemplate.execute("DELETE FROM shift_handovers");
-        jdbcTemplate.execute("DELETE FROM roster_overrides");
-        jdbcTemplate.execute("DELETE FROM roster_versions");
         jdbcTemplate.execute("DELETE FROM roster_assignments");
         jdbcTemplate.execute("DELETE FROM roster_cycles");
+        for (String legacyTable : List.of("email_delivery_logs", "employee_activity_logs", "audit_logs",
+                "profile_change_requests", "roster_overrides", "roster_versions", "roster_change_requests", "employee_preferences")) {
+            try {
+                jdbcTemplate.execute("DELETE FROM " + legacyTable);
+            } catch (Exception ignored) {}
+        }
 
         // 3. Verify Counts After Cleanup
         assertEquals(0, cycleRepository.count(), "roster_cycles must be 0");

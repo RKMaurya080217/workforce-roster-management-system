@@ -11,7 +11,8 @@ import jakarta.persistence.*;
     @Index(name = "idx_sal_audit_act", columnList = "audit_action"),
     @Index(name = "idx_sal_act_act", columnList = "activity_action"),
     @Index(name = "idx_sal_type_cycle", columnList = "log_type, cycle_id"),
-    @Index(name = "idx_sal_type_emp", columnList = "log_type, employee_id")
+    @Index(name = "idx_sal_type_emp", columnList = "log_type, employee_id"),
+    @Index(name = "idx_sal_assignment", columnList = "assignment_id")
 })
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "log_type", discriminatorType = DiscriminatorType.STRING, length = 30)

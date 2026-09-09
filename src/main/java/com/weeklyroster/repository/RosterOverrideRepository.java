@@ -23,10 +23,10 @@ public interface RosterOverrideRepository extends JpaRepository<RosterOverride, 
     void deleteByAssignmentRosterDateBetween(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "DELETE ro FROM roster_overrides ro JOIN roster_assignments ra ON ro.assignment_id = ra.id WHERE ra.cycle_id = :cycleId", nativeQuery = true)
+    @Query(value = "DELETE FROM system_audit_logs WHERE log_type = 'ROSTER_OVERRIDE' AND assignment_id IN (SELECT id FROM roster_assignments WHERE cycle_id = :cycleId)", nativeQuery = true)
     void deleteByCycleIdNative(@Param("cycleId") Long cycleId);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query(value = "DELETE ro FROM roster_overrides ro JOIN roster_assignments ra ON ro.assignment_id = ra.id WHERE ra.roster_date BETWEEN :startDate AND :endDate", nativeQuery = true)
+    @Query(value = "DELETE FROM system_audit_logs WHERE log_type = 'ROSTER_OVERRIDE' AND assignment_id IN (SELECT id FROM roster_assignments WHERE roster_date BETWEEN :startDate AND :endDate)", nativeQuery = true)
     void deleteByDateRangeNative(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 }

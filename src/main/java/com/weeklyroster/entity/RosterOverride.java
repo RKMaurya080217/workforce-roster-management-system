@@ -3,50 +3,42 @@ package com.weeklyroster.entity;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.ConstraintMode;
+import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "roster_overrides")
-public class RosterOverride {
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+@DiscriminatorValue("ROSTER_OVERRIDE")
+public class RosterOverride extends SystemAuditLogEntry {
 
-	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "assignment_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
 	private RosterAssignment assignment;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 30)
+	@Column(name = "previous_shift_type", length = 30)
 	private ShiftType previousShiftType;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false, length = 30)
+	@Column(name = "new_shift_type", length = 30)
 	private ShiftType newShiftType;
 
-	@Column(nullable = false)
-	private boolean weeklyOff;
+	@Column(name = "weekly_off")
+	private Boolean weeklyOff = false;
 
-	@Column(length = 500)
+	@Column(name = "reason", length = 500)
 	private String reason;
 
-	@Column(nullable = false)
-	private LocalDateTime createdAt;
+	@Column(name = "created_at")
+	private LocalDateTime createdAt = LocalDateTime.now();
 
-	public Long getId() {
-		return id;
-	}
-
-	public void setId(Long id) {
-		this.id = id;
-	}
+	public RosterOverride() {}
 
 	public RosterAssignment getAssignment() {
 		return assignment;
@@ -73,7 +65,7 @@ public class RosterOverride {
 	}
 
 	public boolean isWeeklyOff() {
-		return weeklyOff;
+		return weeklyOff != null && weeklyOff;
 	}
 
 	public void setWeeklyOff(boolean weeklyOff) {
