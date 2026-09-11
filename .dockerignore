@@ -1,0 +1,36 @@
+﻿# Git
+.git
+.gitignore
+
+# Maven local build artifacts & caches
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# Local environment & secrets
+.local/
+*.local
+*.env
+.env*
+
+# IDE & Editor files
+.idea/
+.settings/
+.project
+.classpath
+*.launch
+*.iml
+
+# Documentation & large assets
+docs/
+postman/
+WRMS Documents/
+compile_project.ps1
+git
+
+# Log and temporary files
+*.log
+*.tmp
+*.bak
+dump.rdb
