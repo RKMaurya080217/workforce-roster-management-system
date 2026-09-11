@@ -84,7 +84,7 @@ public class DashboardService {
         List<EmployeeResponse> activeEmployees = allEmployees.stream().filter(Employee::isActive).map(this::toEmployeeResponse).toList();
         List<EmployeeResponse> inactiveEmployees = allEmployees.stream().filter(e -> !e.isActive()).map(this::toEmployeeResponse).toList();
 
-        RosterCycleResponse currentCycle = cycleRepository.findAllByOrderByStartDateDesc().stream().findFirst()
+        RosterCycleResponse currentCycle = cycleRepository.findTopByOrderByStartDateDesc()
                 .map(c -> toCycleResponse(c, assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(c)))
                 .orElse(null);
 
@@ -251,7 +251,7 @@ public class DashboardService {
         if (cycleId != null) {
             return cycleRepository.findById(cycleId).orElse(null);
         }
-        return cycleRepository.findAllByOrderByStartDateDesc().stream().findFirst().orElse(null);
+        return cycleRepository.findTopByOrderByStartDateDesc().orElse(null);
     }
 
     private DashboardDayViewResponse.StaffItemDto toStaffItem(RosterAssignment a) {

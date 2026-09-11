@@ -648,6 +648,23 @@ function handleLogout(silent = false) {
   sessionStorage.removeItem("wrmsProfile");
   state.token = "";
   state.profile = null;
+
+  // Batch 59: Teardown background timers and SSE connection to conserve Railway resources
+  if (notificationEventSource) {
+    try {
+      notificationEventSource.close();
+    } catch (_) {}
+    notificationEventSource = null;
+  }
+  if (streamReconnectTimer) {
+    clearTimeout(streamReconnectTimer);
+    streamReconnectTimer = null;
+  }
+  if (state.syncPollingIntervalId) {
+    clearInterval(state.syncPollingIntervalId);
+    state.syncPollingIntervalId = null;
+  }
+
   try {
     if (window.location.hash) {
       history.replaceState(null, "", window.location.pathname + window.location.search);

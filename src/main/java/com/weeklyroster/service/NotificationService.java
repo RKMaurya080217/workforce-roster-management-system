@@ -269,16 +269,13 @@ public class NotificationService {
 
     @Transactional
     public void markAllAsRead(String username) {
-        List<Notification> list = notificationRepository.findByRecipientUsernameOrderByCreatedAtDesc(username);
-        for (Notification n : list) {
-            n.setReadStatus(true);
-        }
-        notificationRepository.saveAll(list);
+        if (username == null || username.isBlank()) return;
+        int updatedCount = notificationRepository.markAllAsReadForUser(username);
 
-        if (activityLogService != null && !list.isEmpty()) {
+        if (activityLogService != null && updatedCount > 0) {
             activityLogService.logUserActivity(username, ActivityCategory.NOTIFICATION,
                     "NOTIFICATION_VIEWED", ActivityStatus.SUCCESS,
-                    "Marked all notifications as read (" + list.size() + " notifications)");
+                    "Marked all notifications as read (" + updatedCount + " notifications)");
         }
     }
 

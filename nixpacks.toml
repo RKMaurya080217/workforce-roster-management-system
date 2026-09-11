@@ -5,4 +5,4 @@ nixPkgs = ["fontconfig", "dejavu_fonts", "openjdk17", "maven"]
 cmds = ["mvn clean package -DskipTests=true"]
 
 [start]
-cmd = "java -Djava.awt.headless=true -Dserver.port=$PORT -jar target/weekly-roster-management-system-1.0.0.jar"
+cmd = "java -Djava.awt.headless=true -XX:+UseSerialGC -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=25.0 -XX:MinRAMPercentage=25.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom -Dserver.port=$PORT -jar target/weekly-roster-management-system-1.0.0.jar"

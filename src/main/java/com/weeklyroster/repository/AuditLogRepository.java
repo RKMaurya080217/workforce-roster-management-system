@@ -15,8 +15,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     List<AuditLog> findAllByOrderByTimestampDesc();
 
+    List<AuditLog> findTop200ByOrderByTimestampDesc();
+
     default List<AuditLog> findRecentLogs() {
-        return findAllByOrderByTimestampDesc();
+        return findTop200ByOrderByTimestampDesc();
     }
 
     List<AuditLog> findByCycleIdOrderByTimestampDesc(Long cycleId);

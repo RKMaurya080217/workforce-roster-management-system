@@ -22,4 +22,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     boolean existsByRecipientUsernameAndTypeAndLinkIdAndCreatedAtAfter(
             String recipientUsername, NotificationType type, Long linkId, LocalDateTime after);
+
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("UPDATE Notification n SET n.readStatus = true WHERE n.recipientUsername = :username AND n.readStatus = false")
+    int markAllAsReadForUser(@org.springframework.data.repository.query.Param("username") String username);
 }
