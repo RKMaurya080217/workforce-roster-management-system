@@ -1,0 +1,336 @@
+{
+  "info": {
+    "name": "WRMS External API v1",
+    "_postman_id": "7a30b2c1-d4e5-4f6a-8b9c-0d1e2f3a4b5c",
+    "description": "Postman collection for WRMS (Workforce Roster Management System) External API & Integration Layer v1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "wrms_live_dev_test_secret_key_change_in_prod",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "PASTE_ADMIN_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Diagnostics",
+      "item": [
+        {
+          "name": "Ping & Verify API Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/ping",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "ping"]
+            },
+            "description": "Verifies connectivity, API key validity, and authorized scopes."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Rosters (ROSTER_READ)",
+      "item": [
+        {
+          "name": "Get Current Weekly Roster",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/rosters/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "rosters", "current"]
+            },
+            "description": "Returns the current active/published weekly roster cycle with all assignments."
+          }
+        },
+        {
+          "name": "Get Roster by Start Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/rosters?startDate=2026-09-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "rosters"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2026-09-14"
+                }
+              ]
+            },
+            "description": "Returns the roster cycle for the week starting on the given Monday."
+          }
+        },
+        {
+          "name": "Get Roster Assignments by Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/rosters/by-date?date=2026-09-14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "rosters", "by-date"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-09-14"
+                }
+              ]
+            },
+            "description": "Returns all duty assignments across the team on a specific date."
+          }
+        },
+        {
+          "name": "Get Roster for Employee",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/rosters/employee/EMP001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "rosters", "employee", "EMP001"]
+            },
+            "description": "Returns duty assignments for an employee by code (e.g. EMP001)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Employees (EMPLOYEE_READ)",
+      "item": [
+        {
+          "name": "List Active Employees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/employees?activeOnly=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "employees"],
+              "query": [
+                {
+                  "key": "activeOnly",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Returns active employees list with sanitized fields."
+          }
+        },
+        {
+          "name": "Get Employee by Code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/employees/EMP001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "employees", "EMP001"]
+            },
+            "description": "Returns details for an employee by code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Shifts (SHIFT_READ)",
+      "item": [
+        {
+          "name": "List Active Shifts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/shifts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "shifts"]
+            },
+            "description": "Returns all configured shift types and slot capacities."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Leaves (LEAVE_READ)",
+      "item": [
+        {
+          "name": "List Approved Leaves",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/external/v1/leaves",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "external", "v1", "leaves"]
+            },
+            "description": "Returns approved employee leaves."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Admin Client Management (ROLE_ADMIN)",
+      "item": [
+        {
+          "name": "List API Clients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/external-clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "external-clients"]
+            },
+            "description": "Admin endpoint to list registered API client keys."
+          }
+        },
+        {
+          "name": "Create API Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientName\": \"Attendance Integration App\",\n  \"scopes\": \"ROSTER_READ,EMPLOYEE_READ\",\n  \"rateLimitPerMinute\": 60\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/external-clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "external-clients"]
+            },
+            "description": "Admin endpoint to provision a new client key."
+          }
+        },
+        {
+          "name": "Toggle Client Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/external-clients/1/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "external-clients", "1", "toggle"]
+            },
+            "description": "Admin endpoint to enable/disable an API client."
+          }
+        },
+        {
+          "name": "Revoke / Delete Client",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/external-clients/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "external-clients", "1"]
+            },
+            "description": "Admin endpoint to delete an API client credential."
+          }
+        }
+      ]
+    }
+  ]
+}

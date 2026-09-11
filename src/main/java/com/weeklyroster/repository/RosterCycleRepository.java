@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface RosterCycleRepository extends JpaRepository<RosterCycle, Long> {
+    Optional<RosterCycle> findByStartDate(LocalDate startDate);
     Optional<RosterCycle> findByStartDateAndEndDate(LocalDate startDate, LocalDate endDate);
     List<RosterCycle> findAllByOrderByStartDateDesc();
     Optional<RosterCycle> findTopByOrderByStartDateDesc();

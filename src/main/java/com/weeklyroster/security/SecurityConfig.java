@@ -23,10 +23,20 @@ import com.weeklyroster.entity.Role;
 @EnableMethodSecurity
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ApiKeyAuthenticationFilter apiKeyAuthenticationFilter;
+    private final CorrelationIdFilter correlationIdFilter;
+    private final RateLimitFilter rateLimitFilter;
     private final CustomUserDetailsService userDetailsService;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, CustomUserDetailsService userDetailsService) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          ApiKeyAuthenticationFilter apiKeyAuthenticationFilter,
+                          CorrelationIdFilter correlationIdFilter,
+                          RateLimitFilter rateLimitFilter,
+                          CustomUserDetailsService userDetailsService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.apiKeyAuthenticationFilter = apiKeyAuthenticationFilter;
+        this.correlationIdFilter = correlationIdFilter;
+        this.rateLimitFilter = rateLimitFilter;
         this.userDetailsService = userDetailsService;
     }
 
@@ -38,6 +48,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/styles.css", "/app.js", "/enterprise-app.js", "/favicon.ico", "/error").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/login/**", "/api/public/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/external/v1/ping").hasAnyAuthority("ROLE_EXTERNAL_CLIENT", Role.ROLE_ADMIN.name())
+                        .requestMatchers("/api/external/v1/**").hasAnyAuthority("ROLE_EXTERNAL_CLIENT", Role.ROLE_ADMIN.name())
+                        .requestMatchers("/api/admin/external-clients", "/api/admin/external-clients/**").hasAuthority(Role.ROLE_ADMIN.name())
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers(HttpMethod.POST, "/api/leaves").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
                         .requestMatchers(HttpMethod.POST, "/api/leaves/*/modification", "/api/leaves/*/cancellation").hasAnyAuthority(Role.ROLE_ADMIN.name(), Role.ROLE_EMPLOYEE.name())
@@ -60,16 +73,33 @@ public class SecurityConfig {
                         .authenticationEntryPoint((request, response, authException) -> {
                             response.setContentType("application/json;charset=UTF-8");
                             response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
-                            response.getWriter().write("{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication required to access this resource\",\"path\":\"" + request.getRequestURI() + "\"}");
+                            if (request.getRequestURI().startsWith("/api/external/")) {
+                                String reqId = (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE_REQUEST_ID);
+                                if (reqId == null) reqId = request.getHeader(CorrelationIdFilter.HEADER_REQUEST_ID);
+                                if (reqId == null) reqId = "n/a";
+                                response.getWriter().write("{\"success\":false,\"data\":null,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Authentication required. Provide a valid API key via 'X-API-Key' header or 'Authorization: Bearer <key>'.\",\"details\":\"" + authException.getMessage() + "\"},\"meta\":{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"requestId\":\"" + reqId + "\",\"version\":\"v1\"}}");
+                            } else {
+                                response.getWriter().write("{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication required to access this resource\",\"path\":\"" + request.getRequestURI() + "\"}");
+                            }
                             response.getWriter().flush();
                         })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setContentType("application/json;charset=UTF-8");
                             response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
-                            response.getWriter().write("{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied: Administrator privileges required\",\"path\":\"" + request.getRequestURI() + "\"}");
+                            if (request.getRequestURI().startsWith("/api/external/")) {
+                                String reqId = (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE_REQUEST_ID);
+                                if (reqId == null) reqId = request.getHeader(CorrelationIdFilter.HEADER_REQUEST_ID);
+                                if (reqId == null) reqId = "n/a";
+                                response.getWriter().write("{\"success\":false,\"data\":null,\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Access denied: Client lacks the required scope or permission for this operation\",\"details\":\"" + accessDeniedException.getMessage() + "\"},\"meta\":{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"requestId\":\"" + reqId + "\",\"version\":\"v1\"}}");
+                            } else {
+                                response.getWriter().write("{\"timestamp\":\"" + java.time.LocalDateTime.now() + "\",\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied: Administrator privileges required\",\"path\":\"" + request.getRequestURI() + "\"}");
+                            }
                             response.getWriter().flush();
                         }))
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(apiKeyAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
