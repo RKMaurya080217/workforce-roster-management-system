@@ -64,4 +64,36 @@ public class RailwayEnvironmentPostProcessorTest {
         assertEquals("admin_user", env.getProperty("spring.datasource.username"));
         assertEquals("secret_pass", env.getProperty("spring.datasource.password"));
     }
+
+    @Test
+    @DisplayName("4. Railway MYSQL_URL with special characters in password is parsed correctly")
+    void testRailwayMysqlUrlWithSpecialCharsInPassword() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testRailwayUrlSpecial", Map.of(
+                "MYSQL_URL", "mysql://root:p@ss#word!123@mysql.railway.internal:3306/railway"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        String jdbcUrl = env.getProperty("spring.datasource.url");
+        assertNotNull(jdbcUrl);
+        assertTrue(jdbcUrl.startsWith("jdbc:mysql://mysql.railway.internal:3306/railway"));
+        assertEquals("root", env.getProperty("spring.datasource.username"));
+        assertEquals("p@ss#word!123", env.getProperty("spring.datasource.password"));
+    }
+
+    @Test
+    @DisplayName("5. Direct JDBC URL (jdbc:mysql://...) is passed through without modification")
+    void testDirectJdbcUrl() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testDirectJdbc", Map.of(
+                "MYSQL_URL", "jdbc:mysql://mysql.railway.internal:3306/railway?useSSL=false"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        assertEquals("jdbc:mysql://mysql.railway.internal:3306/railway?useSSL=false", env.getProperty("spring.datasource.url"));
+    }
 }
