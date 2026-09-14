@@ -65,7 +65,18 @@ CREATE TABLE IF NOT EXISTS master_reference_data (
     skill_category VARCHAR(100),
     skill_description VARCHAR(500),
     skill_active BOOLEAN,
-    skill_created_at DATETIME(6)
+    skill_created_at DATETIME(6),
+    client_name VARCHAR(100),
+    api_key_hash VARCHAR(128),
+    client_scopes VARCHAR(255),
+    rate_limit_per_minute INT,
+    client_active BOOLEAN,
+    client_created_at DATETIME(6),
+    last_used_at DATETIME(6),
+    total_visits BIGINT,
+    last_visit_at DATETIME(6),
+    visitor_id VARCHAR(64),
+    last_seen_at DATETIME(6)
 );
 
 CREATE TABLE IF NOT EXISTS employee_skills (

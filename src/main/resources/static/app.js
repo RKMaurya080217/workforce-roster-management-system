@@ -283,6 +283,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupRouter();
   scheduleMidnightRefresh();
   startDataSyncPolling();
+  initVisitorAnalytics();
 
   if (state.token && state.profile) {
     showWorkspace();
@@ -10392,3 +10393,147 @@ async function executeRollback(cycleId, targetVersion) {
     toast(err.message || "Failed to execute rollback", "error");
   }
 }
+
+/* ==========================================================================
+   BATCH 60: GLOBAL VISITOR ANALYTICS & LIVE ONLINE TRACKING
+   ========================================================================== */
+let visitorHeartbeatTimer = null;
+
+function getOrCreateVisitorId() {
+  try {
+    let vid = localStorage.getItem("wrms_visitor_id");
+    if (!vid || vid.length < 8) {
+      if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+        vid = "v_" + ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+          (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+        );
+      } else {
+        vid = "v_" + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      }
+      localStorage.setItem("wrms_visitor_id", vid);
+    }
+    return vid;
+  } catch (e) {
+    return "v_" + Math.random().toString(36).substring(2, 15);
+  }
+}
+
+function updateVisitorStatsUI(totalVisits, onlineNow) {
+  const totalEls = document.querySelectorAll(".wrms-total-visitors");
+  const onlineEls = document.querySelectorAll(".wrms-online-visitors");
+
+  const formattedTotal = (totalVisits != null && !isNaN(totalVisits) && Number(totalVisits) >= 0)
+    ? Number(totalVisits).toLocaleString()
+    : "—";
+
+  const formattedOnline = (onlineNow != null && !isNaN(onlineNow) && Number(onlineNow) >= 0)
+    ? Number(onlineNow).toLocaleString()
+    : "—";
+
+  totalEls.forEach(el => { el.textContent = formattedTotal; });
+  onlineEls.forEach(el => { el.textContent = formattedOnline; });
+}
+
+async function sendVisitorHeartbeat() {
+  try {
+    const vid = getOrCreateVisitorId();
+    const res = await fetch("/api/visitor-stats/heartbeat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorId: vid })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.totalVisits != null || data.onlineNow != null)) {
+        updateVisitorStatsUI(data.totalVisits, data.onlineNow);
+      }
+    }
+  } catch (err) {
+    // Non-blocking: fail silently
+  }
+}
+
+async function initVisitorAnalytics() {
+  try {
+    const vid = getOrCreateVisitorId();
+    const isCounted = sessionStorage.getItem("wrms_visitor_counted");
+
+    let endpoint = "/api/visitor-stats/heartbeat";
+    if (!isCounted) {
+      endpoint = "/api/visitor-stats/visit";
+    }
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorId: vid })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data) {
+        if (!isCounted) {
+          sessionStorage.setItem("wrms_visitor_counted", "true");
+        }
+        updateVisitorStatsUI(data.totalVisits, data.onlineNow);
+      }
+    } else {
+      // Fallback to GET stats
+      const getRes = await fetch("/api/visitor-stats");
+      if (getRes.ok) {
+        const getData = await getRes.json();
+        if (getData) {
+          updateVisitorStatsUI(getData.totalVisits, getData.onlineNow);
+        }
+      }
+    }
+  } catch (err) {
+    // Non-blocking fallback: try GET stats
+    try {
+      const getRes = await fetch("/api/visitor-stats");
+      if (getRes.ok) {
+        const getData = await getRes.json();
+        if (getData) {
+          updateVisitorStatsUI(getData.totalVisits, getData.onlineNow);
+        }
+      }
+    } catch (e) {
+      updateVisitorStatsUI(null, null);
+    }
+  }
+
+  // Deduplicated 30-second heartbeat interval
+  if (visitorHeartbeatTimer) {
+    clearInterval(visitorHeartbeatTimer);
+  }
+  visitorHeartbeatTimer = setInterval(sendVisitorHeartbeat, 30000);
+
+  // Send immediate heartbeat when tab becomes visible again
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      sendVisitorHeartbeat();
+    }
+  });
+
+  // Track active tabs in localStorage to notify offline only when the last tab closes
+  try {
+    let currentTabs = parseInt(localStorage.getItem("wrms_active_tabs") || "0", 10);
+    localStorage.setItem("wrms_active_tabs", Math.max(0, currentTabs) + 1);
+
+    window.addEventListener("beforeunload", () => {
+      try {
+        let tabs = Math.max(0, parseInt(localStorage.getItem("wrms_active_tabs") || "1", 10) - 1);
+        localStorage.setItem("wrms_active_tabs", tabs);
+        if (tabs === 0 && navigator.sendBeacon) {
+          const vid = localStorage.getItem("wrms_visitor_id");
+          if (vid) {
+            const blob = new Blob([JSON.stringify({ visitorId: vid })], { type: "application/json" });
+            navigator.sendBeacon("/api/visitor-stats/offline", blob);
+          }
+        }
+      } catch (e) {}
+    });
+  } catch (e) {}
+}
+window.initVisitorAnalytics = initVisitorAnalytics;
+
