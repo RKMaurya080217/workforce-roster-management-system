@@ -460,13 +460,18 @@
                 <div id="notifListContainer" class="notif-list-body">
                   <div class="notif-empty">No notifications yet</div>
                 </div>
-                <div class="notif-footer" style="padding:8px 12px; border-top:1px solid var(--border-light); background:var(--bg-surface); display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
+                <div class="notif-footer" style="padding:8px 12px; border-top:1px solid var(--border-light); background:var(--bg-surface); display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; flex-wrap:wrap; gap:4px;">
                   <button id="fcmPushToggleBtn" class="btn-link-xs" style="color:var(--text-muted); display:flex; align-items:center; gap:4px; text-decoration:none; cursor:pointer;" title="Toggle browser push notifications">
                     <span>🔔</span> <span id="fcmPushStatusLabel">Web Push: Checking...</span>
                   </button>
-                  <button id="adminTestPushBtn" class="btn-xs btn-outline hidden" title="Send test push notification to this device" style="font-size:0.72rem; padding:2px 8px;">
-                    Test Push
-                  </button>
+                  <div style="display:flex; align-items:center; gap:4px;">
+                    <button id="fcmDiagnosticsBtn" class="btn-xs btn-outline" title="View Web Push Diagnostics" style="font-size:0.72rem; padding:2px 6px;">
+                      Diagnostics
+                    </button>
+                    <button id="adminTestPushBtn" class="btn-xs btn-outline hidden" title="Send test push notification" style="font-size:0.72rem; padding:2px 8px;">
+                      Test Push
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

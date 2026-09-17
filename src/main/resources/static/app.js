@@ -289,7 +289,9 @@ document.addEventListener("DOMContentLoaded", () => {
     showWorkspace();
     resolveInitialRoute();
     if (window.WrmsFcm && typeof window.WrmsFcm.init === "function") {
-      window.WrmsFcm.init().catch(() => {});
+      window.WrmsFcm.init().then(() => {
+        checkAndShowMobilePushPrompt();
+      }).catch(() => {});
     }
   } else {
     showLogin();
@@ -622,23 +624,244 @@ function setupFcmPushFlyoutControls() {
     });
   }
 
-  if (testBtn) {
-    testBtn.addEventListener("click", async (e) => {
+  const diagBtn = document.getElementById("fcmDiagnosticsBtn");
+  if (diagBtn) {
+    diagBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      testBtn.disabled = true;
-      const origText = testBtn.textContent;
-      testBtn.textContent = "Sending...";
-      try {
-        const res = await apiRequest("/api/notifications/fcm/test", { method: "POST" });
-        toast(res.message || "Test push notification sent successfully!", "success");
-      } catch (err) {
-        toast(err.message || "Failed to send test push notification", "error");
-      } finally {
-        testBtn.disabled = false;
-        testBtn.textContent = origText;
-      }
+      showPushDiagnosticsModal();
     });
   }
+
+  if (testBtn) {
+    testBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showAdminTestPushModal();
+    });
+  }
+}
+
+function showAdminTestPushModal() {
+  const existing = document.getElementById("adminTestPushModal");
+  if (existing) existing.remove();
+
+  const employees = state.employees || [];
+  let employeeOptions = `<option value="">My Device (Admin)</option>`;
+  for (const emp of employees) {
+    employeeOptions += `<option value="${emp.id}">${emp.employeeCode} — ${emp.firstName} ${emp.lastName}</option>`;
+  }
+
+  const modal = document.createElement("div");
+  modal.id = "adminTestPushModal";
+  modal.className = "modal-overlay active";
+  modal.style.cssText = "display:flex; align-items:center; justify-content:center; z-index:99999;";
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:440px; width:90%; background:var(--surface, #ffffff); border-radius:12px; padding:20px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
+          <span>📲</span> Send Test Push Notification
+        </h3>
+        <button id="closeTestPushModalBtn" style="background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text-muted, #94a3b8);">&times;</button>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-muted, #64748b); margin-bottom:14px;">
+        Test whether the target device receives the exact test message:
+        <br><strong style="color:var(--text, #1e293b);">"WRMS test notification — your mobile push notification is working."</strong>
+      </p>
+      <div class="form-group" style="margin-bottom:16px;">
+        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:6px;">Select Target Recipient:</label>
+        <select id="testPushTargetSelect" class="form-control" style="width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1);">
+          ${employeeOptions}
+        </select>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button id="cancelTestPushBtn" class="btn btn-outline small">Cancel</button>
+        <button id="confirmSendTestPushBtn" class="btn btn-primary small">Send Test Push</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  document.getElementById("closeTestPushModalBtn")?.addEventListener("click", close);
+  document.getElementById("cancelTestPushBtn")?.addEventListener("click", close);
+
+  document.getElementById("confirmSendTestPushBtn")?.addEventListener("click", async () => {
+    const select = document.getElementById("testPushTargetSelect");
+    const targetEmpId = select ? select.value : "";
+    const sendBtn = document.getElementById("confirmSendTestPushBtn");
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending...";
+
+    try {
+      const payload = targetEmpId ? { employeeId: Number(targetEmpId) } : {};
+      const res = await apiRequest("/api/notifications/fcm/test", {
+        method: "POST",
+        body: payload
+      });
+      toast(res.message || "Test push notification dispatched successfully!", res.success ? "success" : "warning");
+      close();
+    } catch (err) {
+      toast(err.message || "Failed to send test push notification.", "error");
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Send Test Push";
+      }
+    }
+  });
+}
+
+async function showPushDiagnosticsModal() {
+  const existing = document.getElementById("pushDiagnosticsModal");
+  if (existing) existing.remove();
+
+  let diag = {
+    https: window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+    browserSupported: false,
+    permission: "UNKNOWN",
+    serviceWorker: "UNKNOWN",
+    fcmInitialized: false,
+    tokenPresent: false,
+    backendRegistered: false,
+    deviceType: "Unknown",
+    activeDeviceCount: 0,
+    serverConfigured: false,
+    webConfigured: false,
+    mode: "UNKNOWN"
+  };
+
+  if (window.WrmsFcm && typeof window.WrmsFcm.getDetailedDiagnostics === "function") {
+    diag = await window.WrmsFcm.getDetailedDiagnostics();
+  }
+
+  const badge = (val, okText = "PASS", failText = "FAIL") => {
+    const isPass = val === true || val === okText || val === "GRANTED" || val === "REGISTERED" || val === "SUCCESS" || val === "LIVE_HTTP_V1";
+    const color = isPass ? "#16a34a" : (val === "DEFAULT" || val === "SIMULATED_LOG" ? "#d97706" : "#dc2626");
+    const bg = isPass ? "#dcfce7" : (val === "DEFAULT" || val === "SIMULATED_LOG" ? "#fef3c7" : "#fee2e2");
+    return `<span style="display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; color:${color}; background:${bg};">${val}</span>`;
+  };
+
+  const modal = document.createElement("div");
+  modal.id = "pushDiagnosticsModal";
+  modal.className = "modal-overlay active";
+  modal.style.cssText = "display:flex; align-items:center; justify-content:center; z-index:99999;";
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:520px; width:92%; background:var(--surface, #ffffff); border-radius:12px; padding:20px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.2);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
+          <span>🔍</span> Web Push Diagnostic Status
+        </h3>
+        <button id="closePushDiagModalBtn" style="background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text-muted, #94a3b8);">&times;</button>
+      </div>
+      <p style="font-size:0.78rem; color:var(--text-muted, #64748b); margin-bottom:12px;">
+        Real-time 8-stage verification of FCM Web Push capability for this client and server.
+      </p>
+      <div style="overflow-x:auto; margin-bottom:16px;">
+        <table style="width:100%; font-size:0.82rem; border-collapse:collapse;">
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">HTTPS / Secure Context</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.https ? "PASS" : "FAIL")}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">Mobile / Browser Support</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.browserSupported ? "PASS" : "FAIL")}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">Notification Permission</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.permission)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">Service Worker</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.serviceWorker)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">FCM Client Initialized</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.fcmInitialized ? "YES" : "NO")}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">FCM Token Registered in Browser</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.backendRegistered ? "YES" : "NO")}</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border-light, #f1f5f9);">
+              <td style="padding:6px 4px; font-weight:600;">Server FCM Credentials</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.serverConfigured ? "LIVE_HTTP_V1" : "SIMULATED_LOG")}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 4px; font-weight:600;">Active Devices on Account</td>
+              <td style="padding:6px 4px; text-align:right;">${badge(diag.activeDeviceCount > 0 ? "SUCCESS (" + diag.activeDeviceCount + ")" : "NONE (0)")}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:0.75rem; color:var(--text-muted, #94a3b8);">${diag.deviceType}</span>
+        <button id="okPushDiagModalBtn" class="btn btn-primary small">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  document.getElementById("closePushDiagModalBtn")?.addEventListener("click", close);
+  document.getElementById("okPushDiagModalBtn")?.addEventListener("click", close);
+}
+
+function checkAndShowMobilePushPrompt() {
+  if (!state.token || !state.profile) return;
+  if (!window.WrmsFcm || !window.WrmsFcm.isSupported()) return;
+  const perm = window.WrmsFcm.getPermissionState();
+  if (perm !== "default") return;
+  if (sessionStorage.getItem("wrms_push_prompt_dismissed") === "true") return;
+  if (document.getElementById("wrmsMobilePushPrompt")) return;
+
+  const banner = document.createElement("div");
+  banner.id = "wrmsMobilePushPrompt";
+  banner.className = "mobile-push-prompt-banner";
+  banner.style.cssText = "position:fixed; bottom:20px; left:20px; right:20px; max-width:440px; margin:0 auto; background:var(--surface, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:12px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.15); padding:14px 16px; z-index:9999; display:flex; flex-direction:column; gap:10px; animation:slideUp 0.3s ease;";
+  banner.innerHTML = `
+    <div style="display:flex; align-items:flex-start; gap:12px;">
+      <div style="font-size:1.5rem; line-height:1;">🔔</div>
+      <div style="flex:1;">
+        <div style="font-weight:700; font-size:0.92rem; color:var(--text, #1e293b); margin-bottom:2px;">Enable Push Notifications</div>
+        <div style="font-size:0.8rem; color:var(--text-muted, #64748b); line-height:1.35;">Receive your weekly duty roster and schedule updates directly on this device.</div>
+      </div>
+      <button id="closePushPromptBtn" style="background:none; border:none; color:var(--text-muted, #94a3b8); font-size:1.2rem; cursor:pointer; padding:0 4px;">&times;</button>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:2px;">
+      <button id="dismissPushPromptBtn" class="btn btn-outline small" style="font-size:0.78rem; padding:5px 12px;">Maybe Later</button>
+      <button id="enablePushPromptBtn" class="btn btn-primary small" style="font-size:0.78rem; padding:5px 14px; font-weight:600;">Enable Notifications</button>
+    </div>
+  `;
+
+  document.body.appendChild(banner);
+
+  const removePrompt = () => {
+    sessionStorage.setItem("wrms_push_prompt_dismissed", "true");
+    banner.remove();
+  };
+
+  document.getElementById("closePushPromptBtn")?.addEventListener("click", removePrompt);
+  document.getElementById("dismissPushPromptBtn")?.addEventListener("click", removePrompt);
+
+  document.getElementById("enablePushPromptBtn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("enablePushPromptBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Enabling...";
+    }
+    try {
+      await window.WrmsFcm.requestPermissionAndRegister();
+      toast("Web push notifications enabled successfully for this device!", "success");
+      refreshPushStatusFlyout();
+      refreshProfilePushStatus();
+    } catch (err) {
+      toast(err.message || "Failed to enable notifications.", "error");
+    } finally {
+      removePrompt();
+    }
+  });
 }
 
 async function refreshPushStatusFlyout() {
@@ -825,7 +1048,9 @@ async function handleLogin(e) {
     resolveInitialRoute();
 
     if (window.WrmsFcm && typeof window.WrmsFcm.init === "function") {
-      window.WrmsFcm.init().catch(() => {});
+      window.WrmsFcm.init().then(() => {
+        checkAndShowMobilePushPrompt();
+      }).catch(() => {});
     }
 
   } catch (err) {

@@ -278,21 +278,21 @@ public class RosterEmailService {
                 .collect(Collectors.toList());
     }
 
-    private EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
-                                            List<RosterAssignmentResponse> myShifts,
-                                            List<Shift> shifts,
-                                            byte[] excelBytes,
-                                            byte[] imageBytes,
-                                            GenerationMode mode) {
+    EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
+                                    List<RosterAssignmentResponse> myShifts,
+                                    List<Shift> shifts,
+                                    byte[] excelBytes,
+                                    byte[] imageBytes,
+                                    GenerationMode mode) {
         return sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode, null);
     }
 
-    private EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
-                                            List<RosterAssignmentResponse> myShifts,
-                                            List<Shift> shifts,
-                                            byte[] excelBytes,
-                                            byte[] imageBytes,
-                                            GenerationMode mode,
+    EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
+                                    List<RosterAssignmentResponse> myShifts,
+                                    List<Shift> shifts,
+                                    byte[] excelBytes,
+                                    byte[] imageBytes,
+                                    GenerationMode mode,
                                             String adminMessage) {
 
         EmailType targetEmailType = (mode == GenerationMode.AUTOMATIC && (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.TENTATIVE || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.GENERATED))

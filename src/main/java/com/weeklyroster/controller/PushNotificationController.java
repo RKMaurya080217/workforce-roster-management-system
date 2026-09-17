@@ -64,14 +64,16 @@ public class PushNotificationController {
     public ResponseEntity<Map<String, Object>> registerToken(@RequestBody Map<String, String> body) {
         User user = getAuthenticatedUser();
         String token = body != null ? body.get("token") : null;
-        String deviceType = body != null ? body.get("deviceType") : "Browser";
+        String deviceType = body != null
+                ? (body.get("deviceType") != null ? body.get("deviceType") : body.get("platform"))
+                : "Browser";
 
         if (token == null || token.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", "FCM token is required"));
         }
 
         Employee emp = user.getEmployee();
-        boolean ok = notificationPushService.registerToken(user, emp, token.trim(), deviceType);
+        boolean ok = notificationPushService.registerToken(user, emp, token.trim(), deviceType != null ? deviceType : "Browser");
 
         return ResponseEntity.ok(Map.of(
                 "success", ok,
@@ -107,21 +109,34 @@ public class PushNotificationController {
         return ResponseEntity.ok(res);
     }
 
+    @GetMapping("/diagnostics")
+    public ResponseEntity<Map<String, Object>> getDiagnostics() {
+        User user = getAuthenticatedUser();
+        return ResponseEntity.ok(notificationPushService.getPushDiagnostics(user));
+    }
+
     @PostMapping("/test")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<Map<String, Object>> sendAdminTest() {
+    public ResponseEntity<Map<String, Object>> sendAdminTest(
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(value = "employeeId", required = false) Long employeeIdParam) {
         User adminUser = getAuthenticatedUser();
-        boolean success = notificationPushService.sendAdminTestNotification(adminUser);
+        Long targetEmployeeId = employeeIdParam;
+        if (targetEmployeeId == null && body != null && body.get("employeeId") != null) {
+            try {
+                targetEmployeeId = Long.valueOf(body.get("employeeId").toString());
+            } catch (Exception ignored) {}
+        }
+
+        boolean success = notificationPushService.sendAdminTestNotification(adminUser, targetEmployeeId);
         long deviceCount = notificationPushService.getActiveTokenCountForUser(adminUser);
 
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("success", success);
         res.put("activeDeviceCount", deviceCount);
         res.put("message", success
-                ? "WRMS test notification: Push notifications are working successfully."
-                : (deviceCount == 0
-                ? "No active devices registered for admin. Please allow notification permission on this device first."
-                : "Failed to deliver push notification. Check server logs."));
+                ? "WRMS test notification \u2014 your mobile push notification is working."
+                : "Failed to deliver push notification or no active registered devices found. Check server logs.");
 
         return ResponseEntity.ok(res);
     }

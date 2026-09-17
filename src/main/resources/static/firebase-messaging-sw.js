@@ -36,6 +36,15 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// Service Worker Immediate Activation
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
 function setupMessaging() {
   try {
     const messaging = firebase.messaging();
@@ -53,6 +62,7 @@ function setupMessaging() {
         body: body,
         icon: '/favicon.ico',
         badge: '/favicon.ico',
+        vibrate: [200, 100, 200],
         data: payload.data || {},
         tag: (payload.data && payload.data.cycleId) ? `wrms-roster-${payload.data.cycleId}` : 'wrms-notification',
         renotify: true
@@ -69,6 +79,8 @@ function setupMessaging() {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
+  const targetUrl = (event.notification.data && (event.notification.data.clickUrl || event.notification.data.url)) || '/';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
@@ -77,7 +89,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/');
+        return clients.openWindow(targetUrl);
       }
     })
   );

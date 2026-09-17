@@ -264,6 +264,42 @@
         activeDeviceCount,
         pushConfigured
       };
+    },
+
+    async getDetailedDiagnostics() {
+      const isHttps = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const supported = this.isSupported();
+      const permission = this.getPermissionState();
+      const swState = this.swRegistration ? 'REGISTERED' : (navigator.serviceWorker ? 'UNREGISTERED' : 'UNSUPPORTED');
+      const fcmInit = this.initialized && !!this.messaging;
+      const tokenPresent = !!this.currentToken;
+      const backendRegistered = localStorage.getItem('wrms_fcm_token_registered') === 'true';
+
+      let serverDiag = {};
+      const authToken = sessionStorage.getItem('wrmsToken');
+      if (authToken) {
+        try {
+          const res = await fetch('/api/notifications/fcm/diagnostics', {
+            headers: { Authorization: `Bearer ${authToken}` }
+          });
+          if (res.ok) serverDiag = await res.json();
+        } catch (_) {}
+      }
+
+      return {
+        https: isHttps,
+        browserSupported: supported,
+        permission: permission.toUpperCase(),
+        serviceWorker: swState,
+        fcmInitialized: fcmInit,
+        tokenPresent: tokenPresent,
+        backendRegistered: backendRegistered,
+        deviceType: this.detectDeviceType(),
+        serverConfigured: serverDiag.serverConfigured || false,
+        webConfigured: serverDiag.webConfigured || (this.config && this.config.configured) || false,
+        activeDeviceCount: serverDiag.userActiveDevices || 0,
+        mode: serverDiag.mode || 'UNKNOWN'
+      };
     }
   };
 

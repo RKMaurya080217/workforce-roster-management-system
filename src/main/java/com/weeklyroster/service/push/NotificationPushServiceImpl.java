@@ -41,6 +41,8 @@ public class NotificationPushServiceImpl implements NotificationPushService {
 
     private final FirebaseConfig firebaseConfig;
     private final DeviceTokenRepository deviceTokenRepository;
+    private final com.weeklyroster.repository.EmployeeRepository employeeRepository;
+    private final com.weeklyroster.repository.UserRepository userRepository;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
@@ -53,13 +55,22 @@ public class NotificationPushServiceImpl implements NotificationPushService {
 
     @Autowired
     public NotificationPushServiceImpl(FirebaseConfig firebaseConfig,
-                                       DeviceTokenRepository deviceTokenRepository) {
+                                       DeviceTokenRepository deviceTokenRepository,
+                                       @Autowired(required = false) com.weeklyroster.repository.EmployeeRepository employeeRepository,
+                                       @Autowired(required = false) com.weeklyroster.repository.UserRepository userRepository) {
         this.firebaseConfig = firebaseConfig;
         this.deviceTokenRepository = deviceTokenRepository;
+        this.employeeRepository = employeeRepository;
+        this.userRepository = userRepository;
         this.objectMapper = new ObjectMapper();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(6))
                 .build();
+    }
+
+    public NotificationPushServiceImpl(FirebaseConfig firebaseConfig,
+                                       DeviceTokenRepository deviceTokenRepository) {
+        this(firebaseConfig, deviceTokenRepository, null, null);
     }
 
     @Override
@@ -80,6 +91,10 @@ public class NotificationPushServiceImpl implements NotificationPushService {
         if (user == null || token == null || token.trim().isBlank()) {
             return false;
         }
+        if (employee == null && employeeRepository != null) {
+            employee = employeeRepository.findByUserUsername(user.getUsername()).orElse(null);
+        }
+
         String cleanToken = token.trim();
         Optional<DeviceToken> existingOpt = deviceTokenRepository.findByToken(cleanToken);
 
@@ -91,11 +106,13 @@ public class NotificationPushServiceImpl implements NotificationPushService {
             dt.setActive(true);
             dt.setUpdatedAt(LocalDateTime.now());
             deviceTokenRepository.save(dt);
-            log.info("[WRMS PUSH] Updated active token {} for user: {}", maskToken(cleanToken), user.getUsername());
+            log.info("[WRMS PUSH] Updated active token {} for user: {} (emp: {})",
+                    maskToken(cleanToken), user.getUsername(), employee != null ? employee.getEmployeeCode() : "none");
         } else {
             DeviceToken dt = new DeviceToken(user, employee, cleanToken, deviceType != null ? deviceType.trim() : "Browser");
             deviceTokenRepository.save(dt);
-            log.info("[WRMS PUSH] Registered new token {} for user: {}", maskToken(cleanToken), user.getUsername());
+            log.info("[WRMS PUSH] Registered new token {} for user: {} (emp: {})",
+                    maskToken(cleanToken), user.getUsername(), employee != null ? employee.getEmployeeCode() : "none");
         }
         return true;
     }
@@ -143,10 +160,24 @@ public class NotificationPushServiceImpl implements NotificationPushService {
             return 0;
         }
 
-        List<DeviceToken> tokens = deviceTokenRepository.findByEmployeeAndActiveTrue(employee);
-        if (tokens.isEmpty() && employee.getUser() != null) {
-            tokens = deviceTokenRepository.findByUserAndActiveTrue(employee.getUser());
+        List<DeviceToken> tokens = new ArrayList<>();
+        tokens.addAll(deviceTokenRepository.findByEmployeeAndActiveTrue(employee));
+        if (tokens.isEmpty() && employee.getId() != null) {
+            tokens.addAll(deviceTokenRepository.findByEmployeeIdAndActiveTrue(employee.getId()));
         }
+        if (tokens.isEmpty() && employee.getUser() != null) {
+            tokens.addAll(deviceTokenRepository.findByUserAndActiveTrue(employee.getUser()));
+            if (tokens.isEmpty() && employee.getUser().getId() != null) {
+                tokens.addAll(deviceTokenRepository.findByUserIdAndActiveTrue(employee.getUser().getId()));
+            }
+        }
+
+        // Deduplicate tokens
+        Map<String, DeviceToken> uniqueTokenMap = new LinkedHashMap<>();
+        for (DeviceToken dt : tokens) {
+            if (dt.isActive()) uniqueTokenMap.put(dt.getToken(), dt);
+        }
+        tokens = new ArrayList<>(uniqueTokenMap.values());
 
         Map<String, String> data = Map.of(
                 "cycleId", String.valueOf(cycle.getId()),
@@ -223,19 +254,53 @@ public class NotificationPushServiceImpl implements NotificationPushService {
     @Override
     @Transactional
     public boolean sendAdminTestNotification(User adminUser) {
+        return sendAdminTestNotification(adminUser, null);
+    }
+
+    @Override
+    @Transactional
+    public boolean sendAdminTestNotification(User adminUser, Long targetEmployeeId) {
         if (adminUser == null) return false;
         String title = "WRMS Test Notification";
-        String body = "WRMS test notification: Push notifications are working successfully.";
-        Map<String, String> data = Map.of("type", "ADMIN_TEST", "timestamp", String.valueOf(System.currentTimeMillis()));
+        String body = "WRMS test notification — your mobile push notification is working.";
+        Map<String, String> data = Map.of(
+                "type", "ADMIN_TEST",
+                "timestamp", String.valueOf(System.currentTimeMillis()),
+                "target", targetEmployeeId != null ? String.valueOf(targetEmployeeId) : "admin"
+        );
 
-        List<DeviceToken> tokens = deviceTokenRepository.findByUserAndActiveTrue(adminUser);
+        List<DeviceToken> tokens = new ArrayList<>();
+        String targetDesc = adminUser.getUsername();
+        if (targetEmployeeId != null && employeeRepository != null) {
+            Employee emp = employeeRepository.findById(targetEmployeeId).orElse(null);
+            if (emp != null) {
+                targetDesc = emp.getEmployeeCode() + " (" + emp.getFirstName() + " " + emp.getLastName() + ")";
+                tokens.addAll(deviceTokenRepository.findByEmployeeAndActiveTrue(emp));
+                if (tokens.isEmpty()) {
+                    tokens.addAll(deviceTokenRepository.findByEmployeeIdAndActiveTrue(emp.getId()));
+                }
+                if (tokens.isEmpty() && emp.getUser() != null) {
+                    tokens.addAll(deviceTokenRepository.findByUserAndActiveTrue(emp.getUser()));
+                }
+            }
+        } else {
+            tokens.addAll(deviceTokenRepository.findByUserAndActiveTrue(adminUser));
+        }
+
+        // Deduplicate tokens
+        Map<String, DeviceToken> uniqueTokenMap = new LinkedHashMap<>();
+        for (DeviceToken dt : tokens) {
+            if (dt.isActive()) uniqueTokenMap.put(dt.getToken(), dt);
+        }
+        tokens = new ArrayList<>(uniqueTokenMap.values());
+
         if (!firebaseConfig.isServerConfigured()) {
-            log.info("[WRMS PUSH - SIMULATED/LOG] Admin test notification sent to {}: '{}'", adminUser.getUsername(), body);
+            log.info("[WRMS PUSH - SIMULATED/LOG] Admin test notification sent to {}: '{}'", targetDesc, body);
             return true;
         }
 
         if (tokens.isEmpty()) {
-            log.warn("[WRMS PUSH] Admin test failed: no registered device tokens found for admin {}", adminUser.getUsername());
+            log.warn("[WRMS PUSH] Admin test failed: no registered device tokens found for target {}", targetDesc);
             return false;
         }
 
@@ -249,6 +314,26 @@ public class NotificationPushServiceImpl implements NotificationPushService {
             }
         }
         return anySuccess;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getPushDiagnostics(User user) {
+        Map<String, Object> diag = new LinkedHashMap<>();
+        boolean fcmEnabled = firebaseConfig.isEnabled();
+        boolean webReady = firebaseConfig.isWebConfigured();
+        boolean serverReady = firebaseConfig.isServerConfigured();
+        long userDevices = user != null ? getActiveTokenCountForUser(user) : 0;
+        long totalActiveTokens = deviceTokenRepository.findAll().stream().filter(DeviceToken::isActive).count();
+
+        diag.put("fcmEnabled", fcmEnabled);
+        diag.put("webConfigured", webReady);
+        diag.put("serverConfigured", serverReady);
+        diag.put("mode", serverReady ? "LIVE_HTTP_V1" : "SIMULATED_LOG");
+        diag.put("projectId", firebaseConfig.getProjectId());
+        diag.put("userActiveDevices", userDevices);
+        diag.put("systemActiveDevices", totalActiveTokens);
+        return diag;
     }
 
     public String formatCycleDateRange(LocalDate start, LocalDate end) {
@@ -329,18 +414,22 @@ public class NotificationPushServiceImpl implements NotificationPushService {
         }
 
         try {
+            String clientEmail = firebaseConfig.getClientEmail();
+            String privateKeyPem = firebaseConfig.getPrivateKeyPem();
+            String tokenUri = "https://oauth2.googleapis.com/token";
+
             String jsonContent = firebaseConfig.getServiceAccountJsonContent();
-            if (jsonContent == null || jsonContent.isBlank()) {
-                return null;
+            if (jsonContent != null && !jsonContent.isBlank()) {
+                try {
+                    JsonNode root = objectMapper.readTree(jsonContent);
+                    if (clientEmail == null || clientEmail.isBlank()) clientEmail = root.path("client_email").asText();
+                    if (privateKeyPem == null || privateKeyPem.isBlank()) privateKeyPem = root.path("private_key").asText();
+                    tokenUri = root.path("token_uri").asText("https://oauth2.googleapis.com/token");
+                } catch (Exception ignored) {}
             }
 
-            JsonNode root = objectMapper.readTree(jsonContent);
-            String clientEmail = root.path("client_email").asText();
-            String privateKeyPem = root.path("private_key").asText();
-            String tokenUri = root.path("token_uri").asText("https://oauth2.googleapis.com/token");
-
-            if (clientEmail.isBlank() || privateKeyPem.isBlank()) {
-                log.warn("[WRMS FCM] Service account JSON missing client_email or private_key");
+            if (clientEmail == null || clientEmail.isBlank() || privateKeyPem == null || privateKeyPem.isBlank()) {
+                log.warn("[WRMS FCM] Firebase credentials missing client_email or private_key");
                 return null;
             }
 
@@ -399,6 +488,8 @@ public class NotificationPushServiceImpl implements NotificationPushService {
 
     private PrivateKey parsePrivateKeyFromPem(String pem) throws Exception {
         String cleaned = pem
+                .replace("\\n", "")
+                .replace("\\r", "")
                 .replace("-----BEGIN PRIVATE KEY-----", "")
                 .replace("-----END PRIVATE KEY-----", "")
                 .replaceAll("\\s", "");

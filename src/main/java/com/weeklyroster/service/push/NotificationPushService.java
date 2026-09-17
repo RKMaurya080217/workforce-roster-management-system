@@ -35,9 +35,15 @@ public interface NotificationPushService {
 
     /**
      * Sends a test notification to the authenticated Admin's registered devices.
-     * Content: "WRMS test notification: Push notifications are working successfully."
+     * Content: "WRMS test notification — your mobile push notification is working."
      */
     boolean sendAdminTestNotification(User adminUser);
+
+    /**
+     * Sends a test notification to a specific employee's registered devices (Admin only).
+     * Content: "WRMS test notification — your mobile push notification is working."
+     */
+    boolean sendAdminTestNotification(User adminUser, Long targetEmployeeId);
 
     /**
      * Returns true if server credentials are fully configured for live FCM HTTP v1 dispatch.
@@ -48,4 +54,9 @@ public interface NotificationPushService {
      * Returns count of active registered devices for a user.
      */
     long getActiveTokenCountForUser(User user);
+
+    /**
+     * Returns comprehensive push diagnostics for the given user.
+     */
+    Map<String, Object> getPushDiagnostics(User user);
 }
