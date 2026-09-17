@@ -288,7 +288,7 @@ public class RosterService {
 		// 2. Load approved employee preferences applicable to [startDate, endDate]
 		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, startDate, endDate);
 
-		int maxAttempts = 15;
+		int maxAttempts = 30;
 		List<RosterAssignment> bestGenerated = null;
 		List<DailyCoverageReport> bestDailyReports = null;
 		int bestConfiguredDemand = 0;

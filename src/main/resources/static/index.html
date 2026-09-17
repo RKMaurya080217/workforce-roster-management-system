@@ -464,9 +464,12 @@
                   <button id="fcmPushToggleBtn" class="btn-link-xs" style="color:var(--text-muted); display:flex; align-items:center; gap:4px; text-decoration:none; cursor:pointer;" title="Toggle browser push notifications">
                     <span>🔔</span> <span id="fcmPushStatusLabel">Web Push: Checking...</span>
                   </button>
-                  <div style="display:flex; align-items:center; gap:4px;">
+                  <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
                     <button id="fcmDiagnosticsBtn" class="btn-xs btn-outline" title="View Web Push Diagnostics" style="font-size:0.72rem; padding:2px 6px;">
-                      Diagnostics
+                      FCM Diag
+                    </button>
+                    <button id="smsDiagnosticsBtn" class="btn-xs btn-outline" title="View Telecom SMS Diagnostics &amp; Test" style="font-size:0.72rem; padding:2px 6px;">
+                      💬 SMS Status
                     </button>
                     <button id="adminTestPushBtn" class="btn-xs btn-outline hidden" title="Send test push notification" style="font-size:0.72rem; padding:2px 8px;">
                       Test Push

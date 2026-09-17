@@ -228,3 +228,19 @@ CREATE TABLE IF NOT EXISTS system_audit_logs (
     weekly_off BOOLEAN,
     created_at DATETIME(6)
 );
+
+CREATE TABLE IF NOT EXISTS sms_delivery_logs (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    employee_id BIGINT,
+    employee_code VARCHAR(40),
+    mobile_masked VARCHAR(30),
+    message_type VARCHAR(40) NOT NULL,
+    roster_cycle_id BIGINT,
+    provider VARCHAR(40) NOT NULL,
+    provider_message_id VARCHAR(100),
+    status VARCHAR(40) NOT NULL,
+    failure_reason VARCHAR(500),
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6)
+);
+

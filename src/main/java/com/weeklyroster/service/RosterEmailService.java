@@ -432,7 +432,7 @@ public class RosterEmailService {
         if (result.isSuccess()) {
             deliveryLog.setStatus(EmailDeliveryStatus.SENT);
             deliveryLog.setErrorMessage(null);
-            triggerSmsNotification(emp, emailType, dateRange);
+            triggerSmsNotification(cycle, emp, emailType, dateRange);
             triggerPushNotification(cycle, emp, emailType, dateRange);
         } else {
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
@@ -463,30 +463,11 @@ public class RosterEmailService {
         return emailLogRepository.save(deliveryLog);
     }
 
-    private void triggerSmsNotification(Employee emp, EmailType emailType, String dateRange) {
-        if (smsService == null) return;
-        String contact = emp.getContactNumber();
-        if (contact == null || contact.trim().isEmpty()) {
-            return;
-        }
-
-        String empName = (emp.getFirstName() != null && !emp.getFirstName().isBlank()) ? emp.getFirstName() : "Team Member";
-        String emailAddress = (emp.getEmail() != null && !emp.getEmail().isBlank()) ? emp.getEmail() : "your registered email";
-        String smsText;
-
-        if (emailType == EmailType.TENTATIVE_ROSTER) {
-            smsText = String.format("WRMS: Hi %s, your Tentative Weekly Roster (%s) has been emailed to %s. Review on WRMS portal before Sunday 4 PM IST.",
-                    empName, dateRange, emailAddress);
-        } else if (emailType == EmailType.FINAL_ROSTER) {
-            smsText = String.format("WRMS: Hi %s, your Final Locked Weekly Roster (%s) has been emailed to %s. Please check your inbox or login to WRMS.",
-                    empName, dateRange, emailAddress);
-        } else {
-            smsText = String.format("WRMS: Hi %s, your Weekly Duty Roster (%s) has been emailed to %s. Please check your inbox or login to WRMS.",
-                    empName, dateRange, emailAddress);
-        }
-
+    private void triggerSmsNotification(RosterCycle cycle, Employee emp, EmailType emailType, String dateRange) {
+        if (smsService == null || emp == null) return;
         try {
-            smsService.sendSms(contact, smsText);
+            boolean isFinal = (emailType == EmailType.FINAL_ROSTER);
+            smsService.sendRosterSms(cycle, emp, isFinal, dateRange);
         } catch (Exception ex) {
             log.warn("[WRMS SMS] Failed to trigger SMS notification for employee {}: {}", emp.getEmployeeCode(), ex.getMessage());
         }

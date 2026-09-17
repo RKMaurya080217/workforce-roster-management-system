@@ -632,6 +632,14 @@ function setupFcmPushFlyoutControls() {
     });
   }
 
+  const smsDiagBtn = document.getElementById("smsDiagnosticsBtn");
+  if (smsDiagBtn) {
+    smsDiagBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showSmsDiagnosticsModal();
+    });
+  }
+
   if (testBtn) {
     testBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -806,6 +814,197 @@ async function showPushDiagnosticsModal() {
   const close = () => modal.remove();
   document.getElementById("closePushDiagModalBtn")?.addEventListener("click", close);
   document.getElementById("okPushDiagModalBtn")?.addEventListener("click", close);
+}
+
+async function showSmsDiagnosticsModal() {
+  const existing = document.getElementById("smsDiagnosticsModal");
+  if (existing) existing.remove();
+
+  let diag = null;
+  let logs = [];
+  try {
+    const diagRes = await apiFetch("/api/sms/diagnostics");
+    diag = diagRes;
+  } catch (err) {
+    diag = {
+      enabled: false,
+      provider: "ERROR",
+      configured: false,
+      realTelecomConfigured: false,
+      operatingMode: "ERROR",
+      notice: err.message || "Failed to query SMS diagnostics."
+    };
+  }
+
+  try {
+    const logsRes = await apiFetch("/api/sms/logs");
+    logs = Array.isArray(logsRes) ? logsRes : [];
+  } catch (ignored) {}
+
+  const badge = (val, okText = "PASS") => {
+    const isPass = val === true || val === okText || val === "LIVE_TELECOM" || val === "REQUEST_ACCEPTED" || val === "DELIVERED";
+    const isWarn = val === "SIMULATED_LOG" || val === "SKIPPED_DUPLICATE" || val === "SKIPPED_NO_PHONE" || val === "SKIPPED_INVALID_PHONE";
+    const color = isPass ? "#16a34a" : (isWarn ? "#d97706" : "#dc2626");
+    const bg = isPass ? "#dcfce7" : (isWarn ? "#fef3c7" : "#fee2e2");
+    return `<span style="display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; color:${color}; background:${bg};">${val}</span>`;
+  };
+
+  const employees = state.employees || [];
+  let employeeOptions = `<option value="">Select Employee to Test...</option>`;
+  for (const emp of employees) {
+    const contact = emp.contactNumber ? PhoneUtilsMask(emp.contactNumber) : "No Mobile";
+    employeeOptions += `<option value="${emp.id}">${emp.employeeCode} — ${emp.firstName} ${emp.lastName} (${contact})</option>`;
+  }
+
+  const modal = document.createElement("div");
+  modal.id = "smsDiagnosticsModal";
+  modal.className = "modal-overlay active";
+  modal.style.cssText = "display:flex; align-items:center; justify-content:center; z-index:99999;";
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:620px; width:94%; max-height:85vh; overflow-y:auto; background:var(--surface, #ffffff); border-radius:12px; padding:22px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.25);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-light, #e2e8f0); padding-bottom:10px;">
+        <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+          <span>💬</span> Real Telecom SMS Diagnostics &amp; Test (Batch 65)
+        </h3>
+        <button id="closeSmsDiagModalBtn" style="background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text-muted, #94a3b8);">&times;</button>
+      </div>
+
+      <div style="font-size:0.84rem; margin-bottom:14px; padding:10px 12px; border-radius:8px; background:${diag.realTelecomConfigured ? '#f0fdf4' : '#fffbeb'}; border:1px solid ${diag.realTelecomConfigured ? '#bbf7d0' : '#fde68a'};">
+        <strong>Status:</strong> ${diag.notice || (diag.realTelecomConfigured ? 'Telecom gateway active.' : 'Simulated log mode.')}
+      </div>
+
+      <table style="width:100%; border-collapse:collapse; font-size:0.83rem; margin-bottom:16px;">
+        <tbody>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">SMS Enabled</td><td style="text-align:right;">${badge(diag.enabled ? "ENABLED" : "DISABLED")}</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Active SMS Provider</td><td style="text-align:right;"><strong>${diag.provider || 'LOG'}</strong></td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Operating Mode</td><td style="text-align:right;">${badge(diag.operatingMode || "SIMULATED_LOG")}</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Real Telecom Gateway Connected</td><td style="text-align:right;">${badge(diag.realTelecomConfigured ? "CONNECTED" : "NOT_CONFIGURED")}</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">API Key Configured</td><td style="text-align:right;">${badge(diag.apiKeyConfigured ? "YES" : "NO")}</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Sender ID (Header)</td><td style="text-align:right;"><code>${diag.senderId || 'WRMS'}</code></td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">India TRAI DLT Configured</td><td style="text-align:right;">${badge(diag.dltConfigured ? "CONFIGURED" : "PENDING")}</td></tr>
+          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Staff with Valid Indian Mobile</td><td style="text-align:right;"><strong>${diag.employeesWithValidMobileCount || 0} / ${diag.activeEmployeesCount || 0}</strong></td></tr>
+        </tbody>
+      </table>
+
+      <!-- Admin Test SMS Section -->
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
+        <h4 style="margin:0 0 8px 0; font-size:0.92rem; display:flex; align-items:center; gap:6px;">
+          <span>📲</span> Admin Real SMS Test
+        </h4>
+        <p style="font-size:0.8rem; color:#64748b; margin:0 0 10px 0;">
+          Dispatches exact telecom test message: <em>"WRMS test SMS: SMS notification service is working."</em>
+        </p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <select id="smsTestEmpSelect" class="form-control" style="font-size:0.82rem; padding:6px 10px;">
+            ${employeeOptions}
+          </select>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="smsTestCustomPhone" class="form-control" placeholder="Or enter 10-digit Indian number (+91...)" style="font-size:0.82rem; flex:1; padding:6px 10px;">
+            <button id="sendSmsTestBtn" class="btn btn-primary" style="font-size:0.82rem; padding:6px 14px; white-space:nowrap;">Send Test SMS</button>
+          </div>
+          <div id="smsTestResultArea" style="display:none; font-size:0.82rem; padding:8px 10px; border-radius:6px; margin-top:4px;"></div>
+        </div>
+      </div>
+
+      <!-- Recent Delivery Logs -->
+      <h4 style="margin:0 0 8px 0; font-size:0.92rem;">Recent SMS Audit Logs</h4>
+      <div style="max-height:160px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; font-size:0.75rem;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead style="background:#f8fafc; position:sticky; top:0; border-bottom:1px solid #e2e8f0;">
+            <tr>
+              <th style="padding:4px 6px; text-align:left;">Time</th>
+              <th style="padding:4px 6px; text-align:left;">Emp</th>
+              <th style="padding:4px 6px; text-align:left;">Mobile</th>
+              <th style="padding:4px 6px; text-align:left;">Type</th>
+              <th style="padding:4px 6px; text-align:left;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.length > 0 ? logs.slice(0, 10).map(l => `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:4px 6px; color:#64748b;">${l.createdAt ? l.createdAt.substring(11, 19) : '-'}</td>
+                <td style="padding:4px 6px; font-weight:600;">${l.employeeCode || '-'}</td>
+                <td style="padding:4px 6px;"><code>${l.mobileMasked || '-'}</code></td>
+                <td style="padding:4px 6px;">${l.messageType || '-'}</td>
+                <td style="padding:4px 6px;">${badge(l.status)}</td>
+              </tr>
+            `).join("") : `<tr><td colspan="5" style="padding:8px; text-align:center; color:#94a3b8;">No SMS logs recorded yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <button id="refreshSmsDiagModalBtn" class="btn btn-secondary small" style="font-size:0.8rem;">Refresh</button>
+        <button id="okSmsDiagModalBtn" class="btn btn-outline small" style="font-size:0.8rem;">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  document.getElementById("closeSmsDiagModalBtn")?.addEventListener("click", close);
+  document.getElementById("okSmsDiagModalBtn")?.addEventListener("click", close);
+  document.getElementById("refreshSmsDiagModalBtn")?.addEventListener("click", () => {
+    close();
+    showSmsDiagnosticsModal();
+  });
+
+  const sendBtn = document.getElementById("sendSmsTestBtn");
+  sendBtn?.addEventListener("click", async () => {
+    const empId = document.getElementById("smsTestEmpSelect")?.value;
+    const phone = document.getElementById("smsTestCustomPhone")?.value;
+    const resArea = document.getElementById("smsTestResultArea");
+
+    if (!empId && (!phone || !phone.trim())) {
+      toast("Please select an employee or enter a mobile number.", "warning");
+      return;
+    }
+
+    sendBtn.disabled = true;
+    sendBtn.textContent = "Sending...";
+    if (resArea) resArea.style.display = "none";
+
+    try {
+      const payload = {};
+      if (empId) payload.employeeId = parseInt(empId, 10);
+      if (phone && phone.trim()) payload.phone = phone.trim();
+
+      const res = await apiFetch("/api/sms/admin-test", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      if (resArea) {
+        resArea.style.display = "block";
+        const isOk = res.success || res.status === "REQUEST_ACCEPTED" || res.status === "SIMULATED_LOG";
+        resArea.style.background = isOk ? "#f0fdf4" : "#fee2e2";
+        resArea.style.border = `1px solid ${isOk ? '#bbf7d0' : '#fca5a5'}`;
+        resArea.style.color = isOk ? "#166534" : "#991b1b";
+        resArea.innerHTML = `<strong>${res.status}:</strong> Recipient: <code>${res.recipientPhoneMasked || '******'}</code> via <strong>${res.provider}</strong>${res.messageId ? ` (ID: ${res.messageId})` : ''}${res.errorMessage ? ` - ${res.errorMessage}` : ''}`;
+      }
+      toast("Test SMS request processed: " + res.status, res.success ? "success" : "info");
+    } catch (err) {
+      if (resArea) {
+        resArea.style.display = "block";
+        resArea.style.background = "#fee2e2";
+        resArea.style.border = "1px solid #fca5a5";
+        resArea.style.color = "#991b1b";
+        resArea.textContent = "Failed: " + (err.message || "Unknown error");
+      }
+      toast(err.message || "Failed to dispatch test SMS", "error");
+    } finally {
+      sendBtn.disabled = false;
+      sendBtn.textContent = "Send Test SMS";
+    }
+  });
+}
+
+function PhoneUtilsMask(phone) {
+  if (!phone) return "******";
+  const d = phone.replace(/[^0-9]/g, "");
+  if (d.length < 4) return "****";
+  return "******" + d.substring(d.length - 4);
 }
 
 function checkAndShowMobilePushPrompt() {

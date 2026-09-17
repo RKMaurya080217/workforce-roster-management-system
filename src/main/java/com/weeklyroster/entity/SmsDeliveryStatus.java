@@ -1,0 +1,13 @@
+package com.weeklyroster.entity;
+
+public enum SmsDeliveryStatus {
+    REQUEST_ACCEPTED,
+    DELIVERED,
+    DELIVERY_PENDING,
+    REQUEST_FAILED,
+    DELIVERY_FAILED,
+    SKIPPED_NO_PHONE,
+    SKIPPED_INVALID_PHONE,
+    SKIPPED_DUPLICATE,
+    SIMULATED_LOG
+}
