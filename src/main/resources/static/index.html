@@ -713,6 +713,14 @@
           <input type="date" id="rosterStartDateInput" required>
         </div>
 
+        <div class="form-group">
+          <label for="rosterAdminMessageInput">
+            Custom Message for Employees
+            <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(Optional — highlighted in <strong>BOLD</strong> in email)</span>
+          </label>
+          <textarea id="rosterAdminMessageInput" rows="2" placeholder="e.g. Please review your shifts for the upcoming week. Handover notes required."></textarea>
+        </div>
+
         <div class="alert-info-box">
           <strong>Constraints Applied:</strong>
           <ul>
@@ -727,6 +735,39 @@
           <button type="button" class="btn btn-ghost" data-close-modal="generateRosterModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="triggerGenerateBtn">
             <span>Run Generator</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2B: Distribute Roster Email & SMS Modal -->
+  <div id="emailRosterModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3>Distribute Roster via Email & SMS</h3>
+        <button class="modal-close" data-close-modal="emailRosterModal">&times;</button>
+      </div>
+      <form id="emailRosterForm" class="modal-body stack-gap">
+        <input type="hidden" id="emailRosterCycleId">
+        <div id="emailRosterCycleInfo" style="font-size:0.85rem; padding:10px 14px; background:var(--bg-secondary); border-radius:6px; font-weight:600;">
+          <!-- Populated by JS -->
+        </div>
+        <div class="form-group">
+          <label for="emailAdminMessageInput">
+            Custom Message for Employees
+            <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(Optional — prominently displayed in <strong>BOLD</strong> in email)</span>
+          </label>
+          <textarea id="emailAdminMessageInput" rows="3" placeholder="e.g. Please note: Project release week, ensure full handover on duty shifts."></textarea>
+        </div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">
+          📲 An SMS alert will also be dispatched to all staff with a registered mobile number.
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" data-close-modal="emailRosterModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="triggerSendEmailBtn">
+            <span>Send Email & SMS</span>
             <div class="spinner hidden"></div>
           </button>
         </div>

@@ -24,6 +24,7 @@ import com.weeklyroster.service.email.EmailMessage;
 import com.weeklyroster.service.email.EmailService;
 import com.weeklyroster.service.email.BrevoEmailService;
 import com.weeklyroster.service.email.SmtpEmailService;
+import com.weeklyroster.service.sms.SmsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,7 @@ public class RosterEmailService {
     private final RosterAssignmentRepository assignmentRepository;
     private final ShiftRepository shiftRepository;
     private final EmailService emailService;
+    private final SmsService smsService;
 
     @Value("${roster.auto-email.enabled:true}")
     private boolean autoEmailEnabled;
@@ -78,13 +80,24 @@ public class RosterEmailService {
                               RosterCycleRepository cycleRepository,
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
-                              EmailService emailService) {
+                              EmailService emailService,
+                              @Autowired(required = false) SmsService smsService) {
         this.emailLogRepository = emailLogRepository;
         this.employeeRepository = employeeRepository;
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.shiftRepository = shiftRepository;
         this.emailService = emailService != null ? emailService : new EmailService(new BrevoEmailService(), new SmtpEmailService(null));
+        this.smsService = smsService;
+    }
+
+    public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
+                              EmployeeRepository employeeRepository,
+                              RosterCycleRepository cycleRepository,
+                              RosterAssignmentRepository assignmentRepository,
+                              ShiftRepository shiftRepository,
+                              EmailService emailService) {
+        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, null);
     }
 
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
@@ -93,7 +106,7 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository) {
         this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository,
-                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)));
+                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)), null);
     }
 
     /**
@@ -101,18 +114,28 @@ public class RosterEmailService {
      */
     @Transactional
     public List<EmailDeliveryLogResponse> distributeTentativeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        return distributeTentativeRosterEmails(cycle, cycleResponse, mode, null);
+    }
+
+    @Transactional
+    public List<EmailDeliveryLogResponse> distributeTentativeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode, String adminMessage) {
         if (cycle != null) {
             cycle.setStatus(com.weeklyroster.entity.RosterStatus.TENTATIVE);
         }
-        return distributeRosterEmails(cycle, cycleResponse, mode);
+        return distributeRosterEmails(cycle, cycleResponse, mode, adminMessage);
     }
 
     @Transactional
     public List<EmailDeliveryLogResponse> distributeFinalRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        return distributeFinalRosterEmails(cycle, cycleResponse, mode, null);
+    }
+
+    @Transactional
+    public List<EmailDeliveryLogResponse> distributeFinalRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode, String adminMessage) {
         if (cycle != null) {
             cycle.setStatus(com.weeklyroster.entity.RosterStatus.FINAL);
         }
-        return distributeRosterEmails(cycle, cycleResponse, mode);
+        return distributeRosterEmails(cycle, cycleResponse, mode, adminMessage);
     }
 
     public boolean isImmediateUpcomingWeek(LocalDate startDate, LocalDate endDate) {
@@ -126,6 +149,11 @@ public class RosterEmailService {
 
     @Transactional
     public List<EmailDeliveryLogResponse> distributeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode) {
+        return distributeRosterEmails(cycle, cycleResponse, mode, null);
+    }
+
+    @Transactional
+    public List<EmailDeliveryLogResponse> distributeRosterEmails(RosterCycle cycle, RosterCycleResponse cycleResponse, GenerationMode mode, String adminMessage) {
         if (isShuttingDown) {
             log.warn("[WRMS EMAIL] Email distribution rejected: system shutdown in progress.");
             return List.of();
@@ -166,7 +194,7 @@ public class RosterEmailService {
 
         for (Employee emp : activeEmployees) {
             List<RosterAssignmentResponse> myShifts = assignmentsByEmp.getOrDefault(emp.getId(), List.of());
-            EmailDeliveryLog deliveryLog = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode);
+            EmailDeliveryLog deliveryLog = sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode, adminMessage);
             results.add(toResponse(deliveryLog));
         }
 
@@ -243,6 +271,16 @@ public class RosterEmailService {
                                             byte[] excelBytes,
                                             byte[] imageBytes,
                                             GenerationMode mode) {
+        return sendToEmployee(cycle, emp, myShifts, shifts, excelBytes, imageBytes, mode, null);
+    }
+
+    private EmailDeliveryLog sendToEmployee(RosterCycle cycle, Employee emp,
+                                            List<RosterAssignmentResponse> myShifts,
+                                            List<Shift> shifts,
+                                            byte[] excelBytes,
+                                            byte[] imageBytes,
+                                            GenerationMode mode,
+                                            String adminMessage) {
 
         EmailType targetEmailType = (mode == GenerationMode.AUTOMATIC && (cycle.getStatus() == com.weeklyroster.entity.RosterStatus.TENTATIVE || cycle.getStatus() == com.weeklyroster.entity.RosterStatus.GENERATED))
                 ? EmailType.TENTATIVE_ROSTER
@@ -338,11 +376,19 @@ public class RosterEmailService {
                     + "Weekly Roster Management System (WRMS)";
         }
 
+        if (adminMessage != null && !adminMessage.trim().isEmpty()) {
+            emailBody = "=======================================================\n"
+                    + "  📢 MESSAGE FROM ADMINISTRATOR\n"
+                    + "=======================================================\n"
+                    + adminMessage.trim() + "\n\n"
+                    + emailBody;
+        }
+
         log.info("Preparing weekly roster email for {} <{}> (Subject: '{}')",
                 emp.getFirstName() + " " + emp.getLastName(), deliveryLog.getRecipientEmail(), subject);
 
         // Build HTML template
-        String htmlBody = buildHtmlEmailTemplate(emailType, emp, dateRange, personalSchedule);
+        String htmlBody = buildHtmlEmailTemplate(emailType, emp, dateRange, personalSchedule, adminMessage);
 
         // Build EmailMessage
         EmailMessage.Builder msgBuilder = EmailMessage.builder()
@@ -373,6 +419,7 @@ public class RosterEmailService {
         if (result.isSuccess()) {
             deliveryLog.setStatus(EmailDeliveryStatus.SENT);
             deliveryLog.setErrorMessage(null);
+            triggerSmsNotification(emp, emailType, dateRange);
         } else {
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
             deliveryLog.setErrorMessage(result.getErrorMessage() != null ? result.getErrorMessage() : "Email delivery failed");
@@ -402,7 +449,40 @@ public class RosterEmailService {
         return emailLogRepository.save(deliveryLog);
     }
 
+    private void triggerSmsNotification(Employee emp, EmailType emailType, String dateRange) {
+        if (smsService == null) return;
+        String contact = emp.getContactNumber();
+        if (contact == null || contact.trim().isEmpty()) {
+            return;
+        }
+
+        String empName = (emp.getFirstName() != null && !emp.getFirstName().isBlank()) ? emp.getFirstName() : "Team Member";
+        String emailAddress = (emp.getEmail() != null && !emp.getEmail().isBlank()) ? emp.getEmail() : "your registered email";
+        String smsText;
+
+        if (emailType == EmailType.TENTATIVE_ROSTER) {
+            smsText = String.format("WRMS: Hi %s, your Tentative Weekly Roster (%s) has been emailed to %s. Review on WRMS portal before Sunday 4 PM IST.",
+                    empName, dateRange, emailAddress);
+        } else if (emailType == EmailType.FINAL_ROSTER) {
+            smsText = String.format("WRMS: Hi %s, your Final Locked Weekly Roster (%s) has been emailed to %s. Please check your inbox or login to WRMS.",
+                    empName, dateRange, emailAddress);
+        } else {
+            smsText = String.format("WRMS: Hi %s, your Weekly Duty Roster (%s) has been emailed to %s. Please check your inbox or login to WRMS.",
+                    empName, dateRange, emailAddress);
+        }
+
+        try {
+            smsService.sendSms(contact, smsText);
+        } catch (Exception ex) {
+            log.warn("[WRMS SMS] Failed to trigger SMS notification for employee {}: {}", emp.getEmployeeCode(), ex.getMessage());
+        }
+    }
+
     private String buildHtmlEmailTemplate(EmailType emailType, Employee emp, String dateRange, String personalSchedule) {
+        return buildHtmlEmailTemplate(emailType, emp, dateRange, personalSchedule, null);
+    }
+
+    private String buildHtmlEmailTemplate(EmailType emailType, Employee emp, String dateRange, String personalSchedule, String adminMessage) {
         String badgeColor = "#2563eb";
         String badgeTitle = "WEEKLY DUTY ROSTER";
         String statusNote = "Please review your scheduled shifts below.";
@@ -418,6 +498,15 @@ public class RosterEmailService {
         }
 
         String scheduleHtml = personalSchedule.replace("\n", "<br/>");
+
+        String adminNoticeHtml = "";
+        if (adminMessage != null && !adminMessage.trim().isEmpty()) {
+            String sanitized = escapeHtml(adminMessage.trim()).replace("\n", "<br/>");
+            adminNoticeHtml = "<div style='background:#fffbeb;border-left:4px solid #f59e0b;padding:14px 18px;border-radius:6px;margin:18px 0;font-size:13px;line-height:1.5;color:#92400e;'>"
+                    + "<strong style='display:block;margin-bottom:6px;color:#78350f;font-size:12px;letter-spacing:0.5px;text-transform:uppercase;'>📢 Message from Administrator:</strong>"
+                    + "<strong style='font-size:14px;color:#1e293b;line-height:1.5;display:block;'>" + sanitized + "</strong>"
+                    + "</div>";
+        }
 
         return "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>"
                 + "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;padding:20px;background-color:#f8fafc;color:#1e293b;}"
@@ -438,6 +527,7 @@ public class RosterEmailService {
                 + "<div class='badge-banner'>" + badgeTitle + "</div>"
                 + "<div class='content'>"
                 + "<div class='greeting'>Dear " + escapeHtml(emp.getFirstName()) + " " + escapeHtml(emp.getLastName()) + ",</div>"
+                + adminNoticeHtml
                 + "<div class='notice-box'>" + statusNote + "</div>"
                 + "<div class='schedule-card'><strong>YOUR SCHEDULE:</strong><br/><br/>" + scheduleHtml + "</div>"
                 + "<div class='attachments-box'><strong>Attached Documents:</strong><br/>• Complete Weekly Roster Spreadsheet (.xlsx)<br/>• Weekly Roster Schedule Card (.png)</div>"

@@ -1109,9 +1109,6 @@ public class RosterService {
 		int dailyConfiguredTotal = 0;
 		for (ShiftType type : ASSIGNMENT_ORDER) {
 			int cap = Math.max(1, shifts.get(type).getCapacity());
-			if (type == ShiftType.NIGHT) {
-				cap = 1;
-			}
 			configuredDemands.put(type, cap);
 			dailyConfiguredTotal += cap;
 		}
@@ -1385,28 +1382,32 @@ public class RosterService {
 			return feasible;
 		}
 
-		feasible.put(ShiftType.NIGHT, availableCount >= 1 ? 1 : 0);
-		feasible.put(ShiftType.EVENING, availableCount >= 2 ? 1 : 0);
-		feasible.put(ShiftType.MORNING, availableCount >= 3 ? 1 : 0);
-		feasible.put(ShiftType.GENERAL, availableCount >= 4 ? 1 : 0);
+		int nightTarget = configuredDemands.getOrDefault(ShiftType.NIGHT, 1);
+		int eveningTarget = configuredDemands.getOrDefault(ShiftType.EVENING, 1);
+		int morningTarget = configuredDemands.getOrDefault(ShiftType.MORNING, 2);
+		int generalTarget = configuredDemands.getOrDefault(ShiftType.GENERAL, 2);
+
+		feasible.put(ShiftType.NIGHT, (nightTarget > 0 && availableCount >= 1) ? 1 : 0);
+		feasible.put(ShiftType.EVENING, (eveningTarget > 0 && availableCount >= 2) ? 1 : 0);
+		feasible.put(ShiftType.MORNING, (morningTarget > 0 && availableCount >= 3) ? 1 : 0);
+		feasible.put(ShiftType.GENERAL, (generalTarget > 0 && availableCount >= 4) ? 1 : 0);
 
 		int baselineAssigned = feasible.values().stream().mapToInt(Integer::intValue).sum();
 		int remainingStaff = Math.max(0, availableCount - baselineAssigned);
 
 		while (remainingStaff > 0) {
-			int morningCur = feasible.get(ShiftType.MORNING);
-			int generalCur = feasible.get(ShiftType.GENERAL);
-			int morningTarget = configuredDemands.getOrDefault(ShiftType.MORNING, 2);
-			int generalTarget = configuredDemands.getOrDefault(ShiftType.GENERAL, 2);
-
-			if (morningCur < morningTarget) {
-				feasible.put(ShiftType.MORNING, morningCur + 1);
-				remainingStaff--;
-			} else if (generalCur < generalTarget) {
-				feasible.put(ShiftType.GENERAL, generalCur + 1);
-				remainingStaff--;
-			} else {
-				feasible.put(ShiftType.GENERAL, generalCur + 1);
+			boolean allocated = false;
+			for (ShiftType type : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
+				int cur = feasible.getOrDefault(type, 0);
+				int target = configuredDemands.getOrDefault(type, 1);
+				if (cur < target && remainingStaff > 0) {
+					feasible.put(type, cur + 1);
+					remainingStaff--;
+					allocated = true;
+				}
+			}
+			if (!allocated) {
+				feasible.put(ShiftType.GENERAL, feasible.getOrDefault(ShiftType.GENERAL, 0) + 1);
 				remainingStaff--;
 			}
 		}
@@ -2404,28 +2405,36 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			Map<ShiftType, Integer> dayConfiguredDemands = new EnumMap<>(ShiftType.class);
 			for (ShiftType type : ASSIGNMENT_ORDER) {
 				int cap = Math.max(1, shifts.get(type).getCapacity());
-				if (type == ShiftType.NIGHT) cap = 1;
 				dayConfiguredDemands.put(type, cap);
 			}
 
 			// Calculate realistic feasible daily demand tailored for available staff
 			Map<ShiftType, Integer> dayFeasibleDemands = new EnumMap<>(ShiftType.class);
 			int avail = Math.max(0, plannedWorkingStaff);
-			dayFeasibleDemands.put(ShiftType.NIGHT, avail >= 1 ? 1 : 0);
-			dayFeasibleDemands.put(ShiftType.EVENING, avail >= 2 ? 1 : 0);
-			dayFeasibleDemands.put(ShiftType.MORNING, avail >= 3 ? 1 : 0);
-			dayFeasibleDemands.put(ShiftType.GENERAL, avail >= 4 ? 1 : 0);
+			int nightTarget = dayConfiguredDemands.getOrDefault(ShiftType.NIGHT, 1);
+			int eveningTarget = dayConfiguredDemands.getOrDefault(ShiftType.EVENING, 1);
+			int morningTarget = dayConfiguredDemands.getOrDefault(ShiftType.MORNING, 2);
+			int generalTarget = dayConfiguredDemands.getOrDefault(ShiftType.GENERAL, 2);
+
+			dayFeasibleDemands.put(ShiftType.NIGHT, (nightTarget > 0 && avail >= 1) ? 1 : 0);
+			dayFeasibleDemands.put(ShiftType.EVENING, (eveningTarget > 0 && avail >= 2) ? 1 : 0);
+			dayFeasibleDemands.put(ShiftType.MORNING, (morningTarget > 0 && avail >= 3) ? 1 : 0);
+			dayFeasibleDemands.put(ShiftType.GENERAL, (generalTarget > 0 && avail >= 4) ? 1 : 0);
+
 			int rem = Math.max(0, avail - dayFeasibleDemands.values().stream().mapToInt(Integer::intValue).sum());
 			while (rem > 0) {
-				int mCur = dayFeasibleDemands.get(ShiftType.MORNING);
-				int gCur = dayFeasibleDemands.get(ShiftType.GENERAL);
-				int mTarget = dayConfiguredDemands.getOrDefault(ShiftType.MORNING, 2);
-				int gTarget = dayConfiguredDemands.getOrDefault(ShiftType.GENERAL, 2);
-				if (mCur < mTarget) {
-					dayFeasibleDemands.put(ShiftType.MORNING, mCur + 1);
-					rem--;
-				} else {
-					dayFeasibleDemands.put(ShiftType.GENERAL, gCur + 1);
+				boolean allocated = false;
+				for (ShiftType type : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
+					int cur = dayFeasibleDemands.getOrDefault(type, 0);
+					int target = dayConfiguredDemands.getOrDefault(type, 1);
+					if (cur < target && rem > 0) {
+						dayFeasibleDemands.put(type, cur + 1);
+						rem--;
+						allocated = true;
+					}
+				}
+				if (!allocated) {
+					dayFeasibleDemands.put(ShiftType.GENERAL, dayFeasibleDemands.getOrDefault(ShiftType.GENERAL, 0) + 1);
 					rem--;
 				}
 			}

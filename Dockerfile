@@ -22,8 +22,9 @@ RUN (apt-get update -y -o Acquire::Retries=3 && \
 # Copy the built JAR from builder stage
 COPY --from=builder /app/target/weekly-roster-management-system-1.0.0.jar app.jar
 
-# Container-aware JVM memory & CPU optimization for Railway (SerialGC + Dynamic RAM bounds)
-ENV JAVA_OPTS="-Djava.awt.headless=true -XX:+UseSerialGC -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=25.0 -XX:MinRAMPercentage=25.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
+# Container-aware JVM memory & CPU optimization with Asia/Kolkata (IST) timezone
+ENV TZ="Asia/Kolkata"
+ENV JAVA_OPTS="-Duser.timezone=Asia/Kolkata -Djava.awt.headless=true -XX:+UseSerialGC -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=25.0 -XX:MinRAMPercentage=25.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"
 
 # Default container port
 EXPOSE 8080

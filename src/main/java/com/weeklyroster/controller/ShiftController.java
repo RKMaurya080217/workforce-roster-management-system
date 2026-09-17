@@ -13,6 +13,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/shifts")
 public class ShiftController {
@@ -28,9 +31,16 @@ public class ShiftController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ShiftResponse> update(
             @PathVariable("id") Long id,
             @Valid @RequestBody UpdateShiftRequest request) {
         return ResponseEntity.ok(shiftService.update(id, request));
+    }
+
+    @PutMapping
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<List<ShiftResponse>> updateBulk(@RequestBody Map<String, Integer> capacities) {
+        return ResponseEntity.ok(shiftService.updateBulkCapacities(capacities));
     }
 }

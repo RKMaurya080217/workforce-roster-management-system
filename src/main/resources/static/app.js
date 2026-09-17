@@ -294,7 +294,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function setupLiveDate() {
-  const options = { weekday: "short", day: "2-digit", month: "short", year: "numeric" };
+  const options = { timeZone: "Asia/Kolkata", weekday: "short", day: "2-digit", month: "short", year: "numeric" };
   if (dom.liveDateStr) {
     dom.liveDateStr.textContent = new Date().toLocaleDateString("en-US", options);
   }
@@ -528,6 +528,7 @@ function bindGlobalEvents() {
   // Forms in Modals
   document.getElementById("employeeModalForm").addEventListener("submit", handleSaveEmployee);
   document.getElementById("generateRosterForm").addEventListener("submit", handleTriggerGenerateRoster);
+  document.getElementById("emailRosterForm")?.addEventListener("submit", handleTriggerEmailRoster);
   document.getElementById("shiftOverrideForm").addEventListener("submit", handleSaveShiftOverride);
   document.getElementById("shiftSwapForm").addEventListener("submit", handleExecuteShiftSwap);
   document.getElementById("leaveDecisionForm").addEventListener("submit", handleConfirmLeaveDecision);
@@ -2616,23 +2617,28 @@ async function renderShiftsView() {
 
     container.innerHTML = `
       <div class="card">
-        <div class="card-header">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <h2>Configured Working Shifts</h2>
             <span style="font-size:0.78rem; color:var(--text-muted);">
               Shift schedules, overnight rules, and baseline staffing capacities. The generator adheres strictly to these actual timings.
             </span>
           </div>
+          <div>
+            <button class="btn btn-primary btn-sm" id="saveAllShiftsBtn" style="font-weight:700;">
+              Save All Shift Targets
+            </button>
+          </div>
         </div>
         <div class="card-body">
           <div class="shift-capacity-grid">
             ${state.shifts.map(s => {
               const timingFormatted = s.timingDisplay || getShiftTimingDisplay(s.shiftType);
-              const feasible = s.feasibleCapacity !== undefined ? s.feasibleCapacity : (s.shiftType === 'NIGHT' || s.shiftType === 'EVENING' ? 1 : Math.min(s.capacity, 2));
+              const feasible = s.feasibleCapacity !== undefined ? s.feasibleCapacity : s.capacity;
               let statusClass = "active";
               let statusText = "FULL";
               if (feasible < s.capacity) {
-                statusText = (s.shiftType === 'NIGHT' || s.shiftType === 'EVENING') ? "Workforce/eligibility-limited" : "Workforce-limited";
+                statusText = "Workforce-limited";
                 statusClass = "pending";
               }
               return `
@@ -2666,12 +2672,11 @@ async function renderShiftsView() {
                 <div style="margin-top:4px;">
                   <label style="font-size:0.76rem; color:var(--text-muted); font-weight:700; display:block; margin-bottom:4px;">Configured Admin Target:</label>
                   <div class="shift-target-control-row">
-                    <input type="number" min="0" ${s.shiftType === 'NIGHT' ? 'max="1"' : ''} value="${s.capacity}" id="shiftCap_${s.id}" data-shift-type="${s.shiftType}" style="font-size:0.95rem; font-weight:800; width:85px; padding:7px 10px;">
+                    <input type="number" min="0" max="50" value="${s.capacity}" id="shiftCap_${s.id}" data-shift-type="${s.shiftType}" style="font-size:0.95rem; font-weight:800; width:85px; padding:7px 10px;">
                     <button class="btn btn-primary btn-sm" data-action="save-shift-cap" data-id="${s.id}">
                       Save Target
                     </button>
                   </div>
-                  ${s.shiftType === 'NIGHT' ? '<span style="font-size:0.7rem; color:var(--text-muted); display:block; margin-top:4px;">(Maximum 1 employee per day)</span>' : ''}
                 </div>
               </div>
             `;
@@ -2681,15 +2686,15 @@ async function renderShiftsView() {
       </div>
     `;
 
+    // Save Individual Shift Target
     document.querySelectorAll("[data-action='save-shift-cap']").forEach(btn => {
       btn.addEventListener("click", async () => {
         const shiftId = btn.getAttribute("data-id");
         const capInput = document.getElementById(`shiftCap_${shiftId}`);
-        const shiftType = capInput.getAttribute("data-shift-type");
         const capacity = Number(capInput.value);
 
-        if (shiftType === "NIGHT" && capacity > 1) {
-          toast("Night shift target cannot be greater than 1 employee per day.", "error");
+        if (isNaN(capacity) || capacity < 0) {
+          toast("Shift capacity must be a non-negative integer.", "error");
           return;
         }
 
@@ -2700,6 +2705,7 @@ async function renderShiftsView() {
             body: { capacity }
           });
           toast(`Shift ${updated.shiftType} capacity updated to ${updated.capacity}`, "success");
+          await renderShiftsView();
         } catch (err) {
           toast(err.message, "error");
         } finally {
@@ -2707,6 +2713,38 @@ async function renderShiftsView() {
         }
       });
     });
+
+    // Save All Shift Targets in Bulk
+    const saveAllBtn = document.getElementById("saveAllShiftsBtn");
+    if (saveAllBtn) {
+      saveAllBtn.addEventListener("click", async () => {
+        const payload = {};
+        state.shifts.forEach(s => {
+          const capInput = document.getElementById(`shiftCap_${s.id}`);
+          if (capInput) {
+            payload[s.shiftType] = Number(capInput.value);
+          }
+        });
+
+        try {
+          saveAllBtn.disabled = true;
+          saveAllBtn.textContent = "Saving...";
+          const updatedList = await apiRequest("/api/shifts", {
+            method: "PUT",
+            body: payload
+          });
+          toast("All shift capacities updated and persisted successfully!", "success");
+          await renderShiftsView();
+        } catch (err) {
+          toast(err.message || "Failed to update shift capacities", "error");
+        } finally {
+          if (saveAllBtn) {
+            saveAllBtn.disabled = false;
+            saveAllBtn.textContent = "Save All Shift Targets";
+          }
+        }
+      });
+    }
 
   } catch (err) {
     container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading shifts: ${err.message}</p></div>`;
@@ -5913,10 +5951,19 @@ async function executeRosterGeneration(rawDate) {
     const res = await apiRequest(`/api/rosters/generate${queryParam}`, { method: "POST" });
     broadcastDataMutation("ROSTER_GENERATED");
 
+    // Optional admin message from generateRosterModal
+    const adminMsgInput = document.getElementById("rosterAdminMessageInput");
+    const adminMessage = adminMsgInput ? adminMsgInput.value.trim() : "";
+
     // Background email distribution for generated roster
     if (res && res.id) {
-      apiRequest(`/api/rosters/cycle/${res.id}/email`, { method: "POST" }).catch(e => console.warn("Email distribution background notice", e));
+      const emailPayload = { method: "POST", timeout: 60000 };
+      if (adminMessage) {
+        emailPayload.body = { adminMessage };
+      }
+      apiRequest(`/api/rosters/cycle/${res.id}/email`, emailPayload).catch(e => console.warn("Email distribution background notice", e));
     }
+    if (adminMsgInput) adminMsgInput.value = "";
 
     if (res.coverageReport && res.coverageReport.totalShortage > 0) {
       toast(`Roster generated with ${res.coverageReport.totalShortage} coverage shortages (maximum valid coverage)`, "warning");
@@ -6007,17 +6054,44 @@ async function downloadImage(cycleId) {
   }
 }
 
-// Send Roster Email to all employees
+// Send Roster Email to all employees (with optional custom message & SMS)
 async function sendRosterEmail(cycleId) {
   if (state.isSendingEmail) return;
+  const modal = document.getElementById("emailRosterModal");
+  if (modal) {
+    const cycleInput = document.getElementById("emailRosterCycleId");
+    const cycleInfo = document.getElementById("emailRosterCycleInfo");
+    const msgInput = document.getElementById("emailAdminMessageInput");
+    if (cycleInput) cycleInput.value = cycleId;
+    if (msgInput) msgInput.value = "";
+    if (cycleInfo) {
+      cycleInfo.innerHTML = `Roster Cycle #<strong>${cycleId}</strong> &bull; Dispatching to all active employees via Brevo HTTPS &amp; SMS`;
+    }
+    openModal("emailRosterModal");
+    return;
+  }
+  await sendRosterEmailDirect(cycleId, "");
+}
+
+async function sendRosterEmailDirect(cycleId, adminMessage = "") {
+  if (state.isSendingEmail) return;
+  const sendBtn = document.getElementById("triggerSendEmailBtn");
+  const spinner = sendBtn ? sendBtn.querySelector(".spinner") : null;
   try {
     state.isSendingEmail = true;
-    toast("Dispatching roster emails to all active employees...", "info");
-    const logs = await apiRequest(`/api/rosters/cycle/${cycleId}/email`, { method: "POST" });
+    if (sendBtn) sendBtn.disabled = true;
+    if (spinner) spinner.classList.remove("hidden");
+    toast("Dispatching roster emails & SMS to all active employees...", "info");
+    const opts = { method: "POST", timeout: 60000 };
+    if (adminMessage && adminMessage.trim()) {
+      opts.body = { adminMessage: adminMessage.trim() };
+    }
+    const logs = await apiRequest(`/api/rosters/cycle/${cycleId}/email`, opts);
+    closeModal("emailRosterModal");
     const sent = logs.filter(l => l.status === "SENT").length;
     const failed = logs.filter(l => l.status === "FAILED").length;
     if (failed === 0) {
-      toast(`Roster email sent successfully to all ${sent} active employees!`, "success");
+      toast(`Roster email & SMS sent successfully to all ${sent} active employees!`, "success");
     } else {
       toast(`Sent to ${sent} staff, ${failed} failed. Use 'Retry Failed Emails' to resend.`, "warning");
     }
@@ -6027,7 +6101,17 @@ async function sendRosterEmail(cycleId) {
     toast(err.message, "error");
   } finally {
     state.isSendingEmail = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (spinner) spinner.classList.add("hidden");
   }
+}
+
+async function handleTriggerEmailRoster(e) {
+  e.preventDefault();
+  const cycleId = document.getElementById("emailRosterCycleId")?.value;
+  const adminMessage = document.getElementById("emailAdminMessageInput")?.value?.trim() || "";
+  if (!cycleId) return;
+  await sendRosterEmailDirect(Number(cycleId), adminMessage);
 }
 
 // Retry Failed Roster Emails
@@ -8228,11 +8312,27 @@ function formatDate(dateStr) {
       const month = parseInt(parts[1], 10) - 1;
       const day = parseInt(parts[2], 10);
       const dt = new Date(year, month, day);
-      return dt.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
+      return dt.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
     }
   }
   const dt = new Date(dateStr);
-  return dt.toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" });
+  return dt.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatDateTime(dateStr) {
+  if (!dateStr) return "-";
+  const dt = new Date(dateStr);
+  if (isNaN(dt.getTime())) return "-";
+  return dt.toLocaleString("en-US", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
 }
 
 

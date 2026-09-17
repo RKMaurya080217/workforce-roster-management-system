@@ -111,7 +111,10 @@ public class RosterController {
 
     @PostMapping(value = "/cycle/{id}/email", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<List<EmailDeliveryLogResponse>> sendEmail(@PathVariable("id") Long id) {
+    public ResponseEntity<List<EmailDeliveryLogResponse>> sendEmail(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestParam(name = "adminMessage", required = false) String adminMessageParam) {
         RosterCycleResponse cycleResponse = rosterService.cycle(id);
         RosterCycle cycle = new RosterCycle();
         cycle.setId(cycleResponse.id());
@@ -120,8 +123,21 @@ public class RosterController {
         cycle.setGeneratedAt(cycleResponse.generatedAt());
         cycle.setGenerationMode(cycleResponse.generationMode());
 
-        List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(cycle, cycleResponse, GenerationMode.MANUAL);
+        String message = null;
+        if (body != null && body.containsKey("adminMessage")) {
+            message = body.get("adminMessage");
+        } else if (body != null && body.containsKey("message")) {
+            message = body.get("message");
+        } else if (adminMessageParam != null && !adminMessageParam.isBlank()) {
+            message = adminMessageParam;
+        }
+
+        List<EmailDeliveryLogResponse> logs = rosterEmailService.distributeRosterEmails(cycle, cycleResponse, GenerationMode.MANUAL, message);
         return ResponseEntity.ok(logs);
+    }
+
+    public ResponseEntity<List<EmailDeliveryLogResponse>> sendEmail(Long id) {
+        return sendEmail(id, null, null);
     }
 
     @PostMapping(value = "/cycle/{id}/email/retry", produces = MediaType.APPLICATION_JSON_VALUE)

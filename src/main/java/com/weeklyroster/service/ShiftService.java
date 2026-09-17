@@ -12,16 +12,28 @@ import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.EmployeeRepository;
+import com.weeklyroster.entity.AuditAction;
 import com.weeklyroster.repository.ShiftRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.util.Map;
 
 @Service
 public class ShiftService {
     private final ShiftRepository shiftRepository;
     private final EmployeeRepository employeeRepository;
+    private final AuditService auditService;
 
-    public ShiftService(ShiftRepository shiftRepository, EmployeeRepository employeeRepository) {
+    @Autowired
+    public ShiftService(ShiftRepository shiftRepository,
+                        EmployeeRepository employeeRepository,
+                        @Autowired(required = false) AuditService auditService) {
         this.shiftRepository = shiftRepository;
         this.employeeRepository = employeeRepository;
+        this.auditService = auditService;
+    }
+
+    public ShiftService(ShiftRepository shiftRepository, EmployeeRepository employeeRepository) {
+        this(shiftRepository, employeeRepository, null);
     }
 
     @Transactional(readOnly = true)
@@ -38,19 +50,61 @@ public class ShiftService {
     }
 
     @Transactional
+    public List<ShiftResponse> updateBulkCapacities(Map<String, Integer> capacities) {
+        if (capacities == null || capacities.isEmpty()) {
+            return allActive();
+        }
+        for (Map.Entry<String, Integer> entry : capacities.entrySet()) {
+            String key = entry.getKey();
+            Integer cap = entry.getValue();
+            if (cap == null) continue;
+            try {
+                ShiftType type = ShiftType.valueOf(key.trim().toUpperCase());
+                shiftRepository.findByShiftType(type).ifPresent(shift -> {
+                    update(shift.getId(), new UpdateShiftRequest(cap, null, null, null));
+                });
+            } catch (IllegalArgumentException ignored) {
+                // Ignore unknown shift type keys gracefully
+            }
+        }
+        return allActive();
+    }
+
+    @Transactional
     public ShiftResponse update(Long id, UpdateShiftRequest request) {
-        if (request.capacity() != null && request.capacity() < 0) {
-            throw new BusinessException("Shift capacity cannot be negative");
+        if (request.capacity() != null) {
+            if (request.capacity() < 0) {
+                throw new BusinessException("Shift capacity cannot be negative");
+            }
+            if (request.capacity() > 50) {
+                throw new BusinessException("Shift capacity cannot exceed 50 employees per shift");
+            }
         }
 
         Shift shift = shiftRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Shift not found with id: " + id));
 
         if (request.capacity() != null) {
-            if (shift.getShiftType() == ShiftType.NIGHT && request.capacity() > 1) {
-                throw new BusinessException("Night shift target cannot exceed 1 employee per day.");
-            }
+            int oldCap = shift.getCapacity();
             shift.setCapacity(request.capacity());
+            if (auditService != null && oldCap != request.capacity()) {
+                try {
+                    auditService.log(
+                            AuditAction.SHIFT_CAPACITY_UPDATED,
+                            "SHIFT",
+                            shift.getId(),
+                            null,
+                            null,
+                            null,
+                            "capacity=" + oldCap,
+                            "capacity=" + request.capacity(),
+                            "Shift " + shift.getShiftType() + " capacity updated to " + request.capacity(),
+                            "MANUAL"
+                    );
+                } catch (Exception ignored) {
+                    // Non-fatal audit log protection
+                }
+            }
         }
         if (request.startTime() != null) {
             shift.setStartTime(request.startTime());
@@ -86,20 +140,8 @@ public class ShiftService {
     }
 
     private int calculateFeasibleCapacity(ShiftType type, int configuredCapacity, int activeEmployees) {
-        if (type == ShiftType.OFF || configuredCapacity == 0) return 0;
+        if (type == ShiftType.OFF || configuredCapacity <= 0) return 0;
         int dailyWorking = Math.max(1, activeEmployees - 1);
-        if (type == ShiftType.NIGHT) {
-            return Math.min(configuredCapacity, 1);
-        }
-        if (type == ShiftType.EVENING) {
-            return Math.min(configuredCapacity, 1);
-        }
-        if (type == ShiftType.MORNING) {
-            return Math.min(configuredCapacity, dailyWorking >= 6 ? 2 : 1);
-        }
-        if (type == ShiftType.GENERAL) {
-            return Math.min(configuredCapacity, dailyWorking >= 6 ? 2 : 1);
-        }
-        return Math.min(configuredCapacity, 1);
+        return Math.min(configuredCapacity, dailyWorking);
     }
 }

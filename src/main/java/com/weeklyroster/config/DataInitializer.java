@@ -26,32 +26,26 @@ public class DataInitializer {
 			ShiftCapacityProperties capacityProperties, CsvEmployeeLoader csvEmployeeLoader) {
 		return args -> {
 			System.out.println(">>> SEED DATA EXECUTING <<<");
-			capacityProperties.asMap().forEach((type, capacity) -> {
-				Shift shift = shiftRepository.findByShiftType(type).orElseGet(() -> {
+			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
+				var existingOpt = shiftRepository.findByShiftType(type);
+				if (existingOpt.isPresent()) {
+					Shift existing = existingOpt.get();
+					boolean needsSave = false;
+					if (existing.getStartTime() == null || existing.getEndTime() == null) {
+						setShiftTimingDefaults(existing, type);
+						needsSave = true;
+					}
+					if (needsSave) {
+						shiftRepository.save(existing);
+					}
+				} else {
 					Shift created = new Shift();
 					created.setShiftType(type);
-					return created;
-				});
-				shift.setCapacity(type == ShiftType.NIGHT ? Math.min(capacity, 1) : capacity);
-				shift.setActive(true);
-				if (type == ShiftType.MORNING) {
-					shift.setStartTime(java.time.LocalTime.of(7, 0));
-					shift.setEndTime(java.time.LocalTime.of(15, 0));
-					shift.setOvernight(false);
-				} else if (type == ShiftType.GENERAL) {
-					shift.setStartTime(java.time.LocalTime.of(9, 30));
-					shift.setEndTime(java.time.LocalTime.of(18, 0));
-					shift.setOvernight(false);
-				} else if (type == ShiftType.EVENING) {
-					shift.setStartTime(java.time.LocalTime.of(14, 0));
-					shift.setEndTime(java.time.LocalTime.of(22, 0));
-					shift.setOvernight(false);
-				} else if (type == ShiftType.NIGHT) {
-					shift.setStartTime(java.time.LocalTime.of(22, 0));
-					shift.setEndTime(java.time.LocalTime.of(7, 0));
-					shift.setOvernight(true);
+					created.setCapacity(defaultCapacity);
+					created.setActive(true);
+					setShiftTimingDefaults(created, type);
+					shiftRepository.save(created);
 				}
-				shiftRepository.save(shift);
 			});
 			shiftRepository.findByShiftType(ShiftType.OFF).orElseGet(() -> {
 				Shift shift = new Shift();
@@ -121,4 +115,23 @@ public class DataInitializer {
 		};
 	}
 
+	private void setShiftTimingDefaults(Shift shift, ShiftType type) {
+		if (type == ShiftType.MORNING) {
+			shift.setStartTime(java.time.LocalTime.of(7, 0));
+			shift.setEndTime(java.time.LocalTime.of(15, 0));
+			shift.setOvernight(false);
+		} else if (type == ShiftType.GENERAL) {
+			shift.setStartTime(java.time.LocalTime.of(9, 30));
+			shift.setEndTime(java.time.LocalTime.of(18, 0));
+			shift.setOvernight(false);
+		} else if (type == ShiftType.EVENING) {
+			shift.setStartTime(java.time.LocalTime.of(14, 0));
+			shift.setEndTime(java.time.LocalTime.of(22, 0));
+			shift.setOvernight(false);
+		} else if (type == ShiftType.NIGHT) {
+			shift.setStartTime(java.time.LocalTime.of(22, 0));
+			shift.setEndTime(java.time.LocalTime.of(7, 0));
+			shift.setOvernight(true);
+		}
+	}
 }
