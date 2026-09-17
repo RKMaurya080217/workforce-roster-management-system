@@ -460,6 +460,14 @@
                 <div id="notifListContainer" class="notif-list-body">
                   <div class="notif-empty">No notifications yet</div>
                 </div>
+                <div class="notif-footer" style="padding:8px 12px; border-top:1px solid var(--border-light); background:var(--bg-surface); display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
+                  <button id="fcmPushToggleBtn" class="btn-link-xs" style="color:var(--text-muted); display:flex; align-items:center; gap:4px; text-decoration:none; cursor:pointer;" title="Toggle browser push notifications">
+                    <span>🔔</span> <span id="fcmPushStatusLabel">Web Push: Checking...</span>
+                  </button>
+                  <button id="adminTestPushBtn" class="btn-xs btn-outline hidden" title="Send test push notification to this device" style="font-size:0.72rem; padding:2px 8px;">
+                    Test Push
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1757,6 +1765,11 @@
       </div>
     </div>
   </div>
+
+  <!-- Firebase Cloud Messaging Web Push SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+  <script src="/js/fcm-client.js?v=2.5.0"></script>
 
   <!-- App JavaScript with Cache Busting -->
   <script src="/app.js?v=2.5.0"></script>

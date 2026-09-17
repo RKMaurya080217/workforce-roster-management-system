@@ -56,6 +56,7 @@ public class RosterEmailService {
     private final ShiftRepository shiftRepository;
     private final EmailService emailService;
     private final SmsService smsService;
+    private final com.weeklyroster.service.push.NotificationPushService pushService;
 
     @Value("${roster.auto-email.enabled:true}")
     private boolean autoEmailEnabled;
@@ -81,7 +82,8 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
                               EmailService emailService,
-                              @Autowired(required = false) SmsService smsService) {
+                              @Autowired(required = false) SmsService smsService,
+                              @Autowired(required = false) com.weeklyroster.service.push.NotificationPushService pushService) {
         this.emailLogRepository = emailLogRepository;
         this.employeeRepository = employeeRepository;
         this.cycleRepository = cycleRepository;
@@ -89,6 +91,17 @@ public class RosterEmailService {
         this.shiftRepository = shiftRepository;
         this.emailService = emailService != null ? emailService : new EmailService(new BrevoEmailService(), new SmtpEmailService(null));
         this.smsService = smsService;
+        this.pushService = pushService;
+    }
+
+    public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
+                              EmployeeRepository employeeRepository,
+                              RosterCycleRepository cycleRepository,
+                              RosterAssignmentRepository assignmentRepository,
+                              ShiftRepository shiftRepository,
+                              EmailService emailService,
+                              SmsService smsService) {
+        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, smsService, null);
     }
 
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
@@ -97,7 +110,7 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
                               EmailService emailService) {
-        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, null);
+        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, null, null);
     }
 
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
@@ -106,7 +119,7 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository) {
         this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository,
-                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)), null);
+                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)), null, null);
     }
 
     /**
@@ -420,6 +433,7 @@ public class RosterEmailService {
             deliveryLog.setStatus(EmailDeliveryStatus.SENT);
             deliveryLog.setErrorMessage(null);
             triggerSmsNotification(emp, emailType, dateRange);
+            triggerPushNotification(cycle, emp, emailType, dateRange);
         } else {
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
             deliveryLog.setErrorMessage(result.getErrorMessage() != null ? result.getErrorMessage() : "Email delivery failed");
@@ -475,6 +489,16 @@ public class RosterEmailService {
             smsService.sendSms(contact, smsText);
         } catch (Exception ex) {
             log.warn("[WRMS SMS] Failed to trigger SMS notification for employee {}: {}", emp.getEmployeeCode(), ex.getMessage());
+        }
+    }
+
+    private void triggerPushNotification(RosterCycle cycle, Employee emp, EmailType emailType, String dateRange) {
+        if (pushService == null || cycle == null || emp == null) return;
+        try {
+            boolean isFinal = (emailType == EmailType.FINAL_ROSTER);
+            pushService.sendRosterNotification(cycle, emp, isFinal, dateRange);
+        } catch (Exception ex) {
+            log.warn("[WRMS PUSH] Failed to trigger push notification for employee {}: {}", emp.getEmployeeCode(), ex.getMessage());
         }
     }
 

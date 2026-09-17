@@ -288,6 +288,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (state.token && state.profile) {
     showWorkspace();
     resolveInitialRoute();
+    if (window.WrmsFcm && typeof window.WrmsFcm.init === "function") {
+      window.WrmsFcm.init().catch(() => {});
+    }
   } else {
     showLogin();
   }
@@ -565,8 +568,210 @@ function bindGlobalEvents() {
     }
   }
 
+  // Batch 62: Setup FCM Web Push notification flyout controls & admin test button
+  setupFcmPushFlyoutControls();
+
   // Global hide floating popover on window scroll
   window.addEventListener("scroll", hideFloatingPopover, true);
+}
+
+/* ==========================================================================
+   BATCH 62: FCM WEB PUSH NOTIFICATION UI CONTROLS
+   ========================================================================== */
+
+function setupFcmPushFlyoutControls() {
+  const toggleBtn = document.getElementById("fcmPushToggleBtn");
+  const testBtn = document.getElementById("adminTestPushBtn");
+  const notifBtn = document.getElementById("topbarNotificationBtn");
+
+  if (notifBtn) {
+    notifBtn.addEventListener("click", () => {
+      refreshPushStatusFlyout();
+    });
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!window.WrmsFcm || !window.WrmsFcm.isSupported()) {
+        toast("Web Push Notifications are not supported in your browser or require HTTPS.", "warning");
+        return;
+      }
+      const perm = window.WrmsFcm.getPermissionState();
+      if (perm === "denied") {
+        toast("Push notifications are blocked in your browser settings. Please allow notifications for this site.", "warning");
+        return;
+      }
+      toggleBtn.disabled = true;
+      try {
+        const isRegistered = localStorage.getItem("wrms_fcm_token_registered") === "true";
+        if (isRegistered) {
+          await window.WrmsFcm.unregister();
+          toast("Web push notifications disabled for this device", "info");
+        } else {
+          await window.WrmsFcm.requestPermissionAndRegister();
+          toast("Web push notifications enabled successfully!", "success");
+        }
+      } catch (err) {
+        toast(err.message || "Could not update push notification settings", "error");
+      } finally {
+        toggleBtn.disabled = false;
+        refreshPushStatusFlyout();
+        refreshProfilePushStatus();
+      }
+    });
+  }
+
+  if (testBtn) {
+    testBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      testBtn.disabled = true;
+      const origText = testBtn.textContent;
+      testBtn.textContent = "Sending...";
+      try {
+        const res = await apiRequest("/api/notifications/fcm/test", { method: "POST" });
+        toast(res.message || "Test push notification sent successfully!", "success");
+      } catch (err) {
+        toast(err.message || "Failed to send test push notification", "error");
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = origText;
+      }
+    });
+  }
+}
+
+async function refreshPushStatusFlyout() {
+  const label = document.getElementById("fcmPushStatusLabel");
+  const testBtn = document.getElementById("adminTestPushBtn");
+
+  if (testBtn) {
+    const isAdmin = state.profile && state.profile.role === "ROLE_ADMIN";
+    testBtn.classList.toggle("hidden", !isAdmin);
+  }
+
+  if (!label) return;
+
+  if (!window.WrmsFcm || !window.WrmsFcm.isSupported()) {
+    label.textContent = "Web Push: Unsupported";
+    return;
+  }
+
+  const perm = window.WrmsFcm.getPermissionState();
+  if (perm === "denied") {
+    label.textContent = "Web Push: Blocked";
+    return;
+  }
+
+  const isRegistered = localStorage.getItem("wrms_fcm_token_registered") === "true";
+  if (isRegistered && perm === "granted") {
+    label.textContent = "Web Push: Active";
+  } else {
+    label.textContent = "Web Push: Off (Click to enable)";
+  }
+}
+
+function bindProfilePushControls() {
+  const enableBtn = document.getElementById("profilePushEnableBtn");
+  const disableBtn = document.getElementById("profilePushDisableBtn");
+
+  if (enableBtn) {
+    enableBtn.addEventListener("click", async () => {
+      if (!window.WrmsFcm || !window.WrmsFcm.isSupported()) {
+        toast("Web Push Notifications are not supported in your browser or require HTTPS.", "warning");
+        return;
+      }
+      enableBtn.disabled = true;
+      try {
+        await window.WrmsFcm.requestPermissionAndRegister();
+        toast("Web Push notifications enabled successfully for this device!", "success");
+      } catch (err) {
+        toast(err.message || "Failed to enable Web Push notifications.", "error");
+      } finally {
+        enableBtn.disabled = false;
+        refreshProfilePushStatus();
+        refreshPushStatusFlyout();
+      }
+    });
+  }
+
+  if (disableBtn) {
+    disableBtn.addEventListener("click", async () => {
+      disableBtn.disabled = true;
+      try {
+        await window.WrmsFcm.unregister();
+        toast("Web Push notifications disabled for this device.", "info");
+      } catch (err) {
+        toast(err.message || "Failed to disable Web Push notifications.", "error");
+      } finally {
+        disableBtn.disabled = false;
+        refreshProfilePushStatus();
+        refreshPushStatusFlyout();
+      }
+    });
+  }
+
+  refreshProfilePushStatus();
+}
+
+async function refreshProfilePushStatus() {
+  const badge = document.getElementById("profilePushStatusBadge");
+  const enableBtn = document.getElementById("profilePushEnableBtn");
+  const disableBtn = document.getElementById("profilePushDisableBtn");
+  const deviceCountEl = document.getElementById("profilePushDeviceCount");
+  if (!badge) return;
+
+  if (!window.WrmsFcm || !window.WrmsFcm.isSupported()) {
+    badge.className = "badge inactive";
+    badge.textContent = "Unsupported";
+    if (enableBtn) enableBtn.classList.add("hidden");
+    if (disableBtn) disableBtn.classList.add("hidden");
+    return;
+  }
+
+  const perm = window.WrmsFcm.getPermissionState();
+  if (perm === "denied") {
+    badge.className = "badge inactive";
+    badge.textContent = "Blocked";
+    if (enableBtn) {
+      enableBtn.classList.remove("hidden");
+      enableBtn.textContent = "Permission Blocked";
+      enableBtn.disabled = true;
+    }
+    if (disableBtn) disableBtn.classList.add("hidden");
+    return;
+  }
+
+  let statusData = null;
+  try {
+    statusData = await window.WrmsFcm.getStatus();
+  } catch (_) {}
+
+  const isLocalRegistered = localStorage.getItem("wrms_fcm_token_registered") === "true";
+  const isActive = (perm === "granted") && (isLocalRegistered || (statusData && statusData.registered));
+
+  if (isActive) {
+    badge.className = "badge active";
+    badge.textContent = "Active";
+    if (enableBtn) enableBtn.classList.add("hidden");
+    if (disableBtn) {
+      disableBtn.classList.remove("hidden");
+      disableBtn.disabled = false;
+    }
+  } else {
+    badge.className = "badge general";
+    badge.textContent = "Off";
+    if (enableBtn) {
+      enableBtn.classList.remove("hidden");
+      enableBtn.textContent = "Enable Web Push";
+      enableBtn.disabled = false;
+    }
+    if (disableBtn) disableBtn.classList.add("hidden");
+  }
+
+  if (deviceCountEl && statusData && typeof statusData.activeDeviceCount === "number") {
+    deviceCountEl.innerHTML = `Active Registered Devices: <strong>${statusData.activeDeviceCount}</strong>`;
+  }
 }
 
 
@@ -619,6 +824,10 @@ async function handleLogin(e) {
     showWorkspace();
     resolveInitialRoute();
 
+    if (window.WrmsFcm && typeof window.WrmsFcm.init === "function") {
+      window.WrmsFcm.init().catch(() => {});
+    }
+
   } catch (err) {
     const isGenericAuthError = err.message && (
       err.message.includes("401") ||
@@ -665,6 +874,11 @@ function handleLogout(silent = false) {
   if (state.syncPollingIntervalId) {
     clearInterval(state.syncPollingIntervalId);
     state.syncPollingIntervalId = null;
+  }
+
+  // Batch 62: Teardown FCM device registration
+  if (window.WrmsFcm && typeof window.WrmsFcm.unregister === "function") {
+    window.WrmsFcm.unregister().catch(() => {});
   }
 
   try {
@@ -4773,6 +4987,36 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
         </div>
       </div>
 
+      <!-- 5. WEB PUSH NOTIFICATIONS (BATCH 62) -->
+      <div class="card" id="profilePushNotificationsCard">
+        <div class="card-header">
+          <div>
+            <h3>Web Push Notifications</h3>
+            <span class="card-subtext">Instant browser alerts for newly published rosters &amp; schedule updates</span>
+          </div>
+          <span id="profilePushStatusBadge" class="badge general">Checking...</span>
+        </div>
+        <div class="card-body stack-gap">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:14px 16px; background:var(--bg-surface); border-radius:var(--radius-md); border:1px solid var(--border-light);">
+            <div>
+              <div style="font-weight:600; font-size:0.95rem; margin-bottom:4px;" id="profilePushTitle">Browser Notification Alerts</div>
+              <p style="font-size:0.82rem; color:var(--text-muted); margin:0;" id="profilePushDescription">
+                Receive instant browser notifications whenever your tentative or final roster is published and sent to your registered email.
+              </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" id="profilePushEnableBtn" class="btn btn-primary btn-sm">Enable Web Push</button>
+              <button type="button" id="profilePushDisableBtn" class="btn btn-secondary btn-sm hidden">Disable</button>
+            </div>
+          </div>
+          <div id="profilePushTokenInfo" style="font-size:0.78rem; color:var(--text-muted); display:flex; gap:16px; flex-wrap:wrap; padding:4px 0;">
+            <span>Channel: <strong>Firebase Cloud Messaging (Web Push)</strong></span>
+            <span>Trigger: <strong>Automatic upon successful roster email delivery</strong></span>
+            <span id="profilePushDeviceCount">Active Devices: <strong>-</strong></span>
+          </div>
+        </div>
+      </div>
+
     </div>
   `;
 }
@@ -4918,6 +5162,9 @@ function bindWorkspaceProfileEvents() {
       openProfileChangeModal({ fieldName, label, currentValue, type });
     });
   });
+
+  // Batch 62: Bind profile Web Push controls
+  bindProfilePushControls();
 }
 
 
