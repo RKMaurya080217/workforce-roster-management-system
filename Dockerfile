@@ -14,8 +14,8 @@ FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
 # Install fontconfig and DejaVu TrueType fonts for headless image export support (with network retry and non-fatal fallback)
-RUN (apt-get update -y -o Acquire::Retries=3 && \
-     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core && \
+RUN (apt-get update -y -o Acquire::Retries=3 -o Acquire::http::Timeout=20 && \
+     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Acquire::Retries=3 -o Acquire::http::Timeout=20 fontconfig fonts-dejavu-core && \
      apt-get clean && \
      rm -rf /var/lib/apt/lists/*) || echo "[WARN] Font packages installation skipped or partially completed; continuing image build"
 

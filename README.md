@@ -29,8 +29,8 @@ Frontend UI: `http://localhost:8080/`
 
 Default admin:
 
-- Username: `admin`
-- Password: `admin@123`
+- Username: `Admin` (or `admin`)
+- Password: `Admin@123`
 
 Default employee accounts:
 
