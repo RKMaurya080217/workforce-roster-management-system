@@ -502,6 +502,9 @@ function bindGlobalEvents() {
       e.stopPropagation();
       state.isSidebarCollapsed = !state.isSidebarCollapsed;
       dom.appSidebar.classList.toggle("collapsed", state.isSidebarCollapsed);
+      if (dom.appView) {
+        dom.appView.classList.toggle("sidebar-collapsed", state.isSidebarCollapsed);
+      }
       sessionStorage.setItem("wrmsSidebarCollapsed", String(state.isSidebarCollapsed));
       dom.sidebarToggleBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
       dom.sidebarToggleBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
@@ -1154,12 +1157,14 @@ function showWorkspace() {
   // Apply saved sidebar collapsed state
   if (state.isSidebarCollapsed) {
     dom.appSidebar.classList.add("collapsed");
+    if (dom.appView) dom.appView.classList.add("sidebar-collapsed");
     if (dom.sidebarToggleBtn) {
       dom.sidebarToggleBtn.setAttribute("aria-expanded", "false");
       dom.sidebarToggleBtn.setAttribute("title", "Expand Sidebar");
     }
   } else {
     dom.appSidebar.classList.remove("collapsed");
+    if (dom.appView) dom.appView.classList.remove("sidebar-collapsed");
     if (dom.sidebarToggleBtn) {
       dom.sidebarToggleBtn.setAttribute("aria-expanded", "true");
       dom.sidebarToggleBtn.setAttribute("title", "Collapse Sidebar");
