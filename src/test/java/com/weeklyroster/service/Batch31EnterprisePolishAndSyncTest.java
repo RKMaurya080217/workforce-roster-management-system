@@ -44,6 +44,21 @@ class Batch31EnterprisePolishAndSyncTest {
     @Autowired
     private LeaveRequestRepository leaveRequestRepository;
 
+    @Autowired
+    private RosterCycleRepository cycleRepository;
+
+    @Autowired
+    private RosterAssignmentRepository assignmentRepository;
+
+    @Autowired
+    private ShiftRepository shiftRepository;
+
+    @Autowired
+    private AuditLogRepository auditLogRepository;
+
+    @Autowired
+    private HolidayRepository holidayRepository;
+
     private void authenticateAdmin() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin", "N/A", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
@@ -53,6 +68,61 @@ class Batch31EnterprisePolishAndSyncTest {
     @BeforeEach
     void setUp() {
         authenticateAdmin();
+
+        if (cycleRepository.count() == 0) {
+            LocalDate monday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+            RosterCycle cycle = new RosterCycle();
+            cycle.setStartDate(monday);
+            cycle.setEndDate(monday.plusDays(6));
+            cycle.setStatus(RosterStatus.PUBLISHED);
+            cycle.setGenerationMode(GenerationMode.AUTOMATIC);
+            cycle.setGeneratedAt(LocalDateTime.now());
+            cycle = cycleRepository.save(cycle);
+
+            List<Employee> emps = employeeRepository.findAll();
+            Shift morning = shiftRepository.findByShiftType(ShiftType.MORNING).orElse(null);
+            if (!emps.isEmpty() && morning != null) {
+                RosterAssignment a = new RosterAssignment();
+                a.setCycle(cycle);
+                a.setEmployee(emps.get(0));
+                a.setShift(morning);
+                a.setRosterDate(monday);
+                assignmentRepository.save(a);
+            }
+        }
+
+        if (leaveRequestRepository.count() == 0) {
+            List<Employee> emps = employeeRepository.findAll();
+            if (!emps.isEmpty()) {
+                LeaveRequest lr = new LeaveRequest();
+                lr.setEmployee(emps.get(0));
+                lr.setStartDate(LocalDate.now());
+                lr.setEndDate(LocalDate.now().plusDays(1));
+                lr.setReason("Annual Leave");
+                lr.setStatus(LeaveStatus.APPROVED);
+                lr.setRequestedAt(LocalDateTime.now());
+                leaveRequestRepository.save(lr);
+            }
+        }
+
+        if (holidayRepository.count() == 0) {
+            Holiday h = new Holiday();
+            h.setName("Test Holiday");
+            h.setHolidayDate(LocalDate.now());
+            h.setDescription("National Holiday");
+            h.setActive(true);
+            holidayRepository.save(h);
+        }
+
+        if (auditLogRepository.count() == 0) {
+            AuditLog al = new AuditLog();
+            al.setActor("admin");
+            al.setAction(AuditAction.REPORT_EXPORTED);
+            al.setEntityType("RosterCycle");
+            al.setReason("Export Verification");
+            al.setTimestamp(LocalDateTime.now());
+            auditLogRepository.save(al);
+        }
     }
 
     @Test

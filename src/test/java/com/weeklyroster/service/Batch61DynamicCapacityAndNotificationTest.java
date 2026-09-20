@@ -29,9 +29,6 @@ import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
 import com.weeklyroster.repository.ShiftRepository;
 import com.weeklyroster.service.email.EmailService;
-import com.weeklyroster.service.sms.SmsDeliveryResult;
-import com.weeklyroster.service.sms.SmsService;
-import com.weeklyroster.service.sms.SmsServiceImpl;
 
 @ExtendWith(MockitoExtension.class)
 class Batch61DynamicCapacityAndNotificationTest {
@@ -60,9 +57,6 @@ class Batch61DynamicCapacityAndNotificationTest {
     @Mock
     private EmailService mockEmailService;
 
-    @Mock
-    private SmsService mockSmsService;
-
     private RosterEmailService rosterEmailService;
 
     @BeforeEach
@@ -73,8 +67,7 @@ class Batch61DynamicCapacityAndNotificationTest {
                 cycleRepository,
                 assignmentRepository,
                 shiftRepository,
-                mockEmailService,
-                mockSmsService
+                mockEmailService
         );
     }
 
@@ -180,31 +173,7 @@ class Batch61DynamicCapacityAndNotificationTest {
     }
 
     // ==========================================
-    // 2. SMS SERVICE & NUMBER MASKING
-    // ==========================================
-
-    @Test
-    @DisplayName("SMS service masks phone numbers and succeeds in default simulated log mode")
-    void testSmsService_LoggingModeAndMasking() {
-        SmsServiceImpl smsService = new SmsServiceImpl(true, "LOG", "", "WRMS");
-
-        assertTrue(smsService.isConfigured());
-        assertEquals("LOG", smsService.getProviderName());
-
-        // Valid 10-digit phone
-        SmsDeliveryResult res = smsService.sendSms("9876543210", "WRMS: Tentative Weekly Roster emailed.");
-        assertTrue(res.success());
-        assertNotNull(res.messageId());
-        assertEquals("LOG", res.provider());
-
-        // Invalid phone gracefully returns failure without throwing
-        SmsDeliveryResult invalidRes = smsService.sendSms("123", "Short phone");
-        assertFalse(invalidRes.success());
-        assertTrue(invalidRes.errorMessage().contains("Invalid"));
-    }
-
-    // ==========================================
-    // 3. ROSTER EMAIL HTML TEMPLATE & BOLD ADMIN MESSAGE
+    // 2. ROSTER EMAIL HTML TEMPLATE & BOLD ADMIN MESSAGE
     // ==========================================
 
     @Test

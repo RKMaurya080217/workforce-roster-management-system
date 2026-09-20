@@ -51,6 +51,15 @@ public class Batch60ExternalApiIntegrationTest {
     private EmployeeRepository employeeRepository;
 
     @Autowired
+    private com.weeklyroster.repository.RosterCycleRepository cycleRepository;
+
+    @Autowired
+    private com.weeklyroster.repository.ShiftRepository shiftRepository;
+
+    @Autowired
+    private com.weeklyroster.repository.RosterAssignmentRepository assignmentRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private Employee seededEmployee;
@@ -60,6 +69,26 @@ public class Batch60ExternalApiIntegrationTest {
         seededEmployee = employeeRepository.findByEmployeeCode("EMP001")
                 .or(() -> employeeRepository.findAll().stream().findFirst())
                 .orElseThrow(() -> new IllegalStateException("No employee seeded in database"));
+
+        if (cycleRepository.findTopByOrderByStartDateDesc().isEmpty()) {
+            com.weeklyroster.entity.RosterCycle cycle = new com.weeklyroster.entity.RosterCycle();
+            cycle.setStartDate(LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)));
+            cycle.setEndDate(cycle.getStartDate().plusDays(6));
+            cycle.setStatus(com.weeklyroster.entity.RosterStatus.PUBLISHED);
+            cycle.setGenerationMode(com.weeklyroster.entity.GenerationMode.AUTOMATIC);
+            cycle.setGeneratedAt(java.time.LocalDateTime.now());
+            cycle = cycleRepository.save(cycle);
+
+            com.weeklyroster.entity.Shift morning = shiftRepository.findByShiftType(com.weeklyroster.entity.ShiftType.MORNING).orElse(null);
+            if (morning != null && seededEmployee != null) {
+                com.weeklyroster.entity.RosterAssignment a = new com.weeklyroster.entity.RosterAssignment();
+                a.setCycle(cycle);
+                a.setEmployee(seededEmployee);
+                a.setShift(morning);
+                a.setRosterDate(cycle.getStartDate());
+                assignmentRepository.save(a);
+            }
+        }
     }
 
     @Test
@@ -298,7 +327,8 @@ public class Batch60ExternalApiIntegrationTest {
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name",
                 String.class);
 
-        Set<String> expected12 = Set.of(
+        Set<String> expected14 = Set.of(
+                "device_tokens",
                 "employee_requests",
                 "employee_skills",
                 "employees",
@@ -309,12 +339,13 @@ public class Batch60ExternalApiIntegrationTest {
                 "roster_cycles",
                 "shift_handovers",
                 "shifts",
+                "sms_delivery_logs",
                 "system_audit_logs",
                 "users"
         );
 
-        assertEquals(12, actualTables.size(), "Database must strictly contain EXACTLY 12 tables");
-        assertEquals(expected12, Set.copyOf(actualTables), "12 core table names must match exact consolidated schema");
+        assertEquals(14, actualTables.size(), "Database must strictly contain EXACTLY 14 tables");
+        assertEquals(expected14, Set.copyOf(actualTables), "14 production table names must match exact consolidated schema");
     }
 
     @Test

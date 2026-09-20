@@ -117,16 +117,10 @@ class NotificationServiceTest {
     @Test
     @DisplayName("markAllAsRead marks all unread notifications as read for recipient")
     void testMarkAllAsRead() {
-        Notification n1 = new Notification();
-        n1.setId(1L);
-        n1.setRecipientUsername("emp001");
-        n1.setReadStatus(false);
-
-        when(notificationRepository.findByRecipientUsernameOrderByCreatedAtDesc("emp001")).thenReturn(List.of(n1));
+        when(notificationRepository.markAllAsReadForUser("emp001")).thenReturn(1);
 
         notificationService.markAllAsRead("emp001");
 
-        assertTrue(n1.isReadStatus());
-        verify(notificationRepository).saveAll(List.of(n1));
+        verify(notificationRepository).markAllAsReadForUser("emp001");
     }
 }

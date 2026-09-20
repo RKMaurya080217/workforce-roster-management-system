@@ -25,7 +25,6 @@ import com.weeklyroster.service.email.EmailDeliveryResult;
 import com.weeklyroster.service.email.EmailService;
 import com.weeklyroster.service.push.NotificationPushService;
 import com.weeklyroster.service.push.NotificationPushServiceImpl;
-import com.weeklyroster.service.sms.SmsService;
 
 @ExtendWith(MockitoExtension.class)
 class Batch62FcmPushNotificationTest {
@@ -57,9 +56,6 @@ class Batch62FcmPushNotificationTest {
     @Mock
     private EmailService mockEmailService;
 
-    @Mock
-    private SmsService mockSmsService;
-
     private NotificationPushServiceImpl pushService;
     private PushNotificationController pushController;
     private RosterEmailService rosterEmailService;
@@ -75,7 +71,6 @@ class Batch62FcmPushNotificationTest {
                 assignmentRepository,
                 shiftRepository,
                 mockEmailService,
-                mockSmsService,
                 pushService
         );
     }

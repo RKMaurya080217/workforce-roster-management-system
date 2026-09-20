@@ -1305,7 +1305,7 @@ textarea {
   max-height: 100vh;
   max-height: 100dvh;
   align-self: flex-start;
-  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), flex-basis 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 50;
   flex: 0 0 var(--sidebar-width);
   flex-shrink: 0;
@@ -1598,17 +1598,22 @@ textarea {
 }
 
 /* ==========================================================================
-   COLLAPSED SIDEBAR STATE (DESKTOP COMPACT)
+   COLLAPSED SIDEBAR STATE (DESKTOP COMPACT: 76px)
    ========================================================================== */
 
 .app-sidebar.collapsed {
-  width: var(--sidebar-collapsed-width);
+  width: var(--sidebar-collapsed-width) !important;
+  min-width: var(--sidebar-collapsed-width) !important;
+  max-width: var(--sidebar-collapsed-width) !important;
+  flex: 0 0 var(--sidebar-collapsed-width) !important;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), flex-basis 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-sidebar.collapsed .sidebar-header {
-  padding: 14px 8px;
+  padding: 16px 8px;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -1616,19 +1621,38 @@ textarea {
   display: none !important;
 }
 
+.app-sidebar.collapsed .brand-logo {
+  margin: 0 auto;
+}
+
 .app-sidebar.collapsed .sidebar-collapse-btn {
   transform: rotate(180deg);
+  margin: 0 auto;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-sidebar.collapsed .sidebar-nav {
-  padding: 16px 6px;
-  gap: 6px;
+  padding: 14px 6px;
+  gap: 8px;
+  align-items: center;
 }
 
 .app-sidebar.collapsed .nav-item {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
   padding: 11px 0;
   position: relative;
+  width: 100%;
+}
+
+.app-sidebar.collapsed .nav-item .wrms-icon {
+  margin: 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-sidebar.collapsed .nav-item span:not(.nav-badge) {
@@ -1638,7 +1662,7 @@ textarea {
 .app-sidebar.collapsed .nav-badge {
   position: absolute;
   top: 6px;
-  right: 10px;
+  right: 12px;
   width: 8px;
   height: 8px;
   padding: 0;
@@ -1647,30 +1671,35 @@ textarea {
   margin-left: 0;
 }
 
+.app-sidebar.collapsed .nav-more-group {
+  width: 100%;
+}
+
 .app-sidebar.collapsed .nav-more-toggle {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
   padding: 11px 0;
   position: relative;
+  width: 100%;
+}
+
+.app-sidebar.collapsed .nav-more-toggle .wrms-icon {
+  margin: 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-sidebar.collapsed .nav-more-toggle span {
   display: none !important;
 }
 
+.app-sidebar.collapsed .nav-more-toggle .more-chevron {
+  display: none !important;
+}
+
 .app-sidebar.collapsed .nav-sub-menu {
-  padding-left: 0;
-  margin-left: 0;
-  border-left: none;
-  gap: 4px;
-}
-
-.app-sidebar.collapsed .nav-sub-item {
-  justify-content: center;
-  padding: 9px 0;
-  position: relative;
-}
-
-.app-sidebar.collapsed .nav-sub-item span {
   display: none !important;
 }
 
@@ -1681,8 +1710,13 @@ textarea {
 .app-sidebar.collapsed .user-profile-card {
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 8px 4px;
+}
+
+.app-sidebar.collapsed .user-avatar {
+  margin: 0 auto;
 }
 
 .app-sidebar.collapsed .user-info {
@@ -1691,7 +1725,10 @@ textarea {
 
 .app-sidebar.collapsed .logout-icon-btn {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 6px;
+  margin: 0 auto;
 }
 
 /* ==========================================================================
@@ -5667,18 +5704,106 @@ html, body {
   gap: 8px;
 }
 
-/* 4. Responsive Breakpoint <= 1024px (Tablets & Mobile) */
+/* ==========================================================================
+   STANDARDIZED ICON & TEXT VERTICAL ALIGNMENT (2026 ENTERPRISE)
+   ========================================================================== */
+
+.btn,
+.nav-item,
+.nav-sub-item,
+.stat-icon,
+.status-badge,
+.badge,
+.roster-lifecycle-badge,
+.date-badge,
+.notif-count-pill,
+.wrms-icon,
+.wrms-icon-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.btn {
+  gap: 8px;
+}
+
+.btn svg, .btn .wrms-icon {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.nav-item {
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.nav-item svg, .nav-item .wrms-icon {
+  flex-shrink: 0;
+}
+
+.status-badge, .badge, .roster-lifecycle-badge {
+  gap: 4px;
+}
+
+.stat-icon {
+  flex-shrink: 0;
+}
+
+/* Mobile Sidebar Backdrop Overlay */
+.sidebar-mobile-backdrop {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  z-index: 998;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-mobile-backdrop.active {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body.sidebar-mobile-locked {
+  overflow: hidden !important;
+}
+
+.sidebar-mobile-close-btn {
+  display: none !important;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--trans-fast), background-color var(--trans-fast);
+}
+
+.sidebar-mobile-close-btn:hover {
+  color: #ffffff;
+  background-color: var(--bg-sidebar-hover);
+}
+
+/* 4. Responsive Breakpoint <= 1024px (Tablets & Mobile Drawer) */
 @media (max-width: 1024px) {
   .app-layout {
     position: relative;
     width: 100%;
     max-width: 100%;
-    height: 100% !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: row !important;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
+    overflow-x: hidden;
+    overflow-y: visible !important;
   }
 
   .app-sidebar {
@@ -5722,18 +5847,23 @@ html, body {
     margin-top: auto !important;
   }
 
+  .sidebar-mobile-close-btn {
+    display: inline-flex !important;
+  }
+  .sidebar-collapse-btn {
+    display: none !important;
+  }
+
   .app-main {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
     min-width: 0 !important;
-    min-height: 0 !important;
-    height: 100% !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100vh;
+    max-height: none !important;
+    overflow-y: visible !important;
     overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch;
     flex: 1 1 auto !important;
     display: flex !important;
     flex-direction: column !important;
@@ -5859,6 +5989,51 @@ html, body {
     font-size: 16px !important; /* Prevents auto-zoom on iOS */
     width: 100%;
     max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Mobile Toolbar & Action Containment (prevents clipping on 320px-480px viewports) */
+  .table-toolbar, .filter-toolbar, .header-actions, .card-actions-row, .view-header-bar {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Override hardcoded inline min-widths causing mobile overflow */
+  #cycleSelector, #healthCycleSelector, #ccCycleSelector, #rvCycleSelector {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .filter-group, .search-input-box {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Wide data tables remain contained in scrollable wrappers */
+  .table-wrap, .table-responsive, .roster-matrix-wrap, .roster-table-container, .card-body-table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-x: contain !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Modal boxes fit neatly within mobile screens */
+  .modal-box {
+    width: 95vw !important;
+    max-width: calc(100vw - 16px) !important;
+    margin: 10px auto !important;
+    box-sizing: border-box !important;
   }
 
   /* Modals */

@@ -229,6 +229,9 @@ CREATE TABLE IF NOT EXISTS system_audit_logs (
     created_at DATETIME(6)
 );
 
+-- [OBSOLETE / CANDIDATE FOR FUTURE CONTROLLED MIGRATION]
+-- Retained in schema.sql for backward schema compatibility and production data safety.
+-- Active application-level SMS dependency has been completely removed in Batch 62.
 CREATE TABLE IF NOT EXISTS sms_delivery_logs (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     employee_id BIGINT,
@@ -242,5 +245,23 @@ CREATE TABLE IF NOT EXISTS sms_delivery_logs (
     failure_reason VARCHAR(500),
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6)
+);
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    employee_id BIGINT,
+    token VARCHAR(512) NOT NULL UNIQUE,
+    device_type VARCHAR(255),
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    last_used_at DATETIME(6),
+    CONSTRAINT fk_devtok_user FOREIGN KEY (user_id) REFERENCES users(id),
+    CONSTRAINT fk_devtok_employee FOREIGN KEY (employee_id) REFERENCES employees(id),
+    INDEX idx_devtok_user (user_id),
+    INDEX idx_devtok_emp (employee_id),
+    INDEX idx_devtok_token (token),
+    INDEX idx_devtok_active (active)
 );
 

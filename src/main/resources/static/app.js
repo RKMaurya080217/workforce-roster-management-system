@@ -151,6 +151,7 @@ const dom = {
   sidebarUserAvatar: document.getElementById("sidebarUserAvatar"),
   logoutBtn: document.getElementById("logoutBtn"),
   sidebarToggleBtn: document.getElementById("sidebarToggleBtn"),
+  sidebarMobileCloseBtn: document.getElementById("sidebarMobileCloseBtn"),
   mobileMenuBtn: document.getElementById("mobileMenuBtn"),
   appSidebar: document.getElementById("appSidebar"),
   pageHeadingTitle: document.getElementById("pageHeadingTitle"),
@@ -515,6 +516,19 @@ function bindGlobalEvents() {
     });
   }
 
+  if (dom.sidebarMobileCloseBtn) {
+    dom.sidebarMobileCloseBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeMobileSidebar();
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeMobileSidebar();
+    }
+  });
+
   // Modal Close Handlers
   document.querySelectorAll("[data-close-modal]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -629,14 +643,6 @@ function setupFcmPushFlyoutControls() {
     diagBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       showPushDiagnosticsModal();
-    });
-  }
-
-  const smsDiagBtn = document.getElementById("smsDiagnosticsBtn");
-  if (smsDiagBtn) {
-    smsDiagBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      showSmsDiagnosticsModal();
     });
   }
 
@@ -816,196 +822,7 @@ async function showPushDiagnosticsModal() {
   document.getElementById("okPushDiagModalBtn")?.addEventListener("click", close);
 }
 
-async function showSmsDiagnosticsModal() {
-  const existing = document.getElementById("smsDiagnosticsModal");
-  if (existing) existing.remove();
 
-  let diag = null;
-  let logs = [];
-  try {
-    const diagRes = await apiFetch("/api/sms/diagnostics");
-    diag = diagRes;
-  } catch (err) {
-    diag = {
-      enabled: false,
-      provider: "ERROR",
-      configured: false,
-      realTelecomConfigured: false,
-      operatingMode: "ERROR",
-      notice: err.message || "Failed to query SMS diagnostics."
-    };
-  }
-
-  try {
-    const logsRes = await apiFetch("/api/sms/logs");
-    logs = Array.isArray(logsRes) ? logsRes : [];
-  } catch (ignored) {}
-
-  const badge = (val, okText = "PASS") => {
-    const isPass = val === true || val === okText || val === "LIVE_TELECOM" || val === "REQUEST_ACCEPTED" || val === "DELIVERED";
-    const isWarn = val === "SIMULATED_LOG" || val === "SKIPPED_DUPLICATE" || val === "SKIPPED_NO_PHONE" || val === "SKIPPED_INVALID_PHONE";
-    const color = isPass ? "#16a34a" : (isWarn ? "#d97706" : "#dc2626");
-    const bg = isPass ? "#dcfce7" : (isWarn ? "#fef3c7" : "#fee2e2");
-    return `<span style="display:inline-block; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700; color:${color}; background:${bg};">${val}</span>`;
-  };
-
-  const employees = state.employees || [];
-  let employeeOptions = `<option value="">Select Employee to Test...</option>`;
-  for (const emp of employees) {
-    const contact = emp.contactNumber ? PhoneUtilsMask(emp.contactNumber) : "No Mobile";
-    employeeOptions += `<option value="${emp.id}">${emp.employeeCode} — ${emp.firstName} ${emp.lastName} (${contact})</option>`;
-  }
-
-  const modal = document.createElement("div");
-  modal.id = "smsDiagnosticsModal";
-  modal.className = "modal-overlay active";
-  modal.style.cssText = "display:flex; align-items:center; justify-content:center; z-index:99999;";
-  modal.innerHTML = `
-    <div class="modal-card" style="max-width:620px; width:94%; max-height:85vh; overflow-y:auto; background:var(--surface, #ffffff); border-radius:12px; padding:22px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.25);">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border-light, #e2e8f0); padding-bottom:10px;">
-        <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
-          <span>💬</span> Real Telecom SMS Diagnostics &amp; Test (Batch 65)
-        </h3>
-        <button id="closeSmsDiagModalBtn" style="background:none; border:none; font-size:1.3rem; cursor:pointer; color:var(--text-muted, #94a3b8);">&times;</button>
-      </div>
-
-      <div style="font-size:0.84rem; margin-bottom:14px; padding:10px 12px; border-radius:8px; background:${diag.realTelecomConfigured ? '#f0fdf4' : '#fffbeb'}; border:1px solid ${diag.realTelecomConfigured ? '#bbf7d0' : '#fde68a'};">
-        <strong>Status:</strong> ${diag.notice || (diag.realTelecomConfigured ? 'Telecom gateway active.' : 'Simulated log mode.')}
-      </div>
-
-      <table style="width:100%; border-collapse:collapse; font-size:0.83rem; margin-bottom:16px;">
-        <tbody>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">SMS Enabled</td><td style="text-align:right;">${badge(diag.enabled ? "ENABLED" : "DISABLED")}</td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Active SMS Provider</td><td style="text-align:right;"><strong>${diag.provider || 'LOG'}</strong></td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Operating Mode</td><td style="text-align:right;">${badge(diag.operatingMode || "SIMULATED_LOG")}</td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Real Telecom Gateway Connected</td><td style="text-align:right;">${badge(diag.realTelecomConfigured ? "CONNECTED" : "NOT_CONFIGURED")}</td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">API Key Configured</td><td style="text-align:right;">${badge(diag.apiKeyConfigured ? "YES" : "NO")}</td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Sender ID (Header)</td><td style="text-align:right;"><code>${diag.senderId || 'WRMS'}</code></td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">India TRAI DLT Configured</td><td style="text-align:right;">${badge(diag.dltConfigured ? "CONFIGURED" : "PENDING")}</td></tr>
-          <tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:6px 0; font-weight:600;">Staff with Valid Indian Mobile</td><td style="text-align:right;"><strong>${diag.employeesWithValidMobileCount || 0} / ${diag.activeEmployeesCount || 0}</strong></td></tr>
-        </tbody>
-      </table>
-
-      <!-- Admin Test SMS Section -->
-      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:16px;">
-        <h4 style="margin:0 0 8px 0; font-size:0.92rem; display:flex; align-items:center; gap:6px;">
-          <span>📲</span> Admin Real SMS Test
-        </h4>
-        <p style="font-size:0.8rem; color:#64748b; margin:0 0 10px 0;">
-          Dispatches exact telecom test message: <em>"WRMS test SMS: SMS notification service is working."</em>
-        </p>
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          <select id="smsTestEmpSelect" class="form-control" style="font-size:0.82rem; padding:6px 10px;">
-            ${employeeOptions}
-          </select>
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="smsTestCustomPhone" class="form-control" placeholder="Or enter 10-digit Indian number (+91...)" style="font-size:0.82rem; flex:1; padding:6px 10px;">
-            <button id="sendSmsTestBtn" class="btn btn-primary" style="font-size:0.82rem; padding:6px 14px; white-space:nowrap;">Send Test SMS</button>
-          </div>
-          <div id="smsTestResultArea" style="display:none; font-size:0.82rem; padding:8px 10px; border-radius:6px; margin-top:4px;"></div>
-        </div>
-      </div>
-
-      <!-- Recent Delivery Logs -->
-      <h4 style="margin:0 0 8px 0; font-size:0.92rem;">Recent SMS Audit Logs</h4>
-      <div style="max-height:160px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; font-size:0.75rem;">
-        <table style="width:100%; border-collapse:collapse;">
-          <thead style="background:#f8fafc; position:sticky; top:0; border-bottom:1px solid #e2e8f0;">
-            <tr>
-              <th style="padding:4px 6px; text-align:left;">Time</th>
-              <th style="padding:4px 6px; text-align:left;">Emp</th>
-              <th style="padding:4px 6px; text-align:left;">Mobile</th>
-              <th style="padding:4px 6px; text-align:left;">Type</th>
-              <th style="padding:4px 6px; text-align:left;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${logs.length > 0 ? logs.slice(0, 10).map(l => `
-              <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:4px 6px; color:#64748b;">${l.createdAt ? l.createdAt.substring(11, 19) : '-'}</td>
-                <td style="padding:4px 6px; font-weight:600;">${l.employeeCode || '-'}</td>
-                <td style="padding:4px 6px;"><code>${l.mobileMasked || '-'}</code></td>
-                <td style="padding:4px 6px;">${l.messageType || '-'}</td>
-                <td style="padding:4px 6px;">${badge(l.status)}</td>
-              </tr>
-            `).join("") : `<tr><td colspan="5" style="padding:8px; text-align:center; color:#94a3b8;">No SMS logs recorded yet</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
-        <button id="refreshSmsDiagModalBtn" class="btn btn-secondary small" style="font-size:0.8rem;">Refresh</button>
-        <button id="okSmsDiagModalBtn" class="btn btn-outline small" style="font-size:0.8rem;">Close</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  document.getElementById("closeSmsDiagModalBtn")?.addEventListener("click", close);
-  document.getElementById("okSmsDiagModalBtn")?.addEventListener("click", close);
-  document.getElementById("refreshSmsDiagModalBtn")?.addEventListener("click", () => {
-    close();
-    showSmsDiagnosticsModal();
-  });
-
-  const sendBtn = document.getElementById("sendSmsTestBtn");
-  sendBtn?.addEventListener("click", async () => {
-    const empId = document.getElementById("smsTestEmpSelect")?.value;
-    const phone = document.getElementById("smsTestCustomPhone")?.value;
-    const resArea = document.getElementById("smsTestResultArea");
-
-    if (!empId && (!phone || !phone.trim())) {
-      toast("Please select an employee or enter a mobile number.", "warning");
-      return;
-    }
-
-    sendBtn.disabled = true;
-    sendBtn.textContent = "Sending...";
-    if (resArea) resArea.style.display = "none";
-
-    try {
-      const payload = {};
-      if (empId) payload.employeeId = parseInt(empId, 10);
-      if (phone && phone.trim()) payload.phone = phone.trim();
-
-      const res = await apiFetch("/api/sms/admin-test", {
-        method: "POST",
-        body: JSON.stringify(payload)
-      });
-
-      if (resArea) {
-        resArea.style.display = "block";
-        const isOk = res.success || res.status === "REQUEST_ACCEPTED" || res.status === "SIMULATED_LOG";
-        resArea.style.background = isOk ? "#f0fdf4" : "#fee2e2";
-        resArea.style.border = `1px solid ${isOk ? '#bbf7d0' : '#fca5a5'}`;
-        resArea.style.color = isOk ? "#166534" : "#991b1b";
-        resArea.innerHTML = `<strong>${res.status}:</strong> Recipient: <code>${res.recipientPhoneMasked || '******'}</code> via <strong>${res.provider}</strong>${res.messageId ? ` (ID: ${res.messageId})` : ''}${res.errorMessage ? ` - ${res.errorMessage}` : ''}`;
-      }
-      toast("Test SMS request processed: " + res.status, res.success ? "success" : "info");
-    } catch (err) {
-      if (resArea) {
-        resArea.style.display = "block";
-        resArea.style.background = "#fee2e2";
-        resArea.style.border = "1px solid #fca5a5";
-        resArea.style.color = "#991b1b";
-        resArea.textContent = "Failed: " + (err.message || "Unknown error");
-      }
-      toast(err.message || "Failed to dispatch test SMS", "error");
-    } finally {
-      sendBtn.disabled = false;
-      sendBtn.textContent = "Send Test SMS";
-    }
-  });
-}
-
-function PhoneUtilsMask(phone) {
-  if (!phone) return "******";
-  const d = phone.replace(/[^0-9]/g, "");
-  if (d.length < 4) return "****";
-  return "******" + d.substring(d.length - 4);
-}
 
 function checkAndShowMobilePushPrompt() {
   if (!state.token || !state.profile) return;
@@ -1842,7 +1659,7 @@ function updateTopbarTitle(pageId) {
     audit: { title: "Complete Roster Audit Trail", bc: "Audit Trail" },
     profileApprovals: { title: "Unified Request Approvals (Profile Requests)", bc: "Approvals" },
     employeeWorkspace: employeeTitles[currentTab] || { title: "Staff Self-Service Workspace", bc: "My Workspace" },
-    employeeRosterDetail: { title: `${state.inspectedEmployeeName} - Schedule`, bc: "Employee Roster" }
+    employeeRosterDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Schedule`, bc: "Employee Roster" }
   };
 
   const meta = (pageId === "employeeWorkspace" && isEmployee)
@@ -4363,13 +4180,13 @@ function renderWorkspaceOverviewHTML(data) {
   const duty = data.todayDuty || { status: "OFF", queryDate: getTodayISOString(), shiftName: "Duty Not Scheduled" };
   const leaves = data.leaves || [];
   const notifs = data.notifications || [];
-  const activityData = data.activityData || { content: [] };
+  const roster = data.roster || [];
   const employee = data.employee || {};
   const profile = data.profile || {};
   const pendingCount = data.pendingCount || 0;
   const approvedCount = data.approvedCount || 0;
+  const upcomingLeavesCount = data.upcomingLeavesCount || 0;
   const activeWorkforceDisplay = data.activeWorkforceDisplay || "7 Active Members";
-  const dutyError = (state.sectionErrors && state.sectionErrors.duty) || null;
 
   const queryDate = duty.queryDate || getTodayISOString();
 
@@ -4379,12 +4196,7 @@ function renderWorkspaceOverviewHTML(data) {
     : (profile.username || 'Staff Member');
   const empCode = employee.employeeCode || profile.username || 'EMP001';
   const email = employee.email || 'N/A';
-  const contact = employee.contactNumber || 'Not provided';
   const department = 'Operations / WRMS';
-  const gender = employee.gender || 'MALE';
-  const shiftPolicy = gender === 'FEMALE'
-    ? 'FEMALE: Day Shifts Only (Morning & General)'
-    : 'MALE: All Shifts Eligible (24/7 Coverage)';
 
   // Today's Shift Resolution
   let shiftTitle = "Standby / Not Assigned";
@@ -4425,7 +4237,7 @@ function renderWorkspaceOverviewHTML(data) {
       iconBg = "var(--shift-morning-bg)";
       iconColor = "var(--shift-morning-color)";
     } else if (duty.shiftType === "GENERAL") {
-      timingSubtext = `${timeRange} (General Business Hours)`;
+      timingSubtext = `${timeRange} (General Hours)`;
       iconEmoji = "💼";
       iconBg = "var(--shift-general-bg)";
       iconColor = "var(--shift-general-color)";
@@ -4446,285 +4258,236 @@ function renderWorkspaceOverviewHTML(data) {
       : `<span class="flag-badge flag-working">✅ ON DUTY</span>`;
   }
 
-  // Dynamic Status Text
-  const dynamicStatusPill = duty.dynamicStatusText ? `
-    <div class="dynamic-status-banner">
-      <span class="pulse-indicator"></span>
-      <span>${escapeHTML(duty.dynamicStatusText)}</span>
-    </div>
-  ` : '';
-
-  // Previous & Next Duty Context
-  const prevDuty = duty.previousDuty;
+  // Next Duty Context
   const nextDuty = duty.nextDuty;
-  const prevText = prevDuty ? formatDutyContextSummary(prevDuty) : "No recent duty record";
   const nextText = nextDuty ? formatDutyContextSummary(nextDuty) : "Standby / Next cycle";
 
   const unreadNotifs = (notifs || []).filter(n => !n.readStatus);
-  const recentNotifs = (notifs || []).slice(0, 3);
-  const recentActs = (activityData && activityData.content) ? activityData.content.slice(0, 3) : [];
 
-  return `
-    <!-- 1. Employee Welcome & Identity Card -->
-    <div class="card" style="margin-bottom:20px; background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border-left: 4px solid var(--primary);">
-      <div class="card-body" style="padding:20px 24px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
-          <div style="display:flex; align-items:center; gap:16px;">
-            <div class="user-avatar" style="width:52px; height:52px; font-size:1.3rem; background:linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700;">
-              ${escapeHTML(fullName.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() || 'EM')}
-            </div>
-            <div>
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <h2 style="margin:0; font-size:1.35rem; color:var(--text-main); font-weight:800;">${escapeHTML(fullName)}</h2>
-                <span class="badge active" style="font-size:0.75rem;">Active Staff</span>
-                <span class="badge general" style="font-size:0.75rem;">ROLE_EMPLOYEE</span>
-              </div>
-              <p style="margin:4px 0 0; font-size:0.85rem; color:var(--text-muted);">
-                Welcome to your self-service workforce portal. View your shift assignments, manage leave, and review system notifications.
-              </p>
-            </div>
+  // Build 7-Day Compact Roster Strip (Mon-Sun)
+  let rosterStripHtml = "";
+  if (Array.isArray(roster) && roster.length > 0) {
+    const sortedRoster = [...roster].sort((a, b) => (a.rosterDate || "").localeCompare(b.rosterDate || ""));
+    const todayISO = getTodayISOString();
+
+    const dayCards = sortedRoster.slice(0, 7).map(a => {
+      const d = new Date(a.rosterDate + "T00:00:00");
+      const dayName = isNaN(d.getTime()) ? "-" : d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+      const dayNum = isNaN(d.getTime()) ? "-" : d.getDate();
+      const isToday = a.rosterDate === todayISO;
+
+      let badgeClass = "badge-subtle";
+      let shiftLabel = a.shiftType || "OFF";
+      let timeSummary = getShiftTimingDisplay(a.shiftType);
+
+      if (a.onLeave) {
+        badgeClass = "flag-leave";
+        shiftLabel = "LEAVE";
+        timeSummary = "Approved Leave";
+      } else if (a.weeklyOff || a.shiftType === "OFF") {
+        badgeClass = "flag-weeklyoff";
+        shiftLabel = "OFF";
+        timeSummary = "Weekly Rest";
+      } else if (a.shiftType === "MORNING") {
+        badgeClass = "morning";
+        shiftLabel = "MORNING";
+      } else if (a.shiftType === "GENERAL") {
+        badgeClass = "general";
+        shiftLabel = "GENERAL";
+      } else if (a.shiftType === "EVENING") {
+        badgeClass = "evening";
+        shiftLabel = "EVENING";
+      } else if (a.shiftType === "NIGHT") {
+        badgeClass = "night";
+        shiftLabel = "NIGHT";
+      }
+
+      return `
+        <div style="flex: 1; min-width: 95px; padding: 12px 10px; border-radius: var(--radius-md); background: ${isToday ? 'var(--primary-light)' : 'var(--surface)'}; border: 1.5px solid ${isToday ? 'var(--primary)' : 'var(--border)'}; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; box-shadow: ${isToday ? '0 2px 8px rgba(37,99,235,0.18)' : 'none'};">
+          <div style="font-size: 0.72rem; font-weight: 700; color: ${isToday ? 'var(--primary)' : 'var(--text-muted)'}; letter-spacing: 0.05em;">
+            ${dayName} ${isToday ? '• TODAY' : ''}
           </div>
-          <div>
-            <button class="btn btn-secondary btn-sm" id="overviewEditProfileBtn" onclick="navigateTo('profile');">
-              <span>👤 Edit Profile</span>
-            </button>
+          <div style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">
+            ${dayNum}
+          </div>
+          <div style="margin-top: 2px;">
+            <span class="badge ${badgeClass}" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px;">
+              ${a.overridden ? '⚡ ' : ''}${shiftLabel}
+            </span>
+          </div>
+          <div style="font-size: 0.70rem; color: var(--text-muted); line-height: 1.2; margin-top: 2px;">
+            ${timeSummary}
           </div>
         </div>
+      `;
+    }).join("");
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-top:16px; padding-top:16px; border-top:1px solid var(--border-light); font-size:0.85rem;">
+    rosterStripHtml = `
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <span style="color:var(--text-muted); display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase;">Employee ID</span>
-            <strong style="color:var(--text-main);">${escapeHTML(empCode)}</strong>
+            <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">This Week's Roster Strip</h3>
+            <span style="font-size: 0.76rem; color: var(--text-muted);">Your 7-day scheduled rotation at a glance</span>
+          </div>
+          <button class="btn btn-link-xs" onclick="navigateTo('roster');">Full Roster &rarr;</button>
+        </div>
+        <div class="card-body" style="padding: 14px 16px;">
+          <div style="display: flex; gap: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+            ${dayCards}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <!-- 1. Employee Welcome Card -->
+    <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); border-left: 4px solid var(--primary); padding: 18px 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <div class="user-avatar" style="width: 48px; height: 48px; font-size: 1.2rem; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700;">
+            ${escapeHTML(fullName.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() || 'EM')}
           </div>
           <div>
-            <span style="color:var(--text-muted); display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase;">Email</span>
-            <strong style="color:var(--text-main);">${escapeHTML(email)}</strong>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <h2 style="margin: 0; font-size: 1.3rem; color: var(--text-main); font-weight: 800;">Welcome, ${escapeHTML(fullName)}</h2>
+              <span class="badge active" style="font-size: 0.72rem;">Active Staff</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">(${escapeHTML(empCode)})</span>
+            </div>
+            <p style="margin: 4px 0 0; font-size: 0.82rem; color: var(--text-muted);">
+              Department: <strong>${escapeHTML(department)}</strong> &bull; Email: <strong>${escapeHTML(email)}</strong>
+            </p>
           </div>
-          <div>
-            <span style="color:var(--text-muted); display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase;">Contact Number</span>
-            <strong style="color:var(--text-main);">${escapeHTML(contact)}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted); display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase;">Department</span>
-            <strong style="color:var(--text-main);">${escapeHTML(department)}</strong>
-          </div>
-          <div>
-            <span style="color:var(--text-muted); display:block; font-size:0.72rem; font-weight:700; text-transform:uppercase;">Shift Policy</span>
-            <strong style="color:var(--text-main); font-size:0.8rem;">${escapeHTML(shiftPolicy)}</strong>
-          </div>
+        </div>
+        <div>
+          <button class="btn btn-secondary btn-sm" id="overviewEditProfileBtn" onclick="navigateTo('profile');">
+            <span>👤 Edit Profile</span>
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- 2. Four Key Stat / Summary Cards Grid -->
-    <div class="metrics-grid" style="margin-bottom:20px;">
+    <!-- 2. Hero Card: Today's Shift & Next Shift -->
+    <div class="form-row two-col" style="margin-bottom: 20px;">
       
-      <!-- Card A: Today's Assigned Duty -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span class="metric-title">Today's Duty (${formatDate(queryDate)})</span>
-          <div class="stat-icon" style="background:${iconBg}; color:${iconColor}; font-size:1.2rem;">
-            ${iconEmoji}
+      <!-- Card A: Current / Today's Shift Hero Card -->
+      <div class="card" style="border: 1.5px solid var(--border); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="card-body" style="padding: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+            <div>
+              <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Today's Assignment (${formatDate(queryDate)})</span>
+              <h3 style="margin: 4px 0 0; font-size: 1.4rem; font-weight: 800; color: var(--text-main);">${escapeHTML(shiftTitle)}</h3>
+            </div>
+            <div class="stat-icon" style="background:${iconBg}; color:${iconColor}; font-size: 1.3rem; width: 44px; height: 44px; border-radius: var(--radius-md);">
+              ${iconEmoji}
+            </div>
+          </div>
+          <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-muted); margin-bottom: 12px;">
+            ${escapeHTML(timingSubtext)}
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${statusBadge}
           </div>
         </div>
-        <div class="metric-value" style="font-size:1.3rem; margin-top:4px;">${escapeHTML(shiftTitle)}</div>
-        <div class="metric-subtext" style="margin-top:2px;">
-          ${escapeHTML(timingSubtext)}
-        </div>
-        <div style="margin-top:8px;">
-          ${statusBadge}
+        <div style="padding: 10px 20px; background: var(--bg-app); border-top: 1px solid var(--border-light); font-size: 0.78rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+          <span>Coverage: <strong>${escapeHTML(String(activeWorkforceDisplay))}</strong></span>
+          <span>Policy: <strong>12h Min Rest Protected</strong></span>
         </div>
       </div>
 
-      <!-- Card B: Next Scheduled Duty -->
-      <div class="metric-card">
-        <div class="metric-header">
-          <span class="metric-title">Next Scheduled Duty</span>
-          <div class="stat-icon" style="background:#f0fdf4; color:#16a34a; font-size:1.2rem;">
-            ⏭️
+      <!-- Card B: Next Scheduled Shift Hero Card -->
+      <div class="card" style="border: 1.5px solid var(--border); box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="card-body" style="padding: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+            <div>
+              <span style="font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Next Scheduled Shift</span>
+              <h3 style="margin: 4px 0 0; font-size: 1.3rem; font-weight: 800; color: var(--text-main);">${escapeHTML(nextText)}</h3>
+            </div>
+            <div class="stat-icon" style="background: #f0fdf4; color: #16a34a; font-size: 1.3rem; width: 44px; height: 44px; border-radius: var(--radius-md);">
+              ⏭️
+            </div>
+          </div>
+          <div style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px;">
+            Rotation intervals and mandatory rest compliance verified.
+          </div>
+          <div>
+            <span class="badge morning" style="font-weight: 700;">Upcoming Duty</span>
           </div>
         </div>
-        <div class="metric-value" style="font-size:1.05rem; margin-top:4px;">${escapeHTML(nextText)}</div>
-        <div class="metric-subtext" style="margin-top:4px;">
-          Rotation safety & 12h interval checked
-        </div>
-        <div style="margin-top:8px;">
-          <span class="badge morning">Upcoming Duty</span>
+        <div style="padding: 10px 20px; background: var(--bg-app); border-top: 1px solid var(--border-light); font-size: 0.78rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+          <span>Rest Status: <strong>Compliant</strong></span>
+          <button class="btn-link-xs" onclick="navigateTo('roster');" style="cursor: pointer;">View All &rarr;</button>
         </div>
       </div>
 
-      <!-- Card C: Leave Summary -->
+    </div>
+
+    <!-- 3. This Week's 7-Day Compact Roster Strip -->
+    ${rosterStripHtml}
+
+    <!-- 4. Operational Summary Grid (Leaves, Notifications, Shortcuts) -->
+    <div class="metrics-grid" style="margin-bottom: 20px;">
+      
+      <!-- Card: Leaves -->
       <div class="metric-card">
         <div class="metric-header">
           <span class="metric-title">Leave Status</span>
-          <div class="stat-icon" style="background:#fef3c7; color:#d97706; font-size:1.2rem;">
-            🏖️
-          </div>
+          <div class="stat-icon" style="background: #fef3c7; color: #d97706; font-size: 1.2rem;">🏖️</div>
         </div>
-        <div class="metric-value" style="font-size:1.3rem; margin-top:4px;">
-          <span>${pendingCount}</span> <small style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Pending</small> &bull;
-          <span>${approvedCount}</span> <small style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Approved</small>
+        <div class="metric-value" style="font-size: 1.3rem; margin-top: 4px;">
+          <span>${pendingCount}</span> <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Pending</small> &bull;
+          <span>${approvedCount}</span> <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Approved</small>
         </div>
-        <div class="metric-subtext" style="margin-top:4px;">
-          Personal absence requests
+        <div class="metric-subtext" style="margin-top: 4px;">
+          ${upcomingLeavesCount ? `${upcomingLeavesCount} upcoming leave booking(s)` : 'No upcoming leaves scheduled'}
         </div>
-        <div style="margin-top:8px;">
+        <div style="margin-top: 8px;">
           <button class="btn btn-link-xs" id="quickManageLeaveBtn" onclick="navigateTo('leaves');">Manage Leaves &rarr;</button>
         </div>
       </div>
 
-      <!-- Card D: Notifications & Inbox -->
+      <!-- Card: Notifications -->
       <div class="metric-card">
         <div class="metric-header">
           <span class="metric-title">Notifications</span>
-          <div class="stat-icon" style="background:#eff6ff; color:#2563eb; font-size:1.2rem;">
-            🔔
-          </div>
+          <div class="stat-icon" style="background: #eff6ff; color: #2563eb; font-size: 1.2rem;">🔔</div>
         </div>
-        <div class="metric-value" style="font-size:1.3rem; margin-top:4px;">
-          <span>${unreadNotifs.length}</span> <small style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">Unread</small>
+        <div class="metric-value" style="font-size: 1.3rem; margin-top: 4px;">
+          <span>${unreadNotifs.length}</span> <small style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Unread</small>
         </div>
-        <div class="metric-subtext" style="margin-top:4px;">
-          ${unreadNotifs.length ? 'Pending alerts in inbox' : 'Inbox up to date'}
+        <div class="metric-subtext" style="margin-top: 4px;">
+          ${unreadNotifs.length ? 'New announcements in inbox' : 'Inbox is up to date'}
         </div>
-        <div style="margin-top:8px;">
+        <div style="margin-top: 8px;">
           <button class="btn btn-link-xs" id="quickViewNotifsBtn" onclick="navigateTo('notifications');">View Inbox &rarr;</button>
         </div>
       </div>
 
-    </div>
-
-    <!-- 3. Split Two-Column Operational Layout -->
-    <div class="form-row two-col" style="margin-bottom:20px;">
-      
-      <!-- Left Column: Duty Continuity & Self-Service Shortcuts -->
-      <div style="display:flex; flex-direction:column; gap:20px;">
-        
-        <!-- Shift Context & Safety Compliance Card -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3>Shift Safety & Duty Context</h3>
-              <span style="font-size:0.76rem; color:var(--text-muted);">Operational shift rotation details and rest rules</span>
-            </div>
-          </div>
-          <div class="card-body">
-            ${dynamicStatusPill}
-
-            <div class="duty-context-strip" style="margin-top:12px;">
-              <div class="duty-context-item">
-                <span class="duty-context-label">⏮️ Previous Duty:</span>
-                <span class="duty-context-val">${escapeHTML(prevText)}</span>
-              </div>
-              <div class="duty-context-item">
-                <span class="duty-context-label">▶️ Today's Duty:</span>
-                <span class="duty-context-val">${escapeHTML(shiftTitle)} (${escapeHTML(timingSubtext)})</span>
-              </div>
-              <div class="duty-context-item">
-                <span class="duty-context-label">⏭️ Next Duty:</span>
-                <span class="duty-context-val">${escapeHTML(nextText)}</span>
-              </div>
-            </div>
-
-            <div style="font-size:0.8rem; color:var(--text-muted); border-top:1px solid var(--border-light); padding-top:12px; margin-top:14px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-              <span>Active Department Workforce: <strong>${escapeHTML(String(activeWorkforceDisplay))}</strong></span>
-              <span>Safety Rule: <strong>${escapeHTML(duty.safetyStatus || "12h Min Rest Protected")}</strong></span>
-            </div>
-          </div>
+      <!-- Card: Quick Actions Hub -->
+      <div class="metric-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="metric-header">
+          <span class="metric-title">Self-Service Shortcuts</span>
+          <div class="stat-icon" style="background: #f1f5f9; color: #475569; font-size: 1.2rem;">⚡</div>
         </div>
-
-        <!-- Self-Service Quick Action Hub -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3>Self-Service Quick Actions</h3>
-              <span style="font-size:0.76rem; color:var(--text-muted);">Direct shortcuts to your personal workspace tools</span>
-            </div>
-          </div>
-          <div class="card-body" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <button class="btn btn-secondary btn-sm" id="quickViewRosterBtn" onclick="navigateTo('roster');" style="justify-content:center; padding:10px;">
-              <span>📅 View Full Roster</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" id="quickApplyLeaveBtn" onclick="navigateTo('leaves');" style="justify-content:center; padding:10px;">
-              <span>🏖️ Request Leave</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" id="quickViewProfileBtn" onclick="navigateTo('profile');" style="justify-content:center; padding:10px;">
-              <span>👤 My Profile</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" id="quickViewActivityBtn" onclick="navigateTo('activity');" style="justify-content:center; padding:10px;">
-              <span>📜 Activity Logs</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" id="quickChangePwBtn" onclick="navigateTo('profile');" style="justify-content:center; grid-column:span 2; padding:10px;">
-              <span>🔐 Security & Password Settings</span>
-            </button>
-          </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+          <button class="btn btn-secondary btn-sm" id="quickViewRosterBtn" onclick="navigateTo('roster');" style="padding: 6px 8px; font-size: 0.78rem;">
+            📅 Roster
+          </button>
+          <button class="btn btn-secondary btn-sm" id="quickApplyLeaveBtn" onclick="navigateTo('leaves');" style="padding: 6px 8px; font-size: 0.78rem;">
+            🏖️ Leave
+          </button>
+          <button class="btn btn-secondary btn-sm" id="quickViewProfileBtn" onclick="navigateTo('profile');" style="padding: 6px 8px; font-size: 0.78rem;">
+            👤 Profile
+          </button>
+          <button class="btn btn-secondary btn-sm" id="quickViewActivityBtn" onclick="navigateTo('activity');" style="padding: 6px 8px; font-size: 0.78rem;">
+            📜 Logs
+          </button>
         </div>
-
-      </div>
-
-      <!-- Right Column: Notifications & Recent Activity Stream -->
-      <div style="display:flex; flex-direction:column; gap:20px;">
-        
-        <!-- Notifications Snapshot Widget -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3>Latest Notifications</h3>
-              <span style="font-size:0.76rem; color:var(--text-muted);">Recent announcements and schedule alerts</span>
-            </div>
-            <button class="btn btn-link-xs" id="overviewSeeAllNotifsBtn" onclick="navigateTo('notifications');">
-              View All &rarr;
-            </button>
-          </div>
-          <div class="card-body">
-            ${recentNotifs.length ? `
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                ${recentNotifs.map(n => `
-                  <div class="notif-item ${n.readStatus ? '' : 'unread'}" style="border:1px solid var(--border-light); border-radius:var(--radius-sm); padding:10px 12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <strong style="font-size:0.85rem; color:var(--text-main);">${escapeHTML(n.title)}</strong>
-                      <span style="font-size:0.72rem; color:var(--text-muted);">${formatDate(n.createdAt)}</span>
-                    </div>
-                    <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">${escapeHTML(n.message)}</div>
-                  </div>
-                `).join('')}
-              </div>
-            ` : `
-              <div class="empty-state-box" style="padding:24px 16px;">
-                <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">No new notifications.</p>
-              </div>
-            `}
-          </div>
-        </div>
-
-        <!-- Recent Activity Logs Stream Widget -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <h3>Recent Account Activity</h3>
-              <span style="font-size:0.76rem; color:var(--text-muted);">Audit log of recent system and self-service actions</span>
-            </div>
-            <button class="btn btn-link-xs" id="overviewSeeAllActivityBtn" onclick="navigateTo('activity');">
-              View All &rarr;
-            </button>
-          </div>
-          <div class="card-body">
-            ${recentActs.length ? `
-              <div class="activity-timeline">
-                ${recentActs.map(act => renderActivityItemHTML(act)).join("")}
-              </div>
-            ` : `
-              <div class="empty-state-box" style="padding:24px 16px;">
-                <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">No recent activity records.</p>
-              </div>
-            `}
-          </div>
-        </div>
-
       </div>
 
     </div>
   `;
+}
 }
 
 function renderWorkspaceRosterHTML(roster, empId) {
@@ -6725,7 +6488,7 @@ async function downloadImage(cycleId) {
   }
 }
 
-// Send Roster Email to all employees (with optional custom message & SMS)
+// Send Roster Email to all employees (with optional custom message)
 async function sendRosterEmail(cycleId) {
   if (state.isSendingEmail) return;
   const modal = document.getElementById("emailRosterModal");
@@ -6736,7 +6499,7 @@ async function sendRosterEmail(cycleId) {
     if (cycleInput) cycleInput.value = cycleId;
     if (msgInput) msgInput.value = "";
     if (cycleInfo) {
-      cycleInfo.innerHTML = `Roster Cycle #<strong>${cycleId}</strong> &bull; Dispatching to all active employees via Brevo HTTPS &amp; SMS`;
+      cycleInfo.innerHTML = `Roster Cycle #<strong>${cycleId}</strong> &bull; Dispatching to all active employees via Brevo HTTPS`;
     }
     openModal("emailRosterModal");
     return;
@@ -6752,7 +6515,7 @@ async function sendRosterEmailDirect(cycleId, adminMessage = "") {
     state.isSendingEmail = true;
     if (sendBtn) sendBtn.disabled = true;
     if (spinner) spinner.classList.remove("hidden");
-    toast("Dispatching roster emails & SMS to all active employees...", "info");
+    toast("Dispatching roster emails to all active employees...", "info");
     const opts = { method: "POST", timeout: 60000 };
     if (adminMessage && adminMessage.trim()) {
       opts.body = { adminMessage: adminMessage.trim() };
@@ -6762,7 +6525,7 @@ async function sendRosterEmailDirect(cycleId, adminMessage = "") {
     const sent = logs.filter(l => l.status === "SENT").length;
     const failed = logs.filter(l => l.status === "FAILED").length;
     if (failed === 0) {
-      toast(`Roster email & SMS sent successfully to all ${sent} active employees!`, "success");
+      toast(`Roster email sent successfully to all ${sent} active employees!`, "success");
     } else {
       toast(`Sent to ${sent} staff, ${failed} failed. Use 'Retry Failed Emails' to resend.`, "warning");
     }

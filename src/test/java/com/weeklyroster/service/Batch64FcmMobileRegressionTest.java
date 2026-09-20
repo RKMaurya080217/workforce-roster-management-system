@@ -30,7 +30,6 @@ import com.weeklyroster.service.email.EmailDeliveryResult;
 import com.weeklyroster.service.email.EmailService;
 import com.weeklyroster.service.push.NotificationPushService;
 import com.weeklyroster.service.push.NotificationPushServiceImpl;
-import com.weeklyroster.service.sms.SmsService;
 
 @SpringBootTest
 class Batch64FcmMobileRegressionTest {
@@ -212,13 +211,12 @@ class Batch64FcmMobileRegressionTest {
     void test6_fcmUnavailableEmailStillSucceeds() {
         EmailService mockEmail = mock(EmailService.class);
         when(mockEmail.sendEmail(any())).thenReturn(EmailDeliveryResult.success("BREVO", "msg-123"));
-        SmsService mockSms = mock(SmsService.class);
         NotificationPushService mockPush = mock(NotificationPushService.class);
         doThrow(new RuntimeException("Simulated FCM server connection failure")).when(mockPush).sendRosterNotification(any(), any(), anyBoolean(), any());
 
         RosterEmailService emailService = new RosterEmailService(
                 emailLogRepository, employeeRepository, cycleRepository,
-                assignmentRepository, shiftRepository, mockEmail, mockSms, mockPush
+                assignmentRepository, shiftRepository, mockEmail, mockPush
         );
 
         RosterCycle cycle = cycleRepository.findAll().stream().findFirst().orElse(null);
@@ -241,12 +239,11 @@ class Batch64FcmMobileRegressionTest {
     void test7_brevoEmailFailsPushNotSent() {
         EmailService mockEmail = mock(EmailService.class);
         when(mockEmail.sendEmail(any())).thenReturn(EmailDeliveryResult.failure("BREVO", "SMTP connection error", 500));
-        SmsService mockSms = mock(SmsService.class);
         NotificationPushService mockPush = mock(NotificationPushService.class);
 
         RosterEmailService emailService = new RosterEmailService(
                 emailLogRepository, employeeRepository, cycleRepository,
-                assignmentRepository, shiftRepository, mockEmail, mockSms, mockPush
+                assignmentRepository, shiftRepository, mockEmail, mockPush
         );
 
         RosterCycle cycle = cycleRepository.findAll().stream().findFirst().orElse(null);

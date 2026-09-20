@@ -107,7 +107,7 @@ public class Batch59AuditAndOptimizationTest {
                 (rs, rowNum) -> rs.getString("table_name")
         );
 
-        Set<String> expected12 = Set.of(
+        Set<String> coreTables = Set.of(
                 "users",
                 "employees",
                 "shifts",
@@ -122,10 +122,13 @@ public class Batch59AuditAndOptimizationTest {
                 "system_audit_logs"
         );
 
-        assertEquals(12, tables.size(), "Exact 12 core tables must be present in database. Found: " + tables);
-        for (String expected : expected12) {
+        for (String expected : coreTables) {
             assertTrue(tables.contains(expected), "Core table '" + expected + "' must be present in database");
         }
+        // Extension tables added in Batch 62 (FCM device_tokens) and Batch 65 (sms_delivery_logs)
+        assertTrue(tables.contains("device_tokens"), "Table 'device_tokens' must be present in database");
+        assertTrue(tables.contains("sms_delivery_logs"), "Table 'sms_delivery_logs' must be present in database");
+        assertEquals(14, tables.size(), "Exact 14 production tables must be present in database. Found: " + tables);
     }
 
     @Test

@@ -82,7 +82,7 @@ public class Batch57RailwayOptimizationTest {
             System.out.println("  " + t + " -> " + count + " rows");
         });
 
-        assertEquals(12, tables.size(), "Exact 12 core tables must exist");
+        assertEquals(14, tables.size(), "Exact 14 production tables must exist");
         assertTrue(tables.contains("users"));
         assertTrue(tables.contains("employees"));
         assertTrue(tables.contains("shifts"));
@@ -95,6 +95,8 @@ public class Batch57RailwayOptimizationTest {
         assertTrue(tables.contains("notifications"));
         assertTrue(tables.contains("employee_requests"));
         assertTrue(tables.contains("system_audit_logs"));
+        assertTrue(tables.contains("device_tokens"));
+        assertTrue(tables.contains("sms_delivery_logs"));
 
         // Confirm users and employees rows are intact
         Integer userCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM users", Integer.class);

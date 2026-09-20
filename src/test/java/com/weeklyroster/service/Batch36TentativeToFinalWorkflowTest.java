@@ -66,6 +66,12 @@ public class Batch36TentativeToFinalWorkflowTest {
     @Autowired
     private EmailDeliveryLogRepository emailLogRepository;
 
+    @Autowired
+    private LeaveRequestRepository leaveRequestRepository;
+
+    @Autowired
+    private EmployeePreferenceRepository preferenceRepository;
+
     private LocalDate upcomingMonday;
 
     @BeforeEach
@@ -75,6 +81,8 @@ public class Batch36TentativeToFinalWorkflowTest {
         versionRepository.deleteAll();
         emailLogRepository.deleteAll();
         cycleRepository.deleteAll();
+        leaveRequestRepository.deleteAll();
+        preferenceRepository.deleteAll();
 
         LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
         upcomingMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusDays(7);

@@ -694,21 +694,57 @@ async function renderAdminWorkloadView() {
 }
 
 
-// --- 7. EXPORT CENTER (PDF / EXCEL / CSV) ---
+/// --- 7. EXPORT CENTER (PDF / EXCEL / CSV / PNG) ---
 async function renderExportCenterView() {
   const container = dom.views.exportCenter;
   if (!container) return;
 
-  const reports = [
-    { type: "WEEKLY_ROSTER", title: "Weekly Roster Schedule", icon: WRMS_ICONS.roster, desc: "Detailed duty assignments, shifts, timing, and working/off status for the selected schedule." },
-    { type: "EMPLOYEE_MASTER", title: "Employee Master Directory", icon: WRMS_ICONS.employees, desc: "Complete workforce directory with employee codes, emails, designations, contact numbers, and status." },
-    { type: "LEAVE_REGISTER", title: "Leave Register & History", icon: WRMS_ICONS.leaves, desc: "Comprehensive log of all approved, pending, and past employee leave requests." },
-    { type: "WORKLOAD_REPORT", title: "Employee Workload Analytics", icon: WRMS_ICONS.workload, desc: "Duty hours, night shift counts, consecutive work days, and composite workload scores." },
-    { type: "AUDIT_REPORT", title: "System Audit Trail", icon: WRMS_ICONS.audit, desc: "Complete security and operation audit trail of all manual overrides, swaps, and roster lifecycle events." },
-    { type: "HOLIDAY_CALENDAR", title: "Official Holiday Calendar", icon: WRMS_ICONS.holidays, desc: "List of recognized organization and public holidays across scheduling cycles." },
-    { type: "SKILL_MATRIX", title: "Employee Skill Matrix", icon: WRMS_ICONS.skills, desc: "Workforce competency catalog with verified employee proficiency ratings and certifications." },
-    { type: "SHIFT_CAPACITY", title: "Shift Capacities & Timings", icon: WRMS_ICONS.shifts, desc: "Shift configuration data, required headcounts, timing ranges, and operational windows." }
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading Export Center...</p></div>`;
+
+  let cycles = [];
+  try {
+    cycles = await apiRequest("/api/rosters/cycles");
+  } catch (_) {
+    cycles = state.cycles || [];
+  }
+
+  const sections = [
+    {
+      title: "Roster & Operations",
+      desc: "Duty assignments, individual schedules, shift capacities, and compliance audit reports.",
+      reports: [
+        { type: "WEEKLY_ROSTER", title: "Weekly Roster Schedule", icon: WRMS_ICONS.roster || "📅", desc: "Detailed duty assignments, shifts, timing, and working/off status for the selected cycle." },
+        { type: "EMPLOYEE_SCHEDULE", title: "Employee Work Schedule", icon: WRMS_ICONS.roster || "🗓️", desc: "Personalized work shifts, off-days, and roster history across personnel." },
+        { type: "SHIFT_CAPACITY", title: "Shift Capacities & Timings", icon: WRMS_ICONS.shifts || "⏰", desc: "Shift configuration data, required headcounts, timing ranges, and operational windows." },
+        { type: "VALIDATION_REPORT", title: "Roster Validation & Compliance Audit", icon: WRMS_ICONS.validation || "🛡️", desc: "Automated compliance audit report evaluating fairness, rest periods, and coverage rules." }
+      ]
+    },
+    {
+      title: "Workforce Master Data",
+      desc: "Comprehensive employee records, skill ratings, certifications, and workload analytics.",
+      reports: [
+        { type: "EMPLOYEE_MASTER", title: "Employee Master Directory", icon: WRMS_ICONS.employees || "👥", desc: "Complete workforce directory with employee codes, emails, contact numbers, and status." },
+        { type: "SKILL_MATRIX", title: "Employee Skill Matrix", icon: WRMS_ICONS.skills || "⭐", desc: "Workforce competency catalog with verified employee proficiency ratings and certifications." },
+        { type: "WORKLOAD_REPORT", title: "Employee Workload Analytics", icon: WRMS_ICONS.workload || "📈", desc: "Duty hours, night shift counts, consecutive work days, and composite workload scores." }
+      ]
+    },
+    {
+      title: "Governance & Compliance",
+      desc: "Leave records, system audit trail, and organizational holiday schedules.",
+      reports: [
+        { type: "LEAVE_REGISTER", title: "Leave Register & History", icon: WRMS_ICONS.leaves || "🏖️", desc: "Comprehensive log of all approved, pending, and past employee leave requests." },
+        { type: "AUDIT_REPORT", title: "System Audit Trail", icon: WRMS_ICONS.audit || "📜", desc: "Complete security and operation audit trail of manual overrides, swaps, and lifecycle events." },
+        { type: "HOLIDAY_CALENDAR", title: "Official Holiday Calendar", icon: WRMS_ICONS.holidays || "🎉", desc: "List of recognized organization and public holidays across scheduling cycles." }
+      ]
+    }
   ];
+
+  let cycleOptionsHtml = `<option value="">Active / Latest Cycle (Default)</option>`;
+  if (Array.isArray(cycles) && cycles.length > 0) {
+    cycles.forEach(c => {
+      cycleOptionsHtml += `<option value="${c.id}">Cycle #${c.id} (${c.startDate} to ${c.endDate}) - ${c.status || 'ACTIVE'}</option>`;
+    });
+  }
 
   container.innerHTML = `
     <div class="view-header-bar">
@@ -718,54 +754,99 @@ async function renderExportCenterView() {
       </div>
     </div>
 
-    <div class="export-grid">
-      ${reports.map(r => `
-        <div class="export-card">
-          <div>
-            <div class="export-card-header">
-              <span class="export-card-icon">${r.icon}</span>
+    <!-- Export Scope & Filters Toolbar -->
+    <div class="card" style="margin-bottom: 24px; padding: 18px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 240px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Target Roster Cycle</label>
+          <select id="exportCycleSelect" class="form-control" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text-primary);" onchange="handleExportCycleChange(this.value)">
+            ${cycleOptionsHtml}
+          </select>
+        </div>
+        <div style="min-width: 160px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Start Date (Optional)</label>
+          <input type="date" id="exportStartDate" class="form-control" style="padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text-primary);" />
+        </div>
+        <div style="min-width: 160px;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">End Date (Optional)</label>
+          <input type="date" id="exportEndDate" class="form-control" style="padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-hover); color: var(--text-primary);" />
+        </div>
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="resetExportFilters()" style="margin-bottom: 2px;">
+            Reset Filters
+          </button>
+        </div>
+      </div>
+    </div>
+
+    ${sections.map(sec => `
+      <div style="margin-bottom: 32px;">
+        <div style="margin-bottom: 14px;">
+          <h3 style="margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 600; color: var(--text-primary);">${sec.title}</h3>
+          <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">${sec.desc}</p>
+        </div>
+        <div class="export-grid">
+          ${sec.reports.map(r => `
+            <div class="export-card">
               <div>
-                <h3 style="margin:0; font-size:1.05rem;">${r.title}</h3>
-                <small class="text-muted">Type: <code>${r.type}</code></small>
+                <div class="export-card-header">
+                  <span class="export-card-icon">${r.icon}</span>
+                  <div>
+                    <h3 style="margin:0; font-size:1.05rem;">${r.title}</h3>
+                    <small class="text-muted">Type: <code>${r.type}</code></small>
+                  </div>
+                </div>
+                <p style="font-size:0.84rem; color:var(--text-muted); line-height:1.4;">${r.desc}</p>
+              </div>
+              <div class="export-actions">
+                <button class="btn btn-secondary btn-sm export-btn" onclick="triggerDownload('${r.type}', 'XLSX', this)" title="Download Excel Spreadsheet">
+                  ${WRMS_ICONS.fileExcel || '📊'}
+                  <span>Excel (.xlsx)</span>
+                </button>
+                <button class="btn btn-secondary btn-sm export-btn" onclick="triggerDownload('${r.type}', 'PDF', this)" title="Download PDF Document">
+                  ${WRMS_ICONS.filePdf || '📄'}
+                  <span>PDF</span>
+                </button>
+                <button class="btn btn-secondary btn-sm export-btn" onclick="triggerDownload('${r.type}', 'CSV', this)" title="Download CSV Dataset">
+                  ${WRMS_ICONS.fileCsv || '📑'}
+                  <span>CSV</span>
+                </button>
+                <button class="btn btn-secondary btn-sm export-btn" onclick="triggerDownload('${r.type}', 'PNG', this)" title="Download PNG Image">
+                  <span>🖼️ PNG</span>
+                </button>
+                <button class="btn btn-secondary btn-sm export-btn" onclick="triggerDownload('${r.type}', 'JPG', this)" title="Download JPG Image">
+                  <span>📷 JPG</span>
+                </button>
               </div>
             </div>
-            <p style="font-size:0.84rem; color:var(--text-muted); line-height:1.4;">${r.desc}</p>
-          </div>
-          <div class="export-actions">
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'XLSX')" title="Download Excel Spreadsheet">
-              ${WRMS_ICONS.fileExcel || '📊'}
-              <span>Excel (.xlsx)</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PDF')" title="Download PDF Document">
-              ${WRMS_ICONS.filePdf || '📄'}
-              <span>PDF</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'CSV')" title="Download CSV Dataset">
-              ${WRMS_ICONS.fileCsv || '📑'}
-              <span>CSV</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'PNG')" title="Download PNG Image">
-              <span>🖼️ PNG</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'JPG')" title="Download JPG Image">
-              <span>📷 JPG</span>
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="triggerDownload('${r.type}', 'JPEG')" title="Download JPEG Image">
-              <span>🖼️ JPEG</span>
-            </button>
-          </div>
+          `).join("")}
         </div>
-      `).join("")}
-    </div>
+      </div>
+    `).join("")}
   `;
 }
 
-async function triggerDownload(reportType, format) {
+async function triggerDownload(reportType, format, btnEl) {
+  let originalBtnHtml = "";
+  if (btnEl) {
+    originalBtnHtml = btnEl.innerHTML;
+    btnEl.disabled = true;
+    btnEl.innerHTML = `<span class="spinner-border spinner-border-sm" style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin 0.75s linear infinite;margin-right:6px;"></span> Generating...`;
+  }
+
   try {
     toast(`Generating ${reportType} in ${format} format...`, "info");
     const token = state.token;
-    const url = `/api/admin/exports/download?reportType=${encodeURIComponent(reportType)}&format=${encodeURIComponent(format)}`;
-    
+
+    const cycleId = document.getElementById("exportCycleSelect")?.value || "";
+    const startDate = document.getElementById("exportStartDate")?.value || "";
+    const endDate = document.getElementById("exportEndDate")?.value || "";
+
+    let url = `/api/admin/exports/download?reportType=${encodeURIComponent(reportType)}&format=${encodeURIComponent(format)}`;
+    if (cycleId) url += `&cycleId=${encodeURIComponent(cycleId)}`;
+    if (startDate) url += `&startDate=${encodeURIComponent(startDate)}`;
+    if (endDate) url += `&endDate=${encodeURIComponent(endDate)}`;
+
     const res = await fetch(url, {
       method: "GET",
       headers: {
@@ -774,16 +855,23 @@ async function triggerDownload(reportType, format) {
     });
 
     if (!res.ok) {
-      let errText = "";
+      let errMsg = `Unable to generate ${format} export (HTTP ${res.status}).`;
       try {
-        errText = await res.text();
-      } catch (e) {}
-      throw new Error(errText || `Unable to generate ${format} export (HTTP ${res.status}). Please try again.`);
+        const errJson = await res.json();
+        if (errJson.message) errMsg = errJson.message;
+        else if (errJson.error) errMsg = errJson.error;
+      } catch (_) {
+        try {
+          const txt = await res.text();
+          if (txt) errMsg = txt;
+        } catch (__) {}
+      }
+      throw new Error(errMsg);
     }
 
     const blob = await res.blob();
     if (!blob || blob.size === 0) {
-      throw new Error(`Unable to generate ${format} export (received 0 bytes). Please try again.`);
+      throw new Error(`Unable to generate ${format} export (received 0 bytes).`);
     }
 
     const extMap = {
@@ -808,8 +896,32 @@ async function triggerDownload(reportType, format) {
 
     toast(`Downloaded ${filename} successfully (${(blob.size / 1024).toFixed(1)} KB)!`, "success");
   } catch (err) {
-    toast(`Export error: ${err.message || "Failed to download export"}`, "error");
+    toast(`${err.message || "Failed to download export"}`, "warning");
+  } finally {
+    if (btnEl && originalBtnHtml) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = originalBtnHtml;
+    }
   }
+}
+
+function handleExportCycleChange(cycleId) {
+  if (cycleId) {
+    const sInput = document.getElementById("exportStartDate");
+    const eInput = document.getElementById("exportEndDate");
+    if (sInput) sInput.value = "";
+    if (eInput) eInput.value = "";
+  }
+}
+
+function resetExportFilters() {
+  const cycleSelect = document.getElementById("exportCycleSelect");
+  const sInput = document.getElementById("exportStartDate");
+  const eInput = document.getElementById("exportEndDate");
+  if (cycleSelect) cycleSelect.value = "";
+  if (sInput) sInput.value = "";
+  if (eInput) eInput.value = "";
+  toast("Export filters reset to active cycle default.", "info");
 }
 
 

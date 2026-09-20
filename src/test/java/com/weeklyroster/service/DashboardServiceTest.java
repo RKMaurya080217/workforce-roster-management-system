@@ -108,7 +108,7 @@ class DashboardServiceTest {
         when(assignmentRepository.findByRosterDate(any(LocalDate.class))).thenReturn(List.of(assignment));
         when(leaveRepository.findByStatusOrderByRequestedAtAsc(LeaveStatus.PENDING)).thenReturn(List.of());
         when(employeeRepository.findAllByOrderByIdAsc()).thenReturn(List.of(employee));
-        when(cycleRepository.findAllByOrderByStartDateDesc()).thenReturn(List.of());
+        when(cycleRepository.findTopByOrderByStartDateDesc()).thenReturn(Optional.empty());
 
         DashboardDetailResponse response = dashboardService.dashboardDetails();
 

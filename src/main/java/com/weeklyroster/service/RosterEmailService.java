@@ -24,7 +24,6 @@ import com.weeklyroster.service.email.EmailMessage;
 import com.weeklyroster.service.email.EmailService;
 import com.weeklyroster.service.email.BrevoEmailService;
 import com.weeklyroster.service.email.SmtpEmailService;
-import com.weeklyroster.service.sms.SmsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,7 +54,6 @@ public class RosterEmailService {
     private final RosterAssignmentRepository assignmentRepository;
     private final ShiftRepository shiftRepository;
     private final EmailService emailService;
-    private final SmsService smsService;
     private final com.weeklyroster.service.push.NotificationPushService pushService;
 
     @Value("${roster.auto-email.enabled:true}")
@@ -82,7 +80,6 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
                               EmailService emailService,
-                              @Autowired(required = false) SmsService smsService,
                               @Autowired(required = false) com.weeklyroster.service.push.NotificationPushService pushService) {
         this.emailLogRepository = emailLogRepository;
         this.employeeRepository = employeeRepository;
@@ -90,7 +87,6 @@ public class RosterEmailService {
         this.assignmentRepository = assignmentRepository;
         this.shiftRepository = shiftRepository;
         this.emailService = emailService != null ? emailService : new EmailService(new BrevoEmailService(), new SmtpEmailService(null));
-        this.smsService = smsService;
         this.pushService = pushService;
     }
 
@@ -99,18 +95,8 @@ public class RosterEmailService {
                               RosterCycleRepository cycleRepository,
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository,
-                              EmailService emailService,
-                              SmsService smsService) {
-        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, smsService, null);
-    }
-
-    public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
-                              EmployeeRepository employeeRepository,
-                              RosterCycleRepository cycleRepository,
-                              RosterAssignmentRepository assignmentRepository,
-                              ShiftRepository shiftRepository,
                               EmailService emailService) {
-        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, null, null);
+        this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository, emailService, null);
     }
 
     public RosterEmailService(EmailDeliveryLogRepository emailLogRepository,
@@ -119,7 +105,7 @@ public class RosterEmailService {
                               RosterAssignmentRepository assignmentRepository,
                               ShiftRepository shiftRepository) {
         this(emailLogRepository, employeeRepository, cycleRepository, assignmentRepository, shiftRepository,
-                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)), null, null);
+                new EmailService(new BrevoEmailService(), new SmtpEmailService(null)), null);
     }
 
     /**
@@ -432,7 +418,6 @@ public class RosterEmailService {
         if (result.isSuccess()) {
             deliveryLog.setStatus(EmailDeliveryStatus.SENT);
             deliveryLog.setErrorMessage(null);
-            triggerSmsNotification(cycle, emp, emailType, dateRange);
             triggerPushNotification(cycle, emp, emailType, dateRange);
         } else {
             deliveryLog.setStatus(EmailDeliveryStatus.FAILED);
@@ -461,16 +446,6 @@ public class RosterEmailService {
                 deliveryLog.getStatus());
 
         return emailLogRepository.save(deliveryLog);
-    }
-
-    private void triggerSmsNotification(RosterCycle cycle, Employee emp, EmailType emailType, String dateRange) {
-        if (smsService == null || emp == null) return;
-        try {
-            boolean isFinal = (emailType == EmailType.FINAL_ROSTER);
-            smsService.sendRosterSms(cycle, emp, isFinal, dateRange);
-        } catch (Exception ex) {
-            log.warn("[WRMS SMS] Failed to trigger SMS notification for employee {}: {}", emp.getEmployeeCode(), ex.getMessage());
-        }
     }
 
     private void triggerPushNotification(RosterCycle cycle, Employee emp, EmailType emailType, String dateRange) {

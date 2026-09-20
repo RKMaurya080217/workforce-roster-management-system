@@ -173,34 +173,6 @@
             </div>
             <p class="demo-notice-text">Use authorized credentials provided by your administrator.</p>
           </div>
-
-          <footer class="auth-footer">
-            <div class="auth-footer-brand">
-              <strong>WRMS</strong> &bull; Workforce Roster Management System &bull; <span class="badge-version">v2.0</span>
-            </div>
-            <div class="footer-stats-row">
-              <span class="footer-stat-badge">
-                <span>👥 Visitors:</span>
-                <strong class="stat-value wrms-total-visitors">...</strong>
-              </span>
-              <span class="footer-sep">&bull;</span>
-              <span class="footer-stat-badge">
-                <span class="status-dot online"></span>
-                <span>Online:</span>
-                <strong class="stat-value wrms-online-visitors">...</strong>
-              </span>
-            </div>
-            <div class="auth-footer-contact">
-              <span>Contact: <strong>Rajat Kumar Maurya</strong></span>
-              <span class="footer-sep">&bull;</span>
-              <a href="tel:8565005534" class="footer-link">8565005534</a>
-              <span class="footer-sep">&bull;</span>
-              <a href="mailto:rajatkumarmaury@gmail.com" class="footer-link">rajatkumarmaury@gmail.com</a>
-            </div>
-            <div class="auth-footer-copy">
-              &copy; 2026 WRMS. All Rights Reserved.
-            </div>
-          </footer>
         </div>
 
         <!-- Right Side: Premium Enterprise Hero Panel -->
@@ -312,7 +284,7 @@
         </main>
 
         <!-- Full Bottom Footer on Login Page -->
-        <footer class="auth-page-footer">
+        <footer class="auth-page-footer auth-footer">
           <div class="footer-primary-row">
             <strong>WRMS</strong> &bull; Workforce Roster Management System &bull; <span class="badge-version">v2.0</span>
           </div>
@@ -368,6 +340,12 @@
           <button id="sidebarToggleBtn" class="btn-icon sidebar-collapse-btn" title="Collapse Sidebar" aria-label="Toggle Sidebar Navigation" aria-expanded="true" aria-controls="appSidebar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <button id="sidebarMobileCloseBtn" class="btn-icon sidebar-mobile-close-btn" title="Close Menu" aria-label="Close Navigation Menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
         </div>
@@ -467,9 +445,6 @@
                   <div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
                     <button id="fcmDiagnosticsBtn" class="btn-xs btn-outline" title="View Web Push Diagnostics" style="font-size:0.72rem; padding:2px 6px;">
                       FCM Diag
-                    </button>
-                    <button id="smsDiagnosticsBtn" class="btn-xs btn-outline" title="View Telecom SMS Diagnostics &amp; Test" style="font-size:0.72rem; padding:2px 6px;">
-                      💬 SMS Status
                     </button>
                     <button id="adminTestPushBtn" class="btn-xs btn-outline hidden" title="Send test push notification" style="font-size:0.72rem; padding:2px 8px;">
                       Test Push
@@ -758,11 +733,11 @@
     </div>
   </div>
 
-  <!-- Modal 2B: Distribute Roster Email & SMS Modal -->
+  <!-- Modal 2B: Distribute Roster Email Modal -->
   <div id="emailRosterModal" class="modal-backdrop hidden">
     <div class="modal-box modal-sm">
       <div class="modal-header">
-        <h3>Distribute Roster via Email & SMS</h3>
+        <h3>Distribute Roster via Email</h3>
         <button class="modal-close" data-close-modal="emailRosterModal">&times;</button>
       </div>
       <form id="emailRosterForm" class="modal-body stack-gap">
@@ -777,13 +752,10 @@
           </label>
           <textarea id="emailAdminMessageInput" rows="3" placeholder="e.g. Please note: Project release week, ensure full handover on duty shifts."></textarea>
         </div>
-        <div style="font-size:0.75rem; color:var(--text-muted);">
-          📲 An SMS alert will also be dispatched to all staff with a registered mobile number.
-        </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="emailRosterModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="triggerSendEmailBtn">
-            <span>Send Email & SMS</span>
+            <span>Send Roster Email</span>
             <div class="spinner hidden"></div>
           </button>
         </div>

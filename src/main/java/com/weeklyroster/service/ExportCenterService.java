@@ -30,6 +30,8 @@ public class ExportCenterService {
     private final HolidayRepository holidayRepository;
     private final WorkloadAnalyticsService workloadAnalyticsService;
     private final RosterValidatorService rosterValidatorService;
+    private final EmployeeSkillRepository employeeSkillRepository;
+    private final ShiftRepository shiftRepository;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -41,7 +43,9 @@ public class ExportCenterService {
                                AuditLogRepository auditLogRepository,
                                HolidayRepository holidayRepository,
                                WorkloadAnalyticsService workloadAnalyticsService,
-                               RosterValidatorService rosterValidatorService) {
+                               RosterValidatorService rosterValidatorService,
+                               EmployeeSkillRepository employeeSkillRepository,
+                               ShiftRepository shiftRepository) {
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.employeeRepository = employeeRepository;
@@ -50,14 +54,39 @@ public class ExportCenterService {
         this.holidayRepository = holidayRepository;
         this.workloadAnalyticsService = workloadAnalyticsService;
         this.rosterValidatorService = rosterValidatorService;
+        this.employeeSkillRepository = employeeSkillRepository;
+        this.shiftRepository = shiftRepository;
     }
 
     public byte[] generateExport(ExportReportRequest req) {
         String reportType = req.reportType() != null ? req.reportType().toUpperCase() : "WEEKLY_ROSTER";
         String format = req.format() != null ? req.format().toLowerCase() : "xlsx";
 
-        LocalDate start = req.startDate() != null ? req.startDate() : LocalDate.now().minusWeeks(1);
-        LocalDate end = req.endDate() != null ? req.endDate() : LocalDate.now().plusWeeks(1);
+        LocalDate start = req.startDate();
+        LocalDate end = req.endDate();
+
+        if (req.cycleId() != null) {
+            RosterCycle cycle = cycleRepository.findById(req.cycleId()).orElse(null);
+            if (cycle != null) {
+                if (start == null) start = cycle.getStartDate();
+                if (end == null) end = cycle.getEndDate();
+            }
+        }
+
+        if (start == null || end == null) {
+            List<RosterCycle> allCycles = cycleRepository.findAll();
+            if (!allCycles.isEmpty()) {
+                RosterCycle latestCycle = allCycles.stream()
+                        .filter(c -> c.getStatus() == RosterStatus.ACTIVE || c.getStatus() == RosterStatus.PUBLISHED)
+                        .reduce((first, second) -> second)
+                        .orElse(allCycles.get(allCycles.size() - 1));
+                if (start == null) start = latestCycle.getStartDate();
+                if (end == null) end = latestCycle.getEndDate();
+            }
+        }
+
+        if (start == null) start = LocalDate.now().minusWeeks(1);
+        if (end == null) end = LocalDate.now().plusWeeks(1);
 
         List<String[]> rows = new ArrayList<>();
         String title;
@@ -67,16 +96,30 @@ public class ExportCenterService {
                 title = "WRMS Weekly Roster Export (" + start + " to " + end + ")";
                 rows.add(new String[]{"Date", "Employee Code", "Employee Name", "Gender", "Shift Type", "Shift Timing", "Status", "Overridden"});
                 List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(start, end);
+                if (assignments.isEmpty() && req.cycleId() == null) {
+                    List<RosterCycle> cycles = cycleRepository.findAll();
+                    for (int i = cycles.size() - 1; i >= 0; i--) {
+                        RosterCycle c = cycles.get(i);
+                        List<RosterAssignment> cycleAssignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(c.getStartDate(), c.getEndDate());
+                        if (!cycleAssignments.isEmpty()) {
+                            assignments = cycleAssignments;
+                            break;
+                        }
+                    }
+                    if (assignments.isEmpty()) {
+                        assignments = assignmentRepository.findAll();
+                    }
+                }
                 for (RosterAssignment a : assignments) {
                     Employee e = a.getEmployee();
                     Shift s = a.getShift();
                     String statusStr = a.isOnLeave() ? "ON_LEAVE" : (a.isWeeklyOff() ? "WEEKLY_OFF" : "WORKING");
-                    String timingStr = (s != null && !a.isWeeklyOff() && !a.isOnLeave()) ? s.getStartTime() + " - " + s.getEndTime() : "-";
+                    String timingStr = (s != null && !a.isWeeklyOff() && !a.isOnLeave()) ? s.getTimingDisplay() : "-";
                     rows.add(new String[]{
-                            a.getRosterDate().toString(),
-                            e.getEmployeeCode(),
-                            e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : ""),
-                            e.getGender() != null ? e.getGender().name() : "-",
+                            a.getRosterDate() != null ? a.getRosterDate().toString() : "-",
+                            e != null ? e.getEmployeeCode() : "-",
+                            e != null ? e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "") : "-",
+                            e != null && e.getGender() != null ? e.getGender().name() : "-",
                             s != null ? s.getShiftType().name() : "-",
                             timingStr,
                             statusStr,
@@ -88,15 +131,29 @@ public class ExportCenterService {
                 title = "WRMS Employee Work Schedule (" + start + " to " + end + ")";
                 rows.add(new String[]{"Employee Code", "Employee Name", "Email", "Date", "Shift", "Working/Off", "Notes"});
                 List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(start, end);
+                if (assignments.isEmpty() && req.cycleId() == null) {
+                    List<RosterCycle> cycles = cycleRepository.findAll();
+                    for (int i = cycles.size() - 1; i >= 0; i--) {
+                        RosterCycle c = cycles.get(i);
+                        List<RosterAssignment> cycleAssignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(c.getStartDate(), c.getEndDate());
+                        if (!cycleAssignments.isEmpty()) {
+                            assignments = cycleAssignments;
+                            break;
+                        }
+                    }
+                    if (assignments.isEmpty()) {
+                        assignments = assignmentRepository.findAll();
+                    }
+                }
                 for (RosterAssignment a : assignments) {
-                    if (req.employeeId() == null || a.getEmployee().getId().equals(req.employeeId())) {
+                    if (req.employeeId() == null || (a.getEmployee() != null && a.getEmployee().getId().equals(req.employeeId()))) {
                         Employee e = a.getEmployee();
                         Shift s = a.getShift();
                         rows.add(new String[]{
-                                e.getEmployeeCode(),
-                                e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : ""),
-                                e.getEmail() != null ? e.getEmail() : "-",
-                                a.getRosterDate().toString(),
+                                e != null ? e.getEmployeeCode() : "-",
+                                e != null ? e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "") : "-",
+                                e != null && e.getEmail() != null ? e.getEmail() : "-",
+                                a.getRosterDate() != null ? a.getRosterDate().toString() : "-",
                                 s != null ? s.getShiftType().name() : (a.isWeeklyOff() ? "OFF" : "LEAVE"),
                                 a.isWeeklyOff() ? "OFF" : (a.isOnLeave() ? "LEAVE" : "DUTY"),
                                 a.isOverridden() ? "Manual Override" : "Standard Assignment"
@@ -104,51 +161,78 @@ public class ExportCenterService {
                     }
                 }
             }
-            case "LEAVE_REPORT" -> {
-                title = "WRMS Employee Leave Report (" + start + " to " + end + ")";
-                rows.add(new String[]{"Leave ID", "Employee Code", "Employee Name", "Start Date", "End Date", "Reason", "Status", "Requested At", "Reviewed At"});
-                List<LeaveRequest> leaves = leaveRequestRepository.findByStartDateLessThanEqualAndEndDateGreaterThanEqual(end, start);
-                for (LeaveRequest l : leaves) {
-                    Employee e = l.getEmployee();
+            case "EMPLOYEE_MASTER" -> {
+                title = "WRMS Employee Master Directory";
+                rows.add(new String[]{"Employee Code", "Full Name", "Email", "Gender", "Contact Number", "System Role", "Status"});
+                List<Employee> employees = employeeRepository.findAll();
+                for (Employee e : employees) {
+                    String roleStr = (e.getUser() != null && e.getUser().getRole() != null) ? e.getUser().getRole().name() : "ROLE_EMPLOYEE";
                     rows.add(new String[]{
-                            "#" + l.getId(),
                             e.getEmployeeCode(),
                             e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : ""),
-                            l.getStartDate().toString(),
-                            l.getEndDate().toString(),
-                            l.getReason() != null ? l.getReason() : "-",
-                            l.getStatus() != null ? l.getStatus().name() : "-",
-                            l.getRequestedAt() != null ? l.getRequestedAt().format(TIME_FMT) : "-",
-                            l.getReviewedAt() != null ? l.getReviewedAt().format(TIME_FMT) : "-"
+                            e.getEmail() != null ? e.getEmail() : "-",
+                            e.getGender() != null ? e.getGender().name() : "-",
+                            e.getContactNumber() != null ? e.getContactNumber() : "-",
+                            roleStr,
+                            e.isActive() ? "ACTIVE" : "INACTIVE"
                     });
+                }
+            }
+            case "LEAVE_REGISTER", "LEAVE_REPORT" -> {
+                title = "WRMS Leave Register (" + start + " to " + end + ")";
+                rows.add(new String[]{"Leave ID", "Employee Code", "Employee Name", "Start Date", "End Date", "Reason", "Status", "Requested At", "Reviewed At"});
+                List<LeaveRequest> leaves = leaveRequestRepository.findByStartDateLessThanEqualAndEndDateGreaterThanEqual(end, start);
+                if (leaves.isEmpty()) {
+                    leaves = leaveRequestRepository.findAll();
+                }
+                for (LeaveRequest l : leaves) {
+                    if (req.employeeId() == null || (l.getEmployee() != null && l.getEmployee().getId().equals(req.employeeId()))) {
+                        Employee e = l.getEmployee();
+                        rows.add(new String[]{
+                                "#" + l.getId(),
+                                e != null ? e.getEmployeeCode() : "-",
+                                e != null ? e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "") : "-",
+                                l.getStartDate() != null ? l.getStartDate().toString() : "-",
+                                l.getEndDate() != null ? l.getEndDate().toString() : "-",
+                                l.getReason() != null ? l.getReason() : "-",
+                                l.getStatus() != null ? l.getStatus().name() : "-",
+                                l.getRequestedAt() != null ? l.getRequestedAt().format(TIME_FMT) : "-",
+                                l.getReviewedAt() != null ? l.getReviewedAt().format(TIME_FMT) : "-"
+                        });
+                    }
                 }
             }
             case "WORKLOAD_REPORT" -> {
                 title = "WRMS Employee Workload Analysis Report (" + start + " to " + end + ")";
                 rows.add(new String[]{"Employee Code", "Employee Name", "Working Days", "OFF Days", "Morning", "General", "Evening", "Night", "Weekend Duties", "Holiday Duties", "Consecutive Days", "Workload Score", "Rating"});
                 WorkloadReportResponse wr = workloadAnalyticsService.calculateWorkload(start, end, req.employeeId());
-                for (EmployeeWorkloadMetric m : wr.employeeWorkloads()) {
-                    rows.add(new String[]{
-                            m.employeeCode(),
-                            m.employeeName(),
-                            String.valueOf(m.workingDays()),
-                            String.valueOf(m.offDays()),
-                            String.valueOf(m.morningShifts()),
-                            String.valueOf(m.generalShifts()),
-                            String.valueOf(m.eveningShifts()),
-                            String.valueOf(m.nightShifts()),
-                            String.valueOf(m.weekendDuties()),
-                            String.valueOf(m.holidayDuties()),
-                            String.valueOf(m.maxConsecutiveWorkDays()),
-                            String.valueOf(m.workloadScore()),
-                            m.workloadRating()
-                    });
+                if (wr != null && wr.employeeWorkloads() != null) {
+                    for (EmployeeWorkloadMetric m : wr.employeeWorkloads()) {
+                        rows.add(new String[]{
+                                m.employeeCode(),
+                                m.employeeName(),
+                                String.valueOf(m.workingDays()),
+                                String.valueOf(m.offDays()),
+                                String.valueOf(m.morningShifts()),
+                                String.valueOf(m.generalShifts()),
+                                String.valueOf(m.eveningShifts()),
+                                String.valueOf(m.nightShifts()),
+                                String.valueOf(m.weekendDuties()),
+                                String.valueOf(m.holidayDuties()),
+                                String.valueOf(m.maxConsecutiveWorkDays()),
+                                String.valueOf(m.workloadScore()),
+                                m.workloadRating()
+                        });
+                    }
                 }
             }
             case "AUDIT_REPORT" -> {
                 title = "WRMS System Audit Trail Report";
                 rows.add(new String[]{"Log ID", "Action", "Entity Name", "Entity ID", "Employee", "Old Value", "New Value", "Reason", "Source", "Timestamp"});
                 List<AuditLog> logs = auditLogRepository.findRecentLogs();
+                if (logs.isEmpty()) {
+                    logs = auditLogRepository.findAll();
+                }
                 for (AuditLog l : logs) {
                     rows.add(new String[]{
                             "#" + l.getId(),
@@ -172,10 +256,48 @@ public class ExportCenterService {
                     rows.add(new String[]{
                             "#" + h.getId(),
                             h.getName(),
-                            h.getHolidayDate().toString(),
+                            h.getHolidayDate() != null ? h.getHolidayDate().toString() : "-",
                             h.getDescription() != null ? h.getDescription() : "-",
                             h.isActive() ? "ACTIVE" : "INACTIVE",
                             h.getCreatedAt() != null ? h.getCreatedAt().format(TIME_FMT) : "-"
+                    });
+                }
+            }
+            case "SKILL_MATRIX" -> {
+                title = "WRMS Workforce Skill Matrix & Competency Register";
+                rows.add(new String[]{"Employee Code", "Employee Name", "Skill Name", "Category", "Proficiency Level", "Certified", "Certification Name", "Expiry Date", "Status"});
+                List<EmployeeSkill> skills = employeeSkillRepository.findAllByOrderByEmployeeFirstNameAsc();
+                if (skills.isEmpty()) {
+                    skills = employeeSkillRepository.findAll();
+                }
+                for (EmployeeSkill es : skills) {
+                    Employee e = es.getEmployee();
+                    Skill s = es.getSkill();
+                    rows.add(new String[]{
+                            e != null ? e.getEmployeeCode() : "-",
+                            e != null ? e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "") : "-",
+                            s != null ? s.getName() : "-",
+                            s != null && s.getCategory() != null ? s.getCategory() : "-",
+                            es.getProficiencyLevel() != null ? es.getProficiencyLevel().name() : "-",
+                            es.isCertified() ? "YES" : "NO",
+                            es.getCertificationName() != null ? es.getCertificationName() : "-",
+                            es.getCertificationExpiryDate() != null ? es.getCertificationExpiryDate().toString() : "-",
+                            es.isActive() ? "ACTIVE" : "INACTIVE"
+                    });
+                }
+            }
+            case "SHIFT_CAPACITY" -> {
+                title = "WRMS Operational Shift Definitions & Capacity Config";
+                rows.add(new String[]{"Shift ID", "Shift Type", "Capacity", "Timing", "Overnight", "Status"});
+                List<Shift> shifts = shiftRepository.findAll();
+                for (Shift s : shifts) {
+                    rows.add(new String[]{
+                            "#" + s.getId(),
+                            s.getShiftType() != null ? s.getShiftType().name() : "-",
+                            String.valueOf(s.getCapacity()),
+                            s.getTimingDisplay() != null ? s.getTimingDisplay() : "-",
+                            s.isOvernight() ? "YES" : "NO",
+                            s.isActive() ? "ACTIVE" : "INACTIVE"
                     });
                 }
             }
@@ -185,28 +307,46 @@ public class ExportCenterService {
                 Long cid = req.cycleId();
                 if (cid == null) {
                     List<RosterCycle> cycles = cycleRepository.findAll();
-                    if (!cycles.isEmpty()) cid = cycles.get(cycles.size() - 1).getId();
+                    if (!cycles.isEmpty()) {
+                        cid = cycles.get(cycles.size() - 1).getId();
+                    }
                 }
                 if (cid != null) {
                     RosterValidationResponse vr = rosterValidatorService.validateRoster(cid);
-                    for (RosterValidationFinding f : vr.findings()) {
-                        rows.add(new String[]{
-                                f.ruleCode(),
-                                f.ruleName(),
-                                f.severity() != null ? f.severity().name() : "-",
-                                f.employeeName() != null ? f.employeeName() + " (" + f.employeeCode() + ")" : "All Personnel",
-                                f.date() != null ? f.date().toString() : "Whole Cycle",
-                                f.message(),
-                                f.details()
-                        });
+                    if (vr != null && vr.findings() != null) {
+                        for (RosterValidationFinding f : vr.findings()) {
+                            rows.add(new String[]{
+                                    f.ruleCode(),
+                                    f.ruleName(),
+                                    f.severity() != null ? f.severity().name() : "-",
+                                    f.employeeName() != null ? f.employeeName() + " (" + f.employeeCode() + ")" : "All Personnel",
+                                    f.date() != null ? f.date().toString() : "Whole Cycle",
+                                    f.message(),
+                                    f.details()
+                            });
+                        }
                     }
+                }
+                if (rows.size() == 1) {
+                    rows.add(new String[]{
+                            "CLEAN",
+                            "No Policy Violations",
+                            "INFO",
+                            "All Personnel",
+                            start.toString() + " to " + end.toString(),
+                            "The selected roster passed all compliance rules and operational constraints with 0 violations.",
+                            "Compliant Roster"
+                    });
                 }
             }
             default -> {
-                title = "WRMS General Export";
+                title = "WRMS " + reportType + " Export";
                 rows.add(new String[]{"Item", "Value"});
-                rows.add(new String[]{"Export Generated", LocalDateTime.now().format(TIME_FMT)});
             }
+        }
+
+        if (rows.size() <= 1) {
+            throw new BusinessException("No data available for the selected criteria.");
         }
 
         try {

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
 public class UnifiedApprovalService {
 
     private final ProfileChangeRequestService profileChangeRequestService;
@@ -41,6 +40,7 @@ public class UnifiedApprovalService {
         this.rosterReviewService = rosterReviewService;
     }
 
+    @Transactional(readOnly = true)
     public UnifiedApprovalsSummaryResponse getSummary() {
         List<ProfileChangeRequestResponse> profilePending = profileChangeRequestService.getPendingRequests();
         List<LeaveResponse> leavePending = leaveService.pending();
@@ -60,6 +60,7 @@ public class UnifiedApprovalService {
         );
     }
 
+    @Transactional(readOnly = true)
     public UnifiedApprovalsResponse getAllPending() {
         List<ProfileChangeRequestResponse> profilePending = profileChangeRequestService.getPendingRequests();
         List<LeaveResponse> leavePending = leaveService.pending();
@@ -89,7 +90,6 @@ public class UnifiedApprovalService {
         }
     }
 
-    @Transactional
     public LeaveResponse decideLeave(Long id, boolean approve, LeaveDecisionRequest request) {
         if (approve) {
             LeaveResponse res = leaveService.approve(id, request != null ? request : new LeaveDecisionRequest(null));
@@ -114,7 +114,6 @@ public class UnifiedApprovalService {
         }
     }
 
-    @Transactional
     public PreferenceResponse decidePreference(Long id, PreferenceDecisionRequest request, String adminUsername) {
         PreferenceResponse res = preferenceService.decidePreference(id, request, adminUsername);
         if (request != null && request.status() == com.weeklyroster.entity.PreferenceStatus.APPROVED) {

@@ -48,6 +48,54 @@ public class Batch15CombinedFeaturesTest {
     @Autowired
     private ShiftRepository shiftRepository;
 
+    @Autowired
+    private RosterCycleRepository cycleRepository;
+
+    @Autowired
+    private RosterAssignmentRepository assignmentRepository;
+
+    @Autowired
+    private LeaveRequestRepository leaveRequestRepository;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpTestData() {
+        if (cycleRepository.count() == 0) {
+            LocalDate monday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+            RosterCycle cycle = new RosterCycle();
+            cycle.setStartDate(monday);
+            cycle.setEndDate(monday.plusDays(6));
+            cycle.setStatus(RosterStatus.PUBLISHED);
+            cycle.setGenerationMode(GenerationMode.AUTOMATIC);
+            cycle.setGeneratedAt(java.time.LocalDateTime.now());
+            cycle = cycleRepository.save(cycle);
+
+            List<Employee> emps = employeeRepository.findAll();
+            Shift morning = shiftRepository.findByShiftType(ShiftType.MORNING).orElse(null);
+            if (!emps.isEmpty() && morning != null) {
+                RosterAssignment a = new RosterAssignment();
+                a.setCycle(cycle);
+                a.setEmployee(emps.get(0));
+                a.setShift(morning);
+                a.setRosterDate(monday);
+                assignmentRepository.save(a);
+            }
+        }
+
+        if (leaveRequestRepository.count() == 0) {
+            List<Employee> emps = employeeRepository.findAll();
+            if (!emps.isEmpty()) {
+                LeaveRequest lr = new LeaveRequest();
+                lr.setEmployee(emps.get(0));
+                lr.setStartDate(LocalDate.now());
+                lr.setEndDate(LocalDate.now().plusDays(1));
+                lr.setReason("Annual Leave");
+                lr.setStatus(LeaveStatus.APPROVED);
+                lr.setRequestedAt(java.time.LocalDateTime.now());
+                leaveRequestRepository.save(lr);
+            }
+        }
+    }
+
     @Test
     @DisplayName("1. Shift Handover: Create and list handover note")
     void testCreateHandover() {
