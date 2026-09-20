@@ -4493,7 +4493,6 @@ function renderWorkspaceOverviewHTML(data) {
     </div>
   `;
 }
-}
 
 function renderWorkspaceRosterHTML(roster, empId) {
   return `
