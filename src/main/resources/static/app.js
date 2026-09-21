@@ -478,7 +478,52 @@ function bindGlobalEvents() {
   }
 
   // Logout
-  dom.logoutBtn.addEventListener("click", handleLogout);
+  if (dom.logoutBtn) {
+    dom.logoutBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleLogout(e);
+    });
+  }
+
+  // Step 4: Top sidebar brand click -> Home / Dashboard
+  const sidebarBrandBtn = document.getElementById("sidebarBrandBtn");
+  if (sidebarBrandBtn) {
+    const handleBrandClick = (e) => {
+      e.stopPropagation();
+      const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
+      navigateTo(isEmployee ? "overview" : "dashboard");
+      closeMobileSidebar();
+    };
+    sidebarBrandBtn.addEventListener("click", handleBrandClick);
+    sidebarBrandBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleBrandClick(e);
+      }
+    });
+  }
+
+  // Step 5: Bottom user profile click -> Profile (Logout is isolated)
+  const sidebarUserProfileBtn = document.getElementById("sidebarUserProfileBtn");
+  if (sidebarUserProfileBtn) {
+    const handleProfileClick = (e) => {
+      e.stopPropagation();
+      const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
+      if (isEmployee) {
+        navigateTo("profile");
+      } else {
+        openAdminProfileModal();
+      }
+      closeMobileSidebar();
+    };
+    sidebarUserProfileBtn.addEventListener("click", handleProfileClick);
+    sidebarUserProfileBtn.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleProfileClick(e);
+      }
+    });
+  }
 
   // Refresh
   dom.globalRefreshBtn.addEventListener("click", () => {
@@ -1180,7 +1225,7 @@ function showWorkspace() {
 
   const brandEl = document.querySelector(".sidebar-brand-text strong");
   if (brandEl) {
-    brandEl.textContent = state.profile.role === "ROLE_EMPLOYEE" ? "WRMS Staff" : "WRMS Admin";
+    brandEl.textContent = state.profile.role === "ROLE_EMPLOYEE" ? "WRMS Employee" : "WRMS Admin";
   }
 
   renderNavigation();
@@ -1189,6 +1234,25 @@ function showWorkspace() {
     fetchPendingProfileChangesCount();
   }
 }
+
+function openAdminProfileModal() {
+  const username = (state.profile && state.profile.username) || "admin";
+  const name = (state.profile && state.profile.employeeName) || "System Administrator";
+  const role = (state.profile && state.profile.role) ? state.profile.role.replace("ROLE_", "") : "ADMIN";
+  const initials = username.substring(0, 2).toUpperCase();
+
+  const nameEl = document.getElementById("adminProfileModalName");
+  if (nameEl) nameEl.textContent = name;
+  const userEl = document.getElementById("adminProfileModalUsername");
+  if (userEl) userEl.textContent = username;
+  const roleEl = document.getElementById("adminProfileModalRole");
+  if (roleEl) roleEl.textContent = role;
+  const avatarEl = document.getElementById("adminProfileModalAvatar");
+  if (avatarEl) avatarEl.textContent = initials;
+
+  openModal("adminProfileModal");
+}
+window.openAdminProfileModal = openAdminProfileModal;
 
 
 /* ==========================================================================
@@ -1384,7 +1448,11 @@ function parseRouteTarget(target) {
       "admin/audit-trail": "audit",
       
       "employeeRosterDetail": "employeeRosterDetail",
-      "employee-roster": "employeeRosterDetail"
+      "employee-roster": "employeeRosterDetail",
+
+      "profile": "adminProfile",
+      "admin/profile": "adminProfile",
+      "admin-profile": "adminProfile"
     };
 
     if (clean === "leaves" || clean === "leave-requests" || clean === "admin/leaves" || clean === "admin/leave-requests") {
@@ -1575,6 +1643,11 @@ function navigateTo(target, options = {}) {
   }
 
   const { pageId, tabKey, canonicalHash } = parseRouteTarget(target);
+
+  if (pageId === "adminProfile") {
+    openAdminProfileModal();
+    return;
+  }
 
   state.activePage = pageId;
   if (tabKey) {

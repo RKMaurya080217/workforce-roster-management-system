@@ -16,8 +16,12 @@ import org.springframework.core.env.MapPropertySource;
 /**
  * Automatically detects and configures Railway production environment variables for:
  * 1. Server Port ($PORT)
- * 2. MySQL Database Connection ($MYSQLHOST, $MYSQLPORT, $MYSQLDATABASE, $MYSQLUSER, $MYSQLPASSWORD,
- *    or $MYSQL_URL, $MYSQL_PUBLIC_URL, $MYSQL_PRIVATE_URL, $DATABASE_URL, $DATABASE_PUBLIC_URL)
+ * 2. MySQL Database Connection with complete credential unification:
+ *    - Priority resolution across full connection URLs ($MYSQL_URL, $MYSQL_PUBLIC_URL, $DATABASE_URL)
+ *      and individual variables ($MYSQLHOST, $MYSQLPORT, $MYSQLUSER, $MYSQLPASSWORD, $MYSQLDATABASE)
+ *    - Seamless credential fallback: If $MYSQLHOST is set but $MYSQLPASSWORD is in $MYSQL_URL,
+ *      credentials from $MYSQL_URL are extracted and applied so the app never falls back to root/root
+ *    - Non-root user preservation: If the database user is 'railway' or custom, it is correctly preserved
  * 3. Hibernate MySQL Dialect enforcement to eliminate "Unable to determine Dialect without JDBC metadata" failures
  *
  * Retains safe local development fallbacks (localhost:3306 / 8080) when Railway variables are not present.
@@ -47,59 +51,109 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
             overrides.put("server.port", railwayPort.trim());
         }
 
-        // 2. Database configuration resolution
-        // Priority 1: Individual Railway MySQL variables (cleanest, no URL escaping issues)
-        String host = cleanValue(getFirstNonBlank(environment, "MYSQLHOST", "MYSQL_HOST", "DB_HOST", "DATABASE_HOST"));
-        String port = cleanValue(getFirstNonBlank(environment, "MYSQLPORT", "MYSQL_PORT", "DB_PORT", "DATABASE_PORT"));
-        String database = cleanValue(getFirstNonBlank(environment, "MYSQLDATABASE", "MYSQL_DATABASE", "DB_NAME", "DATABASE_NAME"));
-        String username = cleanValue(getFirstNonBlank(environment, "MYSQLUSER", "MYSQL_USER", "DB_USERNAME", "DATABASE_USERNAME"));
-        String password = getFirstNonBlank(environment, "MYSQLPASSWORD", "MYSQL_PASSWORD", "DB_PASSWORD", "DATABASE_PASSWORD");
+        // 2. Database configuration resolution with unified credential synthesis
+        // A. Parse full connection URL if available
+        String rawUrl = cleanValue(getFirstNonBlank(environment,
+                "MYSQL_URL",
+                "MYSQL_PUBLIC_URL",
+                "MYSQL_PRIVATE_URL",
+                "DATABASE_URL",
+                "DATABASE_PUBLIC_URL",
+                "SPRING_DATASOURCE_URL",
+                "DB_URL",
+                "JDBC_DATABASE_URL"));
 
-        boolean hasIndividualVars = (host != null && !host.isBlank() && !host.equalsIgnoreCase("localhost"));
+        ParsedUrl parsedUrl = (rawUrl != null && !rawUrl.isBlank() && !rawUrl.contains("localhost:3306"))
+                ? parseMysqlUrl(rawUrl)
+                : null;
 
-        if (hasIndividualVars) {
-            int portNum = 3306;
-            if (port != null && !port.isBlank()) {
+        // B. Check individual environment variables
+        String envHost = cleanValue(getFirstNonBlank(environment, "MYSQLHOST", "MYSQL_HOST", "DB_HOST", "DATABASE_HOST"));
+        String envPort = cleanValue(getFirstNonBlank(environment, "MYSQLPORT", "MYSQL_PORT", "DB_PORT", "DATABASE_PORT"));
+        String envDb   = cleanValue(getFirstNonBlank(environment, "MYSQLDATABASE", "MYSQL_DATABASE", "DB_NAME", "DATABASE_NAME"));
+        String envUser = cleanValue(getFirstNonBlank(environment,
+                "MYSQLUSER", "MYSQL_USER", "MYSQL_USERNAME",
+                "DB_USERNAME", "DB_USER",
+                "DATABASE_USERNAME", "DATABASE_USER",
+                "SPRING_DATASOURCE_USERNAME"));
+        String envPass = cleanPassword(getFirstNonBlank(environment,
+                "MYSQLPASSWORD", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD",
+                "DB_PASSWORD", "DB_PASS",
+                "DATABASE_PASSWORD",
+                "SPRING_DATASOURCE_PASSWORD"));
+
+        // C. Check if running in Railway / remote MySQL environment
+        boolean isRailwayOrRemote = (envHost != null && !envHost.isBlank() && !envHost.equalsIgnoreCase("localhost"))
+                || (parsedUrl != null && parsedUrl.host != null && !parsedUrl.host.equalsIgnoreCase("localhost"));
+
+        if (isRailwayOrRemote) {
+            String effectiveHost = (envHost != null && !envHost.isBlank() && !envHost.equalsIgnoreCase("localhost"))
+                    ? envHost
+                    : (parsedUrl != null ? parsedUrl.host : null);
+
+            int effectivePort = 3306;
+            if (envPort != null && !envPort.isBlank()) {
                 try {
-                    portNum = Integer.parseInt(port.trim());
+                    effectivePort = Integer.parseInt(envPort);
                 } catch (NumberFormatException ignored) {}
+            } else if (parsedUrl != null && parsedUrl.port > 0) {
+                effectivePort = parsedUrl.port;
             }
-            String dbName = (database != null && !database.isBlank())
-                    ? database.trim()
-                    : (host.contains("railway") ? "railway" : "weekly_roster_db");
 
-            String jdbcUrl = "jdbc:mysql://" + host.trim() + ":" + portNum + "/" + dbName
-                    + "?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Kolkata";
+            String effectiveDatabase = (envDb != null && !envDb.isBlank())
+                    ? envDb
+                    : (parsedUrl != null && parsedUrl.database != null && !parsedUrl.database.isBlank())
+                        ? parsedUrl.database
+                        : (effectiveHost != null && effectiveHost.contains("railway") ? "railway" : "weekly_roster_db");
+
+            // Unified credential resolution: prefer individual var, fall back to URL credentials
+            String effectiveUsername = (envUser != null && !envUser.isBlank())
+                    ? envUser
+                    : (parsedUrl != null && parsedUrl.username != null && !parsedUrl.username.isBlank())
+                        ? parsedUrl.username
+                        : null;
+
+            String effectivePassword = (envPass != null && !envPass.isBlank())
+                    ? envPass
+                    : (parsedUrl != null && parsedUrl.password != null && !parsedUrl.password.isBlank())
+                        ? parsedUrl.password
+                        : null;
+
+            // Direct JDBC URL without credentials pass-through support
+            String jdbcUrl;
+            if (rawUrl != null && rawUrl.startsWith("jdbc:mysql://") && !rawUrl.contains("@")) {
+                jdbcUrl = rawUrl;
+            } else {
+                jdbcUrl = "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + effectiveDatabase
+                        + "?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Kolkata";
+            }
 
             overrides.put("spring.datasource.url", jdbcUrl);
-            if (username != null && !username.isBlank()) {
-                overrides.put("spring.datasource.username", username.trim());
+
+            if (effectiveUsername != null && !effectiveUsername.isBlank()) {
+                overrides.put("spring.datasource.username", effectiveUsername);
             }
-            if (password != null) {
-                overrides.put("spring.datasource.password", password);
+            if (effectivePassword != null) {
+                overrides.put("spring.datasource.password", effectivePassword);
             }
-            String msg = String.format("[WRMS Production Config] Detected Railway MySQL environment. Configured host %s:%d and database %s", host.trim(), portNum, dbName);
+
+            boolean hasPassword = (effectivePassword != null && !effectivePassword.isBlank());
+            String msg = String.format("[WRMS Production Config] Detected Railway MySQL environment. Configured host %s:%d, database %s, username %s, passwordConfigured=%b",
+                    effectiveHost, effectivePort, effectiveDatabase,
+                    (effectiveUsername != null ? effectiveUsername : "DEFAULT"),
+                    hasPassword);
             System.out.println(msg);
             log.info(msg);
-        } else {
-            // Priority 2: Full MySQL URL (MYSQL_URL, MYSQL_PUBLIC_URL, MYSQL_PRIVATE_URL, DATABASE_URL, DATABASE_PUBLIC_URL)
-            String mysqlUrl = cleanValue(getFirstNonBlank(environment,
-                    "MYSQL_URL",
-                    "MYSQL_PUBLIC_URL",
-                    "MYSQL_PRIVATE_URL",
-                    "DATABASE_URL",
-                    "DATABASE_PUBLIC_URL",
-                    "SPRING_DATASOURCE_URL",
-                    "DB_URL",
-                    "JDBC_DATABASE_URL"));
 
-            if (mysqlUrl != null && !mysqlUrl.isBlank() && !mysqlUrl.contains("localhost:3306")) {
-                parseAndApplyMysqlUrl(mysqlUrl.trim(), overrides, environment);
-            } else {
-                String msg = "[WRMS Production Config] No remote Railway MySQL variables detected. Using default datasource fallback.";
-                System.out.println(msg);
-                log.info(msg);
+            if (!hasPassword) {
+                String warnMsg = "[WRMS Production Config] WARNING: No MySQL password found in environment variables (MYSQLPASSWORD, MYSQL_URL, DATABASE_URL, etc.)! If connection fails with Access Denied (Error 1045), please ensure MYSQLPASSWORD or MYSQL_URL is added to Railway Web Service variables.";
+                System.err.println(warnMsg);
+                log.warn(warnMsg);
             }
+        } else {
+            String msg = "[WRMS Production Config] No remote Railway MySQL variables detected. Using default datasource fallback.";
+            System.out.println(msg);
+            log.info(msg);
         }
 
         // 3. Mail environment variables mapping for Railway (MAIL_USERNAME, MAIL_APP_PASSWORD, etc.)
@@ -147,100 +201,106 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
         return trimmed;
     }
 
-    private void parseAndApplyMysqlUrl(String mysqlUrl, Map<String, Object> overrides, ConfigurableEnvironment environment) {
-        try {
-            String url = cleanValue(mysqlUrl);
-            if (url == null || url.isBlank()) return;
+    private static String cleanPassword(String pass) {
+        if (pass == null) return null;
+        String p = pass;
+        if ((p.startsWith("\"") && p.endsWith("\"")) || (p.startsWith("'") && p.endsWith("'"))) {
+            p = p.substring(1, p.length() - 1);
+        }
+        p = p.replaceAll("[\\r\\n]+$", "");
+        return p;
+    }
 
-            // Check if direct JDBC URL without credentials
-            if (url.startsWith("jdbc:mysql://") && !url.contains("@")) {
-                overrides.put("spring.datasource.url", url);
-                String fallbackUser = cleanValue(getFirstNonBlank(environment, "MYSQLUSER", "MYSQL_USER", "DB_USERNAME"));
-                String fallbackPass = getFirstNonBlank(environment, "MYSQLPASSWORD", "MYSQL_PASSWORD", "DB_PASSWORD");
-                if (fallbackUser != null && !fallbackUser.isBlank()) {
-                    overrides.put("spring.datasource.username", fallbackUser);
+    private static class ParsedUrl {
+        String host;
+        int port = 3306;
+        String database;
+        String username;
+        String password;
+    }
+
+    private ParsedUrl parseMysqlUrl(String rawUrl) {
+        try {
+            String url = cleanValue(rawUrl);
+            if (url == null || url.isBlank()) return null;
+
+            ParsedUrl result = new ParsedUrl();
+
+            // Extract query parameters if present (e.g. ?user=...&password=...)
+            if (url.contains("?")) {
+                String query = url.substring(url.indexOf('?') + 1);
+                for (String param : query.split("&")) {
+                    int eq = param.indexOf('=');
+                    if (eq != -1) {
+                        String k = param.substring(0, eq).trim();
+                        String v = param.substring(eq + 1).trim();
+                        if ("user".equalsIgnoreCase(k)) {
+                            try { result.username = URLDecoder.decode(v, StandardCharsets.UTF_8); } catch (Exception e) { result.username = v; }
+                        } else if ("password".equalsIgnoreCase(k)) {
+                            try { result.password = URLDecoder.decode(v, StandardCharsets.UTF_8); } catch (Exception e) { result.password = v; }
+                        }
+                    }
                 }
-                if (fallbackPass != null) {
-                    overrides.put("spring.datasource.password", fallbackPass);
-                }
-                String msg = "[WRMS Production Config] Detected JDBC MySQL URL directly.";
-                System.out.println(msg);
-                log.info(msg);
-                return;
             }
 
-            // Strip schema prefixes
+            // Strip protocol prefixes
             if (url.startsWith("jdbc:mysql://")) {
                 url = url.substring("jdbc:mysql://".length());
             } else if (url.startsWith("mysql://")) {
                 url = url.substring("mysql://".length());
             }
 
-            String username = null;
-            String password = null;
+            // Strip query string for path segment parsing
+            int qIdx = url.indexOf('?');
+            if (qIdx != -1) {
+                url = url.substring(0, qIdx);
+            }
+
+            // Extract embedded user:pass@host:port/database
             int atIndex = url.lastIndexOf('@');
             if (atIndex != -1) {
                 String userInfo = url.substring(0, atIndex);
                 url = url.substring(atIndex + 1);
                 int colonIndex = userInfo.indexOf(':');
                 if (colonIndex != -1) {
-                    username = userInfo.substring(0, colonIndex);
-                    password = userInfo.substring(colonIndex + 1);
+                    String u = userInfo.substring(0, colonIndex);
+                    String p = userInfo.substring(colonIndex + 1);
+                    try { result.username = URLDecoder.decode(u, StandardCharsets.UTF_8); } catch (Exception e) { result.username = u; }
+                    try { result.password = URLDecoder.decode(p, StandardCharsets.UTF_8); } catch (Exception e) { result.password = p; }
                 } else {
-                    username = userInfo;
+                    try { result.username = URLDecoder.decode(userInfo, StandardCharsets.UTF_8); } catch (Exception e) { result.username = userInfo; }
                 }
             }
 
-            // Decode URL-encoded credentials (e.g. %40 for @) if present
-            if (username != null) {
-                try {
-                    username = URLDecoder.decode(username, StandardCharsets.UTF_8);
-                } catch (Exception ignored) {}
-            }
-            if (password != null) {
-                try {
-                    password = URLDecoder.decode(password, StandardCharsets.UTF_8);
-                } catch (Exception ignored) {}
-            }
-
+            // Parse host:port/database
             int slashIndex = url.indexOf('/');
             String hostPort = slashIndex != -1 ? url.substring(0, slashIndex) : url;
-            String database = slashIndex != -1 ? url.substring(slashIndex + 1) : "";
-            if (database.contains("?")) {
-                database = database.substring(0, database.indexOf('?'));
-            }
-            if (database.isBlank()) {
-                String envDb = cleanValue(getFirstNonBlank(environment, "MYSQLDATABASE", "MYSQL_DATABASE", "DB_NAME"));
-                database = (envDb != null && !envDb.isBlank()) ? envDb : (hostPort.contains("railway") ? "railway" : "weekly_roster_db");
+            String db = slashIndex != -1 ? url.substring(slashIndex + 1) : "";
+            if (!db.isBlank()) {
+                result.database = db.trim();
             }
 
-            String host = hostPort;
-            int port = 3306;
             int portColon = hostPort.indexOf(':');
             if (portColon != -1) {
-                host = hostPort.substring(0, portColon);
+                result.host = hostPort.substring(0, portColon).trim();
                 try {
-                    port = Integer.parseInt(hostPort.substring(portColon + 1));
+                    result.port = Integer.parseInt(hostPort.substring(portColon + 1).trim());
                 } catch (NumberFormatException ignored) {}
+            } else {
+                result.host = hostPort.trim();
             }
 
-            String jdbcUrl = "jdbc:mysql://" + host + ":" + port + "/" + database
-                    + "?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Kolkata";
+            if (result.username != null) {
+                result.username = cleanValue(result.username);
+            }
+            if (result.password != null) {
+                result.password = cleanPassword(result.password);
+            }
 
-            overrides.put("spring.datasource.url", jdbcUrl);
-            if (username != null && !username.isBlank()) {
-                overrides.put("spring.datasource.username", username);
-            }
-            if (password != null) {
-                overrides.put("spring.datasource.password", password);
-            }
-            String msg = String.format("[WRMS Production Config] Successfully parsed MySQL URL. Configured host %s:%d and database %s", host, port, database);
-            System.out.println(msg);
-            log.info(msg);
+            return result;
         } catch (Exception e) {
-            String warnMsg = "[WRMS Production Config] Could not parse MySQL URL format: " + e.getMessage();
-            System.err.println(warnMsg);
-            log.warn(warnMsg);
+            log.warn("[WRMS Production Config] Could not parse MySQL URL format: {}", e.getMessage());
+            return null;
         }
     }
 }

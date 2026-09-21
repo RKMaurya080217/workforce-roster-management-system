@@ -1770,6 +1770,57 @@ textarea {
   margin: 0 auto;
 }
 
+.sidebar-brand-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  border-radius: var(--radius-md, 8px);
+  padding: 4px 6px;
+  transition: opacity var(--trans-fast), background-color var(--trans-fast);
+}
+
+.sidebar-brand-group:hover,
+.sidebar-brand-group:focus-visible {
+  opacity: 0.95;
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.user-profile-clickable {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  border-radius: var(--radius-md, 8px);
+  padding: 4px 6px;
+  transition: background-color var(--trans-fast);
+}
+
+.user-profile-clickable:hover,
+.user-profile-clickable:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.app-layout.sidebar-collapsed .app-sidebar .sidebar-brand-group,
+.app-sidebar.collapsed .sidebar-brand-group {
+  justify-content: center !important;
+  width: 100% !important;
+  padding: 4px 0 !important;
+}
+
+.app-layout.sidebar-collapsed .app-sidebar .user-profile-clickable,
+.app-sidebar.collapsed .user-profile-clickable {
+  justify-content: center !important;
+  width: 100% !important;
+  padding: 4px 0 !important;
+}
+
 /* ==========================================================================
    APP TOPBAR & MAIN STAGE
    ========================================================================== */

@@ -313,17 +313,19 @@
       <!-- Left Navigation Sidebar -->
       <aside class="app-sidebar" id="appSidebar">
         <div class="sidebar-header">
-          <div class="brand-logo small">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
-          </div>
-          <div class="sidebar-brand-text">
-            <strong>WRMS Admin</strong>
-            <span class="system-status"><span class="status-dot online"></span> System Online</span>
+          <div class="sidebar-brand-group" id="sidebarBrandBtn" role="button" tabindex="0" title="Go to Home / Dashboard" aria-label="Go to Home / Dashboard" style="cursor: pointer;">
+            <div class="brand-logo small">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <div class="sidebar-brand-text">
+              <strong id="sidebarBrandTitle">WRMS Admin</strong>
+              <span class="system-status"><span class="status-dot online"></span> System Online</span>
+            </div>
           </div>
           <button id="sidebarToggleBtn" class="btn-icon sidebar-collapse-btn" title="Collapse Sidebar" aria-label="Toggle Sidebar Navigation" aria-expanded="true" aria-controls="appSidebar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -343,13 +345,15 @@
         </nav>
 
         <div class="sidebar-footer">
-          <div class="user-profile-card">
-            <div class="user-avatar" id="sidebarUserAvatar">AD</div>
-            <div class="user-info">
-              <strong id="sidebarUsername">Admin</strong>
-              <small id="sidebarRole">ADMINISTRATOR</small>
+          <div class="user-profile-card" id="sidebarUserProfileCard">
+            <div class="user-profile-clickable" id="sidebarUserProfileBtn" role="button" tabindex="0" title="View Profile" aria-label="View User Profile" style="cursor: pointer;">
+              <div class="user-avatar" id="sidebarUserAvatar">AD</div>
+              <div class="user-info">
+                <strong id="sidebarUsername">Admin</strong>
+                <small id="sidebarRole">ADMINISTRATOR</small>
+              </div>
             </div>
-            <button id="logoutBtn" class="btn-icon logout-icon-btn" title="Sign Out">
+            <button id="logoutBtn" class="btn-icon logout-icon-btn" title="Sign Out" aria-label="Sign Out">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16 17 21 12 16 7"></polyline>
@@ -1204,6 +1208,53 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal 14B: Administrator Profile Modal -->
+  <div id="adminProfileModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-sm" style="max-width:460px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="brand-logo small" style="width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+          </div>
+          <h3 style="margin:0; font-size:1.1rem; font-weight:700;">Administrator Profile</h3>
+        </div>
+        <button class="modal-close" data-close-modal="adminProfileModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap" style="padding:20px;">
+        <div style="display:flex; align-items:center; gap:14px; padding-bottom:16px; border-bottom:1px solid var(--border-color, #e2e8f0);">
+          <div class="user-avatar" id="adminProfileModalAvatar" style="width:48px; height:48px; font-size:1.1rem; font-weight:700; background:var(--primary, #3b82f6); color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;">AD</div>
+          <div>
+            <div id="adminProfileModalName" style="font-size:1.05rem; font-weight:700; color:var(--text-primary, #1e293b);">System Administrator</div>
+            <div id="adminProfileModalRole" style="font-size:0.8rem; color:var(--text-muted, #64748b); font-weight:600; text-transform:uppercase;">ADMINISTRATOR</div>
+          </div>
+        </div>
+        <div class="stack-gap" style="gap:12px; font-size:0.88rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--text-muted, #64748b);">Username</span>
+            <strong id="adminProfileModalUsername" style="font-family:'JetBrains Mono', monospace;">admin</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--text-muted, #64748b);">Access Level</span>
+            <span class="status-badge" style="background:#e0f2fe; color:#0369a1; font-weight:600; padding:2px 8px; border-radius:12px; font-size:0.75rem;">Full System Access</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--text-muted, #64748b);">Role Privileges</span>
+            <span style="font-size:0.82rem; color:var(--text-primary, #1e293b);">Roster, Staff, Leaves, Approvals, Exports</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="color:var(--text-muted, #64748b);">Session Status</span>
+            <span class="status-badge" style="background:#dcfce7; color:#15803d; font-weight:600; padding:2px 8px; border-radius:12px; font-size:0.75rem;"><span class="status-dot online" style="margin-right:4px;"></span> Active (Authenticated)</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding:12px 20px; border-top:1px solid var(--border-color, #e2e8f0); display:flex; justify-content:flex-end;">
+        <button type="button" class="btn btn-primary" data-close-modal="adminProfileModal">Close</button>
+      </div>
     </div>
   </div>
 

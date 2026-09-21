@@ -159,4 +159,43 @@ public class RailwayEnvironmentPostProcessorTest {
         assertEquals("org.hibernate.dialect.MySQLDialect", env.getProperty("spring.jpa.database-platform"));
         assertEquals("org.hibernate.dialect.MySQLDialect", env.getProperty("spring.jpa.properties.hibernate.dialect"));
     }
+
+    @Test
+    @DisplayName("10. Seamless fallback: MYSQLHOST set but password extracted from MYSQL_URL")
+    void testHostSetWithPasswordFromUrl() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testMixedAuth", Map.of(
+                "MYSQLHOST", "mysql.railway.internal",
+                "MYSQLPORT", "3306",
+                "MYSQLDATABASE", "railway",
+                "MYSQL_URL", "mysql://root:real_generated_secret_456@mysql.railway.internal:3306/railway"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        String jdbcUrl = env.getProperty("spring.datasource.url");
+        assertNotNull(jdbcUrl);
+        assertTrue(jdbcUrl.startsWith("jdbc:mysql://mysql.railway.internal:3306/railway"));
+        assertEquals("root", env.getProperty("spring.datasource.username"));
+        assertEquals("real_generated_secret_456", env.getProperty("spring.datasource.password"));
+    }
+
+    @Test
+    @DisplayName("11. Non-root user in MYSQL_URL ('railway') is preserved when MYSQLHOST is present")
+    void testNonRootUserInUrlPreservedWithHost() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testNonRootUser", Map.of(
+                "MYSQLHOST", "mysql.railway.internal",
+                "MYSQLPORT", "3306",
+                "MYSQLDATABASE", "railway",
+                "MYSQL_URL", "mysql://railway:super_custom_pass_789@mysql.railway.internal:3306/railway"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        assertEquals("railway", env.getProperty("spring.datasource.username"));
+        assertEquals("super_custom_pass_789", env.getProperty("spring.datasource.password"));
+    }
 }
