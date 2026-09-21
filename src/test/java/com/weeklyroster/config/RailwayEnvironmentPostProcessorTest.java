@@ -96,4 +96,67 @@ public class RailwayEnvironmentPostProcessorTest {
 
         assertEquals("jdbc:mysql://mysql.railway.internal:3306/railway?useSSL=false", env.getProperty("spring.datasource.url"));
     }
+
+    @Test
+    @DisplayName("6. Railway MYSQL_PUBLIC_URL is detected and parsed into JDBC URL")
+    void testRailwayMysqlPublicUrl() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testPublicUrl", Map.of(
+                "MYSQL_PUBLIC_URL", "mysql://root:secure_proxy_pass@roundhouse.proxy.rlwy.net:45821/railway"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        String jdbcUrl = env.getProperty("spring.datasource.url");
+        assertNotNull(jdbcUrl);
+        assertTrue(jdbcUrl.startsWith("jdbc:mysql://roundhouse.proxy.rlwy.net:45821/railway"));
+        assertEquals("root", env.getProperty("spring.datasource.username"));
+        assertEquals("secure_proxy_pass", env.getProperty("spring.datasource.password"));
+    }
+
+    @Test
+    @DisplayName("7. Quoted environment variable values are cleanly unquoted")
+    void testQuotedEnvironmentValues() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testQuoted", Map.of(
+                "MYSQL_URL", "\"mysql://root:secret@mysql.railway.internal:3306/railway\"",
+                "PORT", "\"9000\""
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        assertEquals("9000", env.getProperty("server.port"));
+        String jdbcUrl = env.getProperty("spring.datasource.url");
+        assertNotNull(jdbcUrl);
+        assertTrue(jdbcUrl.startsWith("jdbc:mysql://mysql.railway.internal:3306/railway"));
+    }
+
+    @Test
+    @DisplayName("8. Percent-encoded credentials in MySQL URL are URL-decoded")
+    void testPercentEncodedCredentials() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testEncoded", Map.of(
+                "MYSQL_URL", "mysql://admin%40corp:pass%23123@roundhouse.proxy.rlwy.net:3306/railway"
+        )));
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        assertEquals("admin@corp", env.getProperty("spring.datasource.username"));
+        assertEquals("pass#123", env.getProperty("spring.datasource.password"));
+    }
+
+    @Test
+    @DisplayName("9. Explicit Hibernate MySQL Dialect is configured in environment overrides")
+    void testHibernateDialectConfigured() {
+        ConfigurableEnvironment env = new StandardEnvironment();
+
+        RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
+        processor.postProcessEnvironment(env, new SpringApplication());
+
+        assertEquals("org.hibernate.dialect.MySQLDialect", env.getProperty("spring.jpa.database-platform"));
+        assertEquals("org.hibernate.dialect.MySQLDialect", env.getProperty("spring.jpa.properties.hibernate.dialect"));
+    }
 }
