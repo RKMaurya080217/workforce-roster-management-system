@@ -5,7 +5,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -16,6 +18,7 @@ import com.weeklyroster.repository.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
+@TestMethodOrder(MethodOrderer.MethodName.class)
 class Batch63RegressionMatrixTest {
 
     @Autowired
@@ -203,6 +206,8 @@ class Batch63RegressionMatrixTest {
     void testG_weeklyOffBalancingExactlyOne() {
         LocalDate start = LocalDate.of(2026, 9, 28);
         LocalDate end = LocalDate.of(2026, 10, 4);
+
+        rosterService.generateWeeklyRoster(start, GenerationMode.MANUAL);
 
         var assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(start, end);
         List<Employee> activeEmployees = employeeRepository.findAll().stream().filter(Employee::isActive).toList();
