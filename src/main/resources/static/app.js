@@ -49,6 +49,10 @@ function toggleSidebarCollapse() {
     if (dom.appSidebar) dom.appSidebar.classList.toggle("collapsed", state.isSidebarCollapsed);
     if (dom.appView) dom.appView.classList.toggle("sidebar-collapsed", state.isSidebarCollapsed);
     sessionStorage.setItem("wrmsSidebarCollapsed", String(state.isSidebarCollapsed));
+    if (dom.sidebarToggleBtn) {
+      dom.sidebarToggleBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
+      dom.sidebarToggleBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
+    }
     if (dom.mobileMenuBtn) {
       dom.mobileMenuBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
       dom.mobileMenuBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
@@ -166,6 +170,7 @@ const dom = {
   sidebarRole: document.getElementById("sidebarRole"),
   sidebarUserAvatar: document.getElementById("sidebarUserAvatar"),
   logoutBtn: document.getElementById("logoutBtn"),
+  sidebarToggleBtn: document.getElementById("sidebarToggleBtn"),
   sidebarMobileCloseBtn: document.getElementById("sidebarMobileCloseBtn"),
   mobileMenuBtn: document.getElementById("mobileMenuBtn"),
   appSidebar: document.getElementById("appSidebar"),
@@ -589,11 +594,15 @@ function bindGlobalEvents() {
     }
   });
 
-  // Sidebar Collapse / Toggle (Desktop & Mobile - Single Hamburger Control)
+  // Sidebar Collapse / Toggle (Desktop & Mobile)
   const handleSidebarToggle = (e) => {
     if (e) e.stopPropagation();
     toggleSidebarCollapse();
   };
+
+  if (dom.sidebarToggleBtn) {
+    dom.sidebarToggleBtn.addEventListener("click", handleSidebarToggle);
+  }
 
   if (dom.mobileMenuBtn) {
     dom.mobileMenuBtn.addEventListener("click", handleSidebarToggle);
@@ -1255,16 +1264,16 @@ function showWorkspace() {
   if (state.isSidebarCollapsed) {
     dom.appSidebar.classList.add("collapsed");
     if (dom.appView) dom.appView.classList.add("sidebar-collapsed");
-    if (dom.mobileMenuBtn) {
-      dom.mobileMenuBtn.setAttribute("aria-expanded", "false");
-      dom.mobileMenuBtn.setAttribute("title", "Expand Sidebar");
+    if (dom.sidebarToggleBtn) {
+      dom.sidebarToggleBtn.setAttribute("aria-expanded", "false");
+      dom.sidebarToggleBtn.setAttribute("title", "Expand Sidebar");
     }
   } else {
     dom.appSidebar.classList.remove("collapsed");
     if (dom.appView) dom.appView.classList.remove("sidebar-collapsed");
-    if (dom.mobileMenuBtn) {
-      dom.mobileMenuBtn.setAttribute("aria-expanded", "true");
-      dom.mobileMenuBtn.setAttribute("title", "Collapse Sidebar");
+    if (dom.sidebarToggleBtn) {
+      dom.sidebarToggleBtn.setAttribute("aria-expanded", "true");
+      dom.sidebarToggleBtn.setAttribute("title", "Collapse Sidebar");
     }
   }
 
@@ -2772,7 +2781,14 @@ async function renderRosterView() {
               ${isLocked ? '🔒 ' : isPublished ? '📢 ' : '⚙️ '}${status}
             </span>
 
-
+            <div class="filter-group" style="flex-wrap:wrap; gap:6px;">
+              <button class="btn btn-secondary btn-sm ${state.rosterViewMode === 'matrix' ? 'btn-primary' : ''}" id="toggleMatrixViewBtn" title="Matrix Grid View">
+                Calendar View
+              </button>
+              <button class="btn btn-secondary btn-sm ${state.rosterViewMode === 'table' ? 'btn-primary' : ''}" id="toggleTableViewBtn" title="List View">
+                List View
+              </button>
+            </div>
           </div>
 
           <div class="filter-group" style="flex-wrap:wrap; gap:8px;">
@@ -2844,38 +2860,23 @@ async function renderRosterView() {
         <!-- Coverage & Feasibility Shortage Banner -->
         ${renderCoverageBanner(currentCycle)}
 
-        <!-- Filter Sub-bar with View Switcher Beside Filters -->
-        <div class="table-toolbar" style="background-color:var(--bg-app); padding:10px 20px; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center;">
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <div class="search-input-box" style="max-width:240px; min-width:180px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              <input type="text" id="rosterSearchInput" placeholder="Filter employee..." value="${escapeHTML(state.rosterSearchTerm || '')}">
-            </div>
-
-            <div class="filter-group" style="flex-wrap:wrap; gap:8px; align-items:center;">
-              <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">Shift Filter:</span>
-              <select id="rosterShiftFilter">
-                <option value="ALL" ${state.rosterShiftFilter === 'ALL' ? 'selected' : ''}>All Shifts</option>
-                <option value="MORNING" ${state.rosterShiftFilter === 'MORNING' ? 'selected' : ''}>Morning (${getShiftTimingDisplay('MORNING')})</option>
-                <option value="GENERAL" ${state.rosterShiftFilter === 'GENERAL' ? 'selected' : ''}>General (${getShiftTimingDisplay('GENERAL')})</option>
-                <option value="EVENING" ${state.rosterShiftFilter === 'EVENING' ? 'selected' : ''}>Evening (${getShiftTimingDisplay('EVENING')})</option>
-                <option value="NIGHT" ${state.rosterShiftFilter === 'NIGHT' ? 'selected' : ''}>Night (${getShiftTimingDisplay('NIGHT')})</option>
-                <option value="OFF" ${state.rosterShiftFilter === 'OFF' ? 'selected' : ''}>Weekly OFF</option>
-              </select>
-            </div>
+        <!-- Filter Sub-bar -->
+        <div class="table-toolbar" style="background-color:var(--bg-app); padding:10px 20px; flex-wrap:wrap; gap:12px;">
+          <div class="search-input-box" style="max-width:240px; min-width:180px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="rosterSearchInput" placeholder="Filter employee..." value="${state.rosterSearchTerm}">
           </div>
 
-          <!-- View Switcher beside filters -->
-          <div class="filter-group" style="flex-wrap:wrap; gap:6px; align-items:center;">
-            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">View:</span>
-            <div class="btn-group" role="group" aria-label="Roster View Mode">
-              <button class="btn btn-sm ${state.rosterViewMode === 'table' ? 'btn-primary' : 'btn-secondary'}" id="toggleTableViewBtn" title="List View">
-                📋 List
-              </button>
-              <button class="btn btn-sm ${state.rosterViewMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}" id="toggleMatrixViewBtn" title="Weekly Calendar Grid View">
-                📅 Calendar
-              </button>
-            </div>
+          <div class="filter-group" style="flex-wrap:wrap; gap:8px;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">Shift Filter:</span>
+            <select id="rosterShiftFilter">
+              <option value="ALL" ${state.rosterShiftFilter === 'ALL' ? 'selected' : ''}>All Shifts</option>
+              <option value="MORNING" ${state.rosterShiftFilter === 'MORNING' ? 'selected' : ''}>Morning (${getShiftTimingDisplay('MORNING')})</option>
+              <option value="GENERAL" ${state.rosterShiftFilter === 'GENERAL' ? 'selected' : ''}>General (${getShiftTimingDisplay('GENERAL')})</option>
+              <option value="EVENING" ${state.rosterShiftFilter === 'EVENING' ? 'selected' : ''}>Evening (${getShiftTimingDisplay('EVENING')})</option>
+              <option value="NIGHT" ${state.rosterShiftFilter === 'NIGHT' ? 'selected' : ''}>Night (${getShiftTimingDisplay('NIGHT')})</option>
+              <option value="OFF" ${state.rosterShiftFilter === 'OFF' ? 'selected' : ''}>Weekly OFF</option>
+            </select>
           </div>
         </div>
 
@@ -2893,34 +2894,15 @@ async function renderRosterView() {
       renderRosterView();
     });
 
-    const matrixBtn = document.getElementById("toggleMatrixViewBtn");
-    const tableBtn = document.getElementById("toggleTableViewBtn");
+    document.getElementById("toggleMatrixViewBtn").addEventListener("click", () => {
+      state.rosterViewMode = "matrix";
+      renderRosterView();
+    });
 
-    if (matrixBtn) {
-      matrixBtn.addEventListener("click", () => {
-        state.rosterViewMode = "matrix";
-        matrixBtn.classList.add("btn-primary");
-        matrixBtn.classList.remove("btn-secondary");
-        if (tableBtn) {
-          tableBtn.classList.remove("btn-primary");
-          tableBtn.classList.add("btn-secondary");
-        }
-        updateRosterContent(currentCycle);
-      });
-    }
-
-    if (tableBtn) {
-      tableBtn.addEventListener("click", () => {
-        state.rosterViewMode = "table";
-        tableBtn.classList.add("btn-primary");
-        tableBtn.classList.remove("btn-secondary");
-        if (matrixBtn) {
-          matrixBtn.classList.remove("btn-primary");
-          matrixBtn.classList.add("btn-secondary");
-        }
-        updateRosterContent(currentCycle);
-      });
-    }
+    document.getElementById("toggleTableViewBtn").addEventListener("click", () => {
+      state.rosterViewMode = "table";
+      renderRosterView();
+    });
 
         const healthHeaderBtn = document.getElementById("rosterHealthHeaderBadgeBtn");
     if (healthHeaderBtn) {
@@ -4637,243 +4619,34 @@ function renderWorkspaceOverviewHTML(data) {
   `;
 }
 
-function filterEmployeeRoster(roster) {
-  if (!Array.isArray(roster)) return [];
-  const term = (state.empRosterSearchTerm || "").toLowerCase().trim();
-  const statusFilter = state.empRosterStatusFilter || "ALL";
-
-  return roster.filter(item => {
-    if (statusFilter === "WORKING" && (item.onLeave || item.weeklyOff || item.shiftType === "OFF")) {
-      return false;
-    }
-    if (statusFilter === "OFF" && (!item.weeklyOff && item.shiftType !== "OFF")) {
-      return false;
-    }
-    if (statusFilter === "LEAVE" && !item.onLeave) {
-      return false;
-    }
-
-    if (term) {
-      const dateStr = (item.rosterDate || "").toLowerCase();
-      const shiftStr = (item.shiftType || "").toLowerCase();
-      const formattedDate = (typeof formatDate === "function" ? formatDate(item.rosterDate) : item.rosterDate || "").toLowerCase();
-      if (!dateStr.includes(term) && !shiftStr.includes(term) && !formattedDate.includes(term)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-}
-
-function renderEmployeeRosterCalendarHTML(list) {
-  if (!list || !list.length) {
-    return `
-      <div class="empty-state-box" style="padding:40px 20px;">
-        <div class="empty-state-icon">📅</div>
-        <h3>No scheduled duties found</h3>
-        <p style="color:var(--text-muted); max-width:400px; margin:8px auto;">No roster duties match the selected filters or date range.</p>
-      </div>
-    `;
-  }
-
-  const todayStr = getTodayISOString();
-
-  return `
-    <div class="dash-days-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:14px;">
-      ${list.map(a => {
-        const isToday = a.rosterDate === todayStr;
-        const dateObj = new Date(a.rosterDate + "T00:00:00");
-        const dayName = isNaN(dateObj) ? a.rosterDate : dateObj.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
-        const dayNum = isNaN(dateObj) ? "" : dateObj.getDate();
-        const monthName = isNaN(dateObj) ? "" : dateObj.toLocaleDateString("en-US", { month: "short" });
-
-        let bodyHtml = "";
-
-        if (a.onLeave) {
-          bodyHtml = `
-            <div class="shift-subgroup leave" style="padding:12px; border-radius:var(--radius-sm); border-left:4px solid var(--shift-leave-color); background-color:var(--shift-leave-bg);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <span class="flag-badge flag-leave" style="font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:12px;">🏖️ LEAVE</span>
-              </div>
-              <div style="font-size:0.85rem; font-weight:600; color:#b45309;">
-                ${escapeHTML(a.leaveReason || 'Approved Leave')}
-              </div>
-              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                Scheduled Absence
-              </div>
-            </div>
-          `;
-        } else if (a.weeklyOff || a.shiftType === "OFF") {
-          bodyHtml = `
-            <div class="shift-subgroup off" style="padding:12px; border-radius:var(--radius-sm); border-left:4px solid var(--shift-off-color); background-color:var(--shift-off-bg);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <span class="flag-badge flag-weeklyoff" style="font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:12px;">🛋️ OFF</span>
-              </div>
-              <div style="font-size:0.85rem; font-weight:600; color:#475569;">
-                Weekly Rest Day
-              </div>
-              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                No Shift Scheduled
-              </div>
-            </div>
-          `;
-        } else {
-          const shiftType = a.shiftType || "GENERAL";
-          const shiftClass = shiftType.toLowerCase();
-          const timingDisplay = getShiftTimingDisplay(shiftType);
-          const icon = shiftType === "MORNING" ? "☀️" : shiftType === "NIGHT" ? "🌙" : shiftType === "EVENING" ? "🌅" : "💼";
-
-          bodyHtml = `
-            <div class="shift-subgroup ${shiftClass}" style="padding:12px; border-radius:var(--radius-sm);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:4px;">
-                <span class="badge ${shiftClass}" style="font-size:0.82rem; font-weight:700; padding:3px 8px;">${icon} ${shiftType}</span>
-                <span class="flag-badge flag-working" style="font-size:0.75rem; font-weight:600;">WORKING</span>
-              </div>
-              <div style="font-size:0.9rem; font-weight:700; color:var(--text-main); margin-bottom:4px;">
-                ${timingDisplay}
-              </div>
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
-                ${a.overridden ? '<span class="flag-badge flag-override" style="font-size:0.72rem;">⚡ OVERRIDE</span>' : '<span style="font-size:0.75rem; color:var(--text-muted);">Standard Duty</span>'}
-                ${a.id ? `
-                  <button class="btn-link-xs" data-action="why-this-shift" data-assign-id="${a.id}" style="font-size:0.72rem;">
-                    Why this shift?
-                  </button>
-                ` : ''}
-              </div>
-            </div>
-          `;
-        }
-
-        return `
-          <div class="day-schedule-card" style="${isToday ? 'border-color:var(--primary); box-shadow:0 0 0 1px var(--primary);' : ''}">
-            <div class="day-card-header" style="display:flex; justify-content:space-between; align-items:center; padding-bottom:8px; border-bottom:1px solid var(--border-light);">
-              <div class="day-title-group">
-                <strong style="font-size:1.05rem; color:var(--text-main);">${dayName} ${dayNum}</strong>
-                <span style="font-size:0.76rem; color:var(--text-muted);">${monthName} ${dateObj.getFullYear() || ''}</span>
-              </div>
-              ${isToday ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:0.7rem; border:1px solid #bfdbfe;">TODAY</span>' : ''}
-            </div>
-            <div class="day-card-body" style="padding-top:4px;">
-              ${bodyHtml}
-            </div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
-}
-
 function renderWorkspaceRosterHTML(roster, empId) {
-  state.employeeRosterViewMode = state.employeeRosterViewMode || "calendar";
-  const viewMode = state.employeeRosterViewMode;
-  const filtered = filterEmployeeRoster(roster);
-
   return `
     <div class="card stack-gap">
-      <div class="card-header" style="border-bottom:1px solid var(--border-light); padding-bottom:14px;">
+      <div class="card-header">
         <div>
           <h3>My Weekly Roster Schedule</h3>
           <span style="font-size:0.76rem; color:var(--text-muted);">Official published shift assignments and rotation history</span>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-secondary btn-sm" id="rosterLogViewBtn" title="Refresh Schedule">
-            <span>🔄 Refresh</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-secondary btn-sm" id="rosterLogViewBtn">
+            <span>🔄 Refresh Schedule</span>
           </button>
         </div>
       </div>
-
-      <!-- Filter Sub-bar with View Switcher (List / Calendar) Beside Filters -->
-      <div class="table-toolbar" style="background-color:var(--bg-app); padding:10px 16px; border-radius:var(--radius-md); flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center;">
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <div class="search-input-box" style="max-width:220px; min-width:160px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" id="empRosterSearchInput" placeholder="Filter date or shift..." value="${escapeHTML(state.empRosterSearchTerm || '')}">
-          </div>
-
-          <div class="filter-group" style="flex-wrap:wrap; gap:8px; align-items:center;">
-            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">Filter:</span>
-            <select id="empRosterStatusFilter">
-              <option value="ALL" ${(!state.empRosterStatusFilter || state.empRosterStatusFilter === 'ALL') ? 'selected' : ''}>All Duties</option>
-              <option value="WORKING" ${state.empRosterStatusFilter === 'WORKING' ? 'selected' : ''}>Working Shifts</option>
-              <option value="OFF" ${state.empRosterStatusFilter === 'OFF' ? 'selected' : ''}>Weekly OFF</option>
-              <option value="LEAVE" ${state.empRosterStatusFilter === 'LEAVE' ? 'selected' : ''}>Approved Leave</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="filter-group" style="flex-wrap:wrap; gap:6px; align-items:center;">
-          <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">View:</span>
-          <div class="btn-group" role="group" aria-label="Employee Roster View Mode">
-            <button class="btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}" id="empToggleTableViewBtn" title="List View">
-              📋 List
-            </button>
-            <button class="btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}" id="empToggleCalendarViewBtn" title="Calendar View">
-              📅 Calendar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Employee Roster Content Wrapper -->
-      <div id="empRosterContentWrapper" style="margin-top:12px;">
-        ${viewMode === 'table' ? `<div class="table-wrap">${renderMyRosterTableHTML(filtered)}</div>` : renderEmployeeRosterCalendarHTML(filtered)}
+      <div class="table-wrap">
+        ${renderMyRosterTableHTML(roster)}
       </div>
     </div>
   `;
 }
 
 function bindWorkspaceRosterEvents(empId) {
-  const updateEmpRosterContent = () => {
-    const wrapper = document.getElementById("empRosterContentWrapper");
-    if (wrapper) {
-      const roster = state.cachedRoster || [];
-      const filtered = filterEmployeeRoster(roster);
-      wrapper.innerHTML = state.employeeRosterViewMode === "table"
-        ? `<div class="table-wrap">${renderMyRosterTableHTML(filtered)}</div>`
-        : renderEmployeeRosterCalendarHTML(filtered);
-      bindEmpRosterCellActions();
-    }
-  };
-
-  const tableBtn = document.getElementById("empToggleTableViewBtn");
-  const calendarBtn = document.getElementById("empToggleCalendarViewBtn");
-
-  if (tableBtn && calendarBtn) {
-    tableBtn.addEventListener("click", () => {
-      state.employeeRosterViewMode = "table";
-      tableBtn.classList.add("btn-primary");
-      tableBtn.classList.remove("btn-secondary");
-      calendarBtn.classList.remove("btn-primary");
-      calendarBtn.classList.add("btn-secondary");
-      updateEmpRosterContent();
+  document.querySelectorAll("[data-action='why-this-shift']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const assignId = btn.getAttribute("data-assign-id");
+      openWhyThisShiftModal(assignId);
     });
-
-    calendarBtn.addEventListener("click", () => {
-      state.employeeRosterViewMode = "calendar";
-      calendarBtn.classList.add("btn-primary");
-      calendarBtn.classList.remove("btn-secondary");
-      tableBtn.classList.remove("btn-primary");
-      tableBtn.classList.add("btn-secondary");
-      updateEmpRosterContent();
-    });
-  }
-
-  const searchInput = document.getElementById("empRosterSearchInput");
-  if (searchInput) {
-    searchInput.addEventListener("input", (e) => {
-      state.empRosterSearchTerm = e.target.value;
-      updateEmpRosterContent();
-    });
-  }
-
-  const statusFilter = document.getElementById("empRosterStatusFilter");
-  if (statusFilter) {
-    statusFilter.addEventListener("change", (e) => {
-      state.empRosterStatusFilter = e.target.value;
-      updateEmpRosterContent();
-    });
-  }
+  });
 
   const refreshBtn = document.getElementById("rosterLogViewBtn");
   if (refreshBtn) {
@@ -4883,17 +4656,6 @@ function bindWorkspaceRosterEvents(empId) {
       toast("Roster schedule refreshed", "info");
     });
   }
-
-  bindEmpRosterCellActions();
-}
-
-function bindEmpRosterCellActions() {
-  document.querySelectorAll("[data-action='why-this-shift']").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const assignId = btn.getAttribute("data-assign-id");
-      openWhyThisShiftModal(assignId);
-    });
-  });
 }
 
 function renderWorkspaceNotificationsHTML(notifications) {
