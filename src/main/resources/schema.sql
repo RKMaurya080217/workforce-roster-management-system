@@ -79,20 +79,6 @@ CREATE TABLE IF NOT EXISTS master_reference_data (
     last_seen_at DATETIME(6)
 );
 
-CREATE TABLE IF NOT EXISTS employee_skills (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    employee_id BIGINT NOT NULL,
-    skill_id BIGINT NOT NULL,
-    proficiency_level VARCHAR(30) NOT NULL,
-    certification_name VARCHAR(200),
-    certification_expiry_date DATE,
-    certified BOOLEAN NOT NULL DEFAULT FALSE,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6),
-    CONSTRAINT fk_emp_skills_emp FOREIGN KEY (employee_id) REFERENCES employees(id),
-    CONSTRAINT fk_emp_skills_ref FOREIGN KEY (skill_id) REFERENCES master_reference_data(id)
-);
 
 CREATE TABLE IF NOT EXISTS leave_requests (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,

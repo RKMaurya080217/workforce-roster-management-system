@@ -41,6 +41,26 @@ function toggleMobileSidebar() {
 }
 window.toggleMobileSidebar = toggleMobileSidebar;
 
+function toggleSidebarCollapse() {
+  if (window.innerWidth <= 1024) {
+    toggleMobileSidebar();
+  } else {
+    state.isSidebarCollapsed = !state.isSidebarCollapsed;
+    if (dom.appSidebar) dom.appSidebar.classList.toggle("collapsed", state.isSidebarCollapsed);
+    if (dom.appView) dom.appView.classList.toggle("sidebar-collapsed", state.isSidebarCollapsed);
+    sessionStorage.setItem("wrmsSidebarCollapsed", String(state.isSidebarCollapsed));
+    if (dom.sidebarToggleBtn) {
+      dom.sidebarToggleBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
+      dom.sidebarToggleBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
+    }
+    if (dom.mobileMenuBtn) {
+      dom.mobileMenuBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
+      dom.mobileMenuBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
+    }
+  }
+}
+window.toggleSidebarCollapse = toggleSidebarCollapse;
+
 
 // Batch 36: Uniform Roster Status Badge Helper
 function getRosterStatusBadgeHtml(status) {
@@ -179,10 +199,8 @@ const dom = {
     analytics: document.getElementById("viewAnalytics"),
     validation: document.getElementById("viewValidation"),
     adminPreferences: document.getElementById("viewAdminPreferences"),
-    adminHolidays: document.getElementById("viewAdminHolidays"),
     adminHandovers: document.getElementById("viewAdminHandovers"),
     adminWorkload: document.getElementById("viewAdminWorkload"),
-    adminSkills: document.getElementById("viewAdminSkills"),
     exportCenter: document.getElementById("viewExportCenter"),
     rosterVersions: document.getElementById("viewRosterVersions")
   }
@@ -235,45 +253,80 @@ const WRMS_ICONS = {
 window.WRMS_ICONS = WRMS_ICONS;
 
 
-// Admin Primary Navigation Menu Items (Directly Visible)
+// Admin Navigation Structure: Exactly 7 Primary Groups with Collapsible Submenus
 const ADMIN_PRIMARY_NAV = [
-  { id: "dashboard", route: "dashboard", label: "Dashboard", icon: WRMS_ICONS.dashboard },
-  { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
-  { id: "commandCenter", route: "command-center", label: "Smart Command Center", icon: WRMS_ICONS.commandCenter },
+  { id: "dashboard", route: "dashboard", label: "Home", icon: WRMS_ICONS.dashboard },
+  {
+    id: "roster",
+    groupId: "rosterGroup",
+    route: "weekly-roster",
+    label: "Roster",
+    icon: WRMS_ICONS.roster,
+    children: [
+      { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
+      { id: "commandCenter", route: "command-center", label: "Command Center", icon: WRMS_ICONS.commandCenter },
+      { id: "shifts", route: "shift-capacity", label: "Shift Capacity", icon: WRMS_ICONS.shifts },
+      { id: "health", route: "roster-health", label: "Roster Health", icon: WRMS_ICONS.health },
+      { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
+      { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions },
+      { id: "history", route: "roster-history", label: "Roster History", icon: WRMS_ICONS.history }
+    ]
+  },
   { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
-  { id: "approvals", route: "approvals", label: "Approvals", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals }
+  { id: "approvals", route: "approvals", label: "Requests & Approvals", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals },
+  { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
+  {
+    id: "reports",
+    groupId: "reportsGroup",
+    route: "export-center",
+    label: "Reports & Export",
+    icon: WRMS_ICONS.exports,
+    children: [
+      { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
+      { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
+      { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload }
+    ]
+  },
+  {
+    id: "administration",
+    groupId: "adminGroup",
+    route: "audit-trail",
+    label: "Administration",
+    icon: WRMS_ICONS.audit,
+    children: [
+      { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
+    ]
+  }
 ];
 
-// Admin Secondary Navigation Menu Items (Inside Collapsible More Menu)
+// Admin Secondary Navigation Menu Items (Clean Submenu Flat Reference without Skills/Holidays)
 const ADMIN_MORE_NAV = [
-  { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
-  { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
-  { id: "adminHolidays", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays },
-  { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
-  { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
-  { id: "adminSkills", route: "skill-matrix", label: "Skill Matrix", icon: WRMS_ICONS.skills },
-  { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
-  { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions },
-  { id: "health", route: "roster-health", label: "Roster Health", icon: WRMS_ICONS.health },
+  { id: "commandCenter", route: "command-center", label: "Command Center", icon: WRMS_ICONS.commandCenter },
   { id: "shifts", route: "shift-capacity", label: "Shift Capacity", icon: WRMS_ICONS.shifts },
+  { id: "health", route: "roster-health", label: "Roster Health", icon: WRMS_ICONS.health },
+  { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
+  { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions },
   { id: "history", route: "roster-history", label: "Roster History", icon: WRMS_ICONS.history },
+  { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
+  { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
+  { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
+  { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
   { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
 ];
 
 // Flat Admin Navigation Compatibility Reference
-const ADMIN_NAV = [...ADMIN_PRIMARY_NAV, ...ADMIN_MORE_NAV];
+const ADMIN_NAV = [
+  ...ADMIN_PRIMARY_NAV.filter(item => !item.children),
+  ...ADMIN_MORE_NAV
+];
 
-// Employee Navigation Menu Items
+// Employee Navigation Menu Items: Exactly 6 Clean Items
 const EMPLOYEE_NAV = [
-  { id: "emp_overview", tab: "overview", label: "Overview", icon: WRMS_ICONS.dashboard },
+  { id: "emp_overview", tab: "overview", label: "Home", icon: WRMS_ICONS.dashboard },
   { id: "emp_roster", tab: "roster", label: "My Roster", icon: WRMS_ICONS.roster },
-  { id: "emp_leaves", tab: "leaves", label: "Leave Management", badgeKey: "cachedPendingLeavesCount", icon: WRMS_ICONS.leaves },
-  { id: "emp_preferences", tab: "preferences", label: "Shift Preferences", icon: WRMS_ICONS.preferences },
-  { id: "emp_handovers", tab: "handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
-  { id: "emp_skills", tab: "skills", label: "My Skills", icon: WRMS_ICONS.skills },
-  { id: "emp_holidays", tab: "holidays", label: "Holidays", icon: WRMS_ICONS.holidays },
+  { id: "emp_leaves", tab: "leaves", label: "Leave & Requests", badgeKey: "cachedPendingLeavesCount", icon: WRMS_ICONS.leaves },
+  { id: "emp_handovers", tab: "handovers", label: "Shift Handover", icon: WRMS_ICONS.handovers },
   { id: "emp_notifications", tab: "notifications", label: "Notifications", badgeKey: "unreadNotificationCount", icon: WRMS_ICONS.notifications },
-  { id: "emp_activity", tab: "activity", label: "Activity / Logs", icon: WRMS_ICONS.activity },
   { id: "emp_profile", tab: "profile", label: "My Profile", icon: WRMS_ICONS.profile }
 ];
 
@@ -541,26 +594,34 @@ function bindGlobalEvents() {
     }
   });
 
-  // Desktop Sidebar Collapse Toggle
+  // Sidebar Collapse / Toggle (Desktop & Mobile)
+  const handleSidebarToggle = (e) => {
+    if (e) e.stopPropagation();
+    toggleSidebarCollapse();
+  };
+
   if (dom.sidebarToggleBtn) {
-    dom.sidebarToggleBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      state.isSidebarCollapsed = !state.isSidebarCollapsed;
-      dom.appSidebar.classList.toggle("collapsed", state.isSidebarCollapsed);
-      if (dom.appView) {
-        dom.appView.classList.toggle("sidebar-collapsed", state.isSidebarCollapsed);
-      }
-      sessionStorage.setItem("wrmsSidebarCollapsed", String(state.isSidebarCollapsed));
-      dom.sidebarToggleBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
-      dom.sidebarToggleBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
-    });
+    dom.sidebarToggleBtn.addEventListener("click", handleSidebarToggle);
   }
 
-  // Mobile Menu
   if (dom.mobileMenuBtn) {
-    dom.mobileMenuBtn.addEventListener("click", (e) => {
+    dom.mobileMenuBtn.addEventListener("click", handleSidebarToggle);
+  }
+
+  // Topbar Breadcrumb Header Click -> Home (Dashboard / Overview)
+  const breadcrumbRoot = document.getElementById("breadcrumbRoot");
+  if (breadcrumbRoot) {
+    const handleHomeNav = (e) => {
       e.stopPropagation();
-      toggleMobileSidebar();
+      const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
+      navigateTo(isEmployee ? "overview" : "dashboard");
+    };
+    breadcrumbRoot.addEventListener("click", handleHomeNav);
+    breadcrumbRoot.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleHomeNav(e);
+      }
     });
   }
 
@@ -1295,12 +1356,12 @@ function parseRouteTarget(target) {
       "handovers": "handovers",
       "shift-handovers": "handovers",
       "emp_handovers": "handovers",
-      "skills": "skills",
-      "my-skills": "skills",
-      "emp_skills": "skills",
-      "holidays": "holidays",
-      "holiday-calendar": "holidays",
-      "emp_holidays": "holidays",
+      "skills": "overview",
+      "my-skills": "overview",
+      "emp_skills": "overview",
+      "holidays": "overview",
+      "holiday-calendar": "overview",
+      "emp_holidays": "overview",
       "notifications": "notifications",
       "staff/notifications": "notifications",
       "employee/notifications": "notifications",
@@ -1382,12 +1443,12 @@ function parseRouteTarget(target) {
       "admin/preferences": "approvals",
       "admin/shift-preferences": "approvals",
       
-      "adminHolidays": "adminHolidays",
-      "holiday-calendar": "adminHolidays",
-      "holiday_calendar": "adminHolidays",
-      "holidays": "adminHolidays",
-      "admin/holidays": "adminHolidays",
-      "admin/holiday-calendar": "adminHolidays",
+      "adminHolidays": "dashboard",
+      "holiday-calendar": "dashboard",
+      "holiday_calendar": "dashboard",
+      "holidays": "dashboard",
+      "admin/holidays": "dashboard",
+      "admin/holiday-calendar": "dashboard",
       
       "adminHandovers": "adminHandovers",
       "shift-handovers": "adminHandovers",
@@ -1403,12 +1464,12 @@ function parseRouteTarget(target) {
       "admin/workload": "adminWorkload",
       "admin/workload-analytics": "adminWorkload",
       
-      "adminSkills": "adminSkills",
-      "skill-matrix": "adminSkills",
-      "skill_matrix": "adminSkills",
-      "skills": "adminSkills",
-      "admin/skills": "adminSkills",
-      "admin/skill-matrix": "adminSkills",
+      "adminSkills": "dashboard",
+      "skill-matrix": "dashboard",
+      "skill_matrix": "dashboard",
+      "skills": "dashboard",
+      "admin/skills": "dashboard",
+      "admin/skill-matrix": "dashboard",
       
       "exportCenter": "exportCenter",
       "export-center": "exportCenter",
@@ -1474,10 +1535,8 @@ function parseRouteTarget(target) {
       analytics: "#/roster-analytics",
       validation: "#/conflict-validator",
       adminPreferences: "#/approvals",
-      adminHolidays: "#/holiday-calendar",
       adminHandovers: "#/shift-handovers",
       adminWorkload: "#/workload-analytics",
-      adminSkills: "#/skill-matrix",
       exportCenter: "#/export-center",
       rosterVersions: "#/roster-versions",
       health: "#/roster-health",
@@ -1538,9 +1597,9 @@ function renderNavigation() {
         }
       }
       return `
-        <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-tab="${item.tab || ''}" title="${item.label || ''}" aria-label="${item.label || ''}">
-          ${item.icon || ''}
-          <span>${item.label || ''}</span>
+        <button class="nav-item ${isActive ? "active" : ""}" data-nav-id="${item.id}" data-tab="${item.tab || ""}" title="${item.label || ""}" aria-label="${item.label || ""}">
+          ${item.icon || ""}
+          <span>${item.label || ""}</span>
           ${badgeHtml}
         </button>
       `;
@@ -1559,56 +1618,61 @@ function renderNavigation() {
     return;
   }
 
-  // Admin Navigation Rendering
-  const isMorePageActive = ADMIN_MORE_NAV.some(item => item.id === state.activePage);
-  if (isMorePageActive) {
-    state.adminMoreExpanded = true;
-  }
-  const isExpanded = state.adminMoreExpanded === true;
+  // Admin Navigation Rendering (7 Primary Groups with Collapsible Submenus)
+  state.navGroupsExpanded = state.navGroupsExpanded || {};
 
-  const primaryHtml = ADMIN_PRIMARY_NAV.map(item => {
-    const isActive = state.activePage === item.id;
-    let badgeHtml = "";
-    if (item.badgeKey && state[item.badgeKey]) {
-      const val = state[item.badgeKey];
-      const count = typeof val === "number" ? val : Array.isArray(val) ? val.length : 0;
-      if (count > 0) {
-        badgeHtml = `<span class="nav-badge">${count}</span>`;
+  const navHtml = ADMIN_PRIMARY_NAV.map(item => {
+    if (!item.children) {
+      const isActive = state.activePage === item.id;
+      let badgeHtml = "";
+      if (item.badgeKey && state[item.badgeKey]) {
+        const val = state[item.badgeKey];
+        const count = typeof val === "number" ? val : Array.isArray(val) ? val.length : 0;
+        if (count > 0) {
+          badgeHtml = `<span class="nav-badge">${count}</span>`;
+        }
       }
+      return `
+        <button class="nav-item ${isActive ? "active" : ""}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label || ""}" aria-label="${item.label || ""}">
+          ${item.icon || ""}
+          <span>${item.label || ""}</span>
+          ${badgeHtml}
+        </button>
+      `;
     }
-    return `
-      <button class="nav-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label || ''}" aria-label="${item.label || ''}">
-        ${item.icon || ''}
-        <span>${item.label || ''}</span>
-        ${badgeHtml}
-      </button>
-    `;
-  }).join("");
 
-  const moreSubItemsHtml = ADMIN_MORE_NAV.map(item => {
-    const isActive = state.activePage === item.id;
-    return `
-      <button class="nav-sub-item ${isActive ? 'active' : ''}" data-nav-id="${item.id}" data-route="${item.route}" title="${item.label || ''}" aria-label="${item.label || ''}">
-        ${item.icon || ''}
-        <span>${item.label || ''}</span>
-      </button>
-    `;
-  }).join("");
+    // Collapsible Submenu Group
+    const hasActiveChild = item.children.some(c => c.id === state.activePage || (item.id === "roster" && state.activePage === "roster"));
+    if (hasActiveChild && state.navGroupsExpanded[item.groupId] === undefined) {
+      state.navGroupsExpanded[item.groupId] = true;
+    }
+    const isExpanded = state.navGroupsExpanded[item.groupId] === true;
 
-  const moreToggleHtml = `
-    <div class="nav-more-group">
-      <button id="adminMoreToggleBtn" class="nav-more-toggle ${isMorePageActive ? 'has-active-child' : ''} ${isExpanded ? 'expanded' : ''}" title="More Administration Tools" aria-expanded="${isExpanded}" aria-label="Toggle More Admin Tools">
-        ${WRMS_ICONS.more || ''}
-        <span>More</span>
-        <span class="more-chevron">${isExpanded ? (WRMS_ICONS.chevronUp || '') : (WRMS_ICONS.chevronDown || '')}</span>
-      </button>
-      <div id="adminMoreSubMenu" class="nav-sub-menu ${isExpanded ? 'expanded' : 'collapsed'}" role="region" aria-label="Secondary Admin Tools">
-        ${moreSubItemsHtml}
+    const subItemsHtml = item.children.map(child => {
+      const isActive = state.activePage === child.id || (child.route === "weekly-roster" && state.activePage === "roster");
+      return `
+        <button class="nav-sub-item ${isActive ? "active" : ""}" data-nav-id="${child.id}" data-route="${child.route}" title="${child.label || ""}" aria-label="${child.label || ""}">
+          ${child.icon || ""}
+          <span>${child.label || ""}</span>
+        </button>
+      `;
+    }).join("");
+
+    return `
+      <div class="nav-group">
+        <button class="nav-group-toggle ${hasActiveChild ? "has-active-child" : ""} ${isExpanded ? "expanded" : ""}" data-group-id="${item.groupId}" data-route="${item.route}" title="${item.label || ""}" aria-expanded="${isExpanded}" aria-label="Toggle ${item.label || ""} Submenu">
+          ${item.icon || ""}
+          <span>${item.label || ""}</span>
+          <span class="more-chevron">${isExpanded ? (WRMS_ICONS.chevronUp || "") : (WRMS_ICONS.chevronDown || "")}</span>
+        </button>
+        <div class="nav-sub-menu ${isExpanded ? "expanded" : "collapsed"}" role="region" aria-label="${item.label || ""} Submenu">
+          ${subItemsHtml}
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }).join("");
 
-  dom.sidebarNav.innerHTML = primaryHtml + moreToggleHtml;
+  dom.sidebarNav.innerHTML = navHtml;
 
   // Bind Primary & Sub-item Clicks
   dom.sidebarNav.querySelectorAll(".nav-item, .nav-sub-item").forEach(btn => {
@@ -1619,15 +1683,33 @@ function renderNavigation() {
     });
   });
 
-  // Bind More Toggle Click
-  const moreToggleBtn = document.getElementById("adminMoreToggleBtn");
-  if (moreToggleBtn) {
-    moreToggleBtn.addEventListener("click", (e) => {
+  // Bind Group Toggles
+  dom.sidebarNav.querySelectorAll(".nav-group-toggle").forEach(btn => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      state.adminMoreExpanded = !state.adminMoreExpanded;
-      renderNavigation();
+      const groupId = btn.getAttribute("data-group-id");
+      const targetRoute = btn.getAttribute("data-route");
+
+      if (state.isSidebarCollapsed) {
+        toggleSidebarCollapse();
+        state.navGroupsExpanded[groupId] = true;
+        renderNavigation();
+      } else {
+        state.navGroupsExpanded[groupId] = !state.navGroupsExpanded[groupId];
+        if (state.navGroupsExpanded[groupId] && targetRoute) {
+          const group = ADMIN_PRIMARY_NAV.find(g => g.groupId === groupId);
+          const onChild = group && group.children && group.children.some(c => c.id === state.activePage || (group.id === "roster" && state.activePage === "roster"));
+          if (!onChild) {
+            navigateTo(targetRoute);
+          } else {
+            renderNavigation();
+          }
+        } else {
+          renderNavigation();
+        }
+      }
     });
-  }
+  });
 }
 
 function navigateTo(target, options = {}) {
@@ -1708,8 +1790,6 @@ function updateTopbarTitle(pageId) {
     leaves: { title: "Leave Management & Requests", bc: "Leave Management" },
     preferences: { title: "My Shift Availability & Preferences", bc: "Shift Preferences" },
     handovers: { title: "Shift Handover Logbook", bc: "Shift Handovers" },
-    skills: { title: "My Verified Skills & Certifications", bc: "My Skills" },
-    holidays: { title: "Official Company Holiday Calendar", bc: "Holidays" },
     notifications: { title: "My Notifications & Alerts", bc: "Notifications" },
     activity: { title: "Activity & Security Logs", bc: "Activity / Logs" },
     profile: { title: "My Employee Profile", bc: "My Profile" }
@@ -1724,10 +1804,8 @@ function updateTopbarTitle(pageId) {
     roster: { title: "Weekly Roster Schedule", bc: "Weekly Roster" },
     approvals: { title: "Unified Request Approvals (Profile, Leaves, Preferences)", bc: "Approvals" },
     adminPreferences: { title: "Unified Request Approvals (Shift Preferences)", bc: "Approvals" },
-    adminHolidays: { title: "Official Company Holiday Calendar", bc: "Holiday Calendar" },
     adminHandovers: { title: "Shift Handover Management", bc: "Shift Handovers" },
     adminWorkload: { title: "Employee Workload Analytics & Duty Balance", bc: "Workload Analytics" },
-    adminSkills: { title: "Workforce Skill Matrix & Competency Catalog", bc: "Skill Matrix" },
     exportCenter: { title: "Enterprise Export Center (PDF / Excel / CSV / Images)", bc: "Export Center" },
     rosterVersions: { title: "Roster Version History & Revision Comparison", bc: "Roster Versions" },
     health: { title: "Roster Conflict & Health Center", bc: "Roster Health" },
@@ -1769,17 +1847,11 @@ async function loadActiveView() {
       state.activeApprovalCategory = "preferences";
       await renderUnifiedApprovalsView();
       break;
-    case "adminHolidays":
-      if (typeof renderAdminHolidaysView === "function") await renderAdminHolidaysView();
-      break;
     case "adminHandovers":
       if (typeof renderAdminHandoversView === "function") await renderAdminHandoversView();
       break;
     case "adminWorkload":
       if (typeof renderAdminWorkloadView === "function") await renderAdminWorkloadView();
-      break;
-    case "adminSkills":
-      if (typeof renderAdminSkillsView === "function") await renderAdminSkillsView();
       break;
     case "exportCenter":
       if (typeof renderExportCenterView === "function") await renderExportCenterView();
@@ -3877,12 +3949,6 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
         <button class="subnav-btn ${currentTab === 'handovers' ? 'active' : ''}" id="tabBtnHandovers" role="tab" aria-selected="${currentTab === 'handovers'}">
           <span>🤝</span> Handovers
         </button>
-        <button class="subnav-btn ${currentTab === 'skills' ? 'active' : ''}" id="tabBtnSkills" role="tab" aria-selected="${currentTab === 'skills'}">
-          <span>🌟</span> My Skills
-        </button>
-        <button class="subnav-btn ${currentTab === 'holidays' ? 'active' : ''}" id="tabBtnHolidays" role="tab" aria-selected="${currentTab === 'holidays'}">
-          <span>🎉</span> Holidays
-        </button>
         <button class="subnav-btn ${currentTab === 'notifications' ? 'active' : ''}" id="tabBtnNotifications" role="tab" aria-selected="${currentTab === 'notifications'}">
           <span>🔔</span> Notifications
           <span class="subnav-badge hidden" id="notifsBadge"></span>
@@ -3921,8 +3987,6 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
     bindTab("tabBtnLeaves", "leaves");
     bindTab("tabBtnPreferences", "preferences");
     bindTab("tabBtnHandovers", "handovers");
-    bindTab("tabBtnSkills", "skills");
-    bindTab("tabBtnHolidays", "holidays");
     bindTab("tabBtnNotifications", "notifications");
     bindTab("tabBtnActivity", "activity");
     bindTab("tabBtnProfile", "profile");
@@ -4047,8 +4111,6 @@ function switchEmployeeWorkspaceTab(tabKey) {
                      (tabKey === "leaves" && btn.id === "tabBtnLeaves") ||
                      (tabKey === "preferences" && btn.id === "tabBtnPreferences") ||
                      (tabKey === "handovers" && btn.id === "tabBtnHandovers") ||
-                     (tabKey === "skills" && btn.id === "tabBtnSkills") ||
-                     (tabKey === "holidays" && btn.id === "tabBtnHolidays") ||
                      (tabKey === "notifications" && btn.id === "tabBtnNotifications") ||
                      (tabKey === "activity" && btn.id === "tabBtnActivity") ||
                      (tabKey === "profile" && btn.id === "tabBtnProfile");
@@ -4070,16 +4132,6 @@ function switchEmployeeWorkspaceTab(tabKey) {
   if (tabKey === "handovers" && typeof renderEmployeeHandoversTabHTML === "function") {
     contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift handovers...</p></div>`;
     renderEmployeeHandoversTabHTML().then(html => { contentDiv.innerHTML = html; });
-    return;
-  }
-  if (tabKey === "skills" && typeof renderEmployeeSkillsTabHTML === "function") {
-    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading skills matrix...</p></div>`;
-    renderEmployeeSkillsTabHTML().then(html => { contentDiv.innerHTML = html; });
-    return;
-  }
-  if (tabKey === "holidays" && typeof renderEmployeeHolidaysTabHTML === "function") {
-    contentDiv.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading company holidays...</p></div>`;
-    renderEmployeeHolidaysTabHTML().then(html => { contentDiv.innerHTML = html; });
     return;
   }
 

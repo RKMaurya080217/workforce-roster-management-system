@@ -56,16 +56,7 @@ public class Batch62ModernizationAndSmsRemovalTest {
     private ShiftRepository shiftRepository;
 
     @Autowired
-    private SkillRepository skillRepository;
-
-    @Autowired
-    private EmployeeSkillRepository employeeSkillRepository;
-
-    @Autowired
     private AuditLogRepository auditLogRepository;
-
-    @Autowired
-    private HolidayRepository holidayRepository;
 
     private Long testCycleId;
     private Long testEmpId;
@@ -133,35 +124,7 @@ public class Batch62ModernizationAndSmsRemovalTest {
             leaveRequestRepository.save(lr);
         }
 
-        // 5. Ensure skill & employee_skill exists
-        if (skillRepository.count() == 0) {
-            Skill s = new Skill("Java", "Backend", "Core Java Programming");
-            s = skillRepository.save(s);
-            EmployeeSkill es = new EmployeeSkill();
-            es.setEmployee(emp);
-            es.setSkill(s);
-            es.setProficiencyLevel(ProficiencyLevel.EXPERT);
-            employeeSkillRepository.save(es);
-        } else if (employeeSkillRepository.count() == 0) {
-            Skill s = skillRepository.findAll().get(0);
-            EmployeeSkill es = new EmployeeSkill();
-            es.setEmployee(emp);
-            es.setSkill(s);
-            es.setProficiencyLevel(ProficiencyLevel.EXPERT);
-            employeeSkillRepository.save(es);
-        }
-
-        // 6. Ensure holiday exists
-        if (holidayRepository.count() == 0) {
-            Holiday h = new Holiday();
-            h.setName("Batch 62 Holiday");
-            h.setHolidayDate(monday.plusDays(2));
-            h.setDescription("Testing Holiday Export");
-            h.setActive(true);
-            holidayRepository.save(h);
-        }
-
-        // 7. Ensure audit log exists
+        // 5. Ensure audit log exists
         if (auditLogRepository.count() == 0) {
             AuditLog al = new AuditLog();
             al.setActor("admin");
@@ -225,26 +188,12 @@ public class Batch62ModernizationAndSmsRemovalTest {
         assertNotNull(leaveReg);
         assertTrue(leaveReg.length > 50);
 
-        // Skill Matrix
-        byte[] skillMatrix = exportCenterService.generateExport(
-                new ExportReportRequest("SKILL_MATRIX", "excel", null, null, null, null, null)
-        );
-        assertNotNull(skillMatrix);
-        assertTrue(skillMatrix.length > 100);
-
         // Shift Capacity
         byte[] shiftCap = exportCenterService.generateExport(
                 new ExportReportRequest("SHIFT_CAPACITY", "pdf", null, null, null, null, null)
         );
         assertNotNull(shiftCap);
         assertTrue(shiftCap.length > 100);
-
-        // Holiday Calendar
-        byte[] holidays = exportCenterService.generateExport(
-                new ExportReportRequest("HOLIDAY_CALENDAR", "csv", null, null, null, null, null)
-        );
-        assertNotNull(holidays);
-        assertTrue(holidays.length > 30);
 
         // Audit Report
         byte[] audits = exportCenterService.generateExport(

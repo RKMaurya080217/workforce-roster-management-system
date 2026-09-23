@@ -23,7 +23,6 @@ public class RosterAnalyticsService {
     private final LeaveRequestRepository leaveRequestRepository;
     private final ShiftHandoverRepository handoverRepository;
     private final EmployeePreferenceRepository preferenceRepository;
-    private final HolidayRepository holidayRepository;
     private final WorkloadAnalyticsService workloadAnalyticsService;
 
     public RosterAnalyticsService(RosterCycleRepository cycleRepository,
@@ -32,7 +31,6 @@ public class RosterAnalyticsService {
                                   LeaveRequestRepository leaveRequestRepository,
                                   ShiftHandoverRepository handoverRepository,
                                   EmployeePreferenceRepository preferenceRepository,
-                                  HolidayRepository holidayRepository,
                                   WorkloadAnalyticsService workloadAnalyticsService) {
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
@@ -40,7 +38,6 @@ public class RosterAnalyticsService {
         this.leaveRequestRepository = leaveRequestRepository;
         this.handoverRepository = handoverRepository;
         this.preferenceRepository = preferenceRepository;
-        this.holidayRepository = holidayRepository;
         this.workloadAnalyticsService = workloadAnalyticsService;
     }
 
@@ -153,10 +150,6 @@ public class RosterAnalyticsService {
         List<EmployeePreference> pendingPrefs = preferenceRepository.findByStatusOrderByCreatedAtDesc(PreferenceStatus.PENDING);
         int pendingPreferencesCount = pendingPrefs.size();
 
-        List<Holiday> activeHolidays = holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate).stream()
-                .filter(Holiday::isActive)
-                .toList();
-
         RosterAnalyticsSummary summary = new RosterAnalyticsSummary(
                 totalEmpCount,
                 activeEmpCount,
@@ -174,7 +167,7 @@ public class RosterAnalyticsService {
                 totalHandovers,
                 pendingHandovers,
                 pendingPreferencesCount,
-                activeHolidays.size()
+                0
         );
 
         WorkloadReportResponse workloadReport = workloadAnalyticsService.calculateWorkload(startDate, endDate, null);

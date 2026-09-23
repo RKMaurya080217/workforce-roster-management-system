@@ -3,13 +3,11 @@
    1. Roster Analytics Dashboard
    2. Smart Roster Conflict Detector / Validator
    3. Employee Availability & Shift Preference
-   4. Holiday Calendar
-   5. Shift Handover Management
-   6. Employee Workload Analytics
-   7. Export Center (PDF / Excel / CSV)
-   8. Employee Skill Matrix
-   9. Roster Version History & Version Comparison
-   10. Advanced Notification Integrations
+   4. Shift Handover Management
+   5. Employee Workload Analytics
+   6. Export Center (PDF / Excel / CSV)
+   7. Roster Version History & Version Comparison
+   8. Advanced Notification Integrations
    ========================================================================== */
 
 // --- 1. ROSTER ANALYTICS DASHBOARD ---
@@ -441,101 +439,8 @@ function openAdminPrefDecisionModal(id, status, empName) {
 }
 
 
-// --- 4. HOLIDAY CALENDAR (ADMIN & EMPLOYEE) ---
-async function renderAdminHolidaysView() {
-  const container = dom.views.adminHolidays;
-  if (!container) return;
-  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading holiday calendar...</p></div>`;
+// --- 4. SHIFT HANDOVER MANAGEMENT ---
 
-  try {
-    const list = await apiRequest("/api/admin/holidays");
-
-    container.innerHTML = `
-      <div class="view-header-bar">
-        <div>
-          <h2>Official Holiday Calendar</h2>
-          <p class="text-muted">Manage company and public holidays recognized across weekly roster scheduling</p>
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-primary btn-sm" onclick="openHolidayModal()"><span>âž• Add Holiday</span></button>
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminHolidaysView()"><span>🔄 Refresh</span></button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Holiday Date</th>
-                <th>Holiday Name</th>
-                <th>Description</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${list.length === 0 ? `<tr><td colspan="5" class="text-center text-muted" style="padding:32px;">No holidays configured yet</td></tr>` :
-                list.map(h => `
-                  <tr>
-                    <td><strong>${formatDate(h.holidayDate)}</strong></td>
-                    <td><strong>${escapeHTML(h.name)}</strong></td>
-                    <td>${escapeHTML(h.description || "-")}</td>
-                    <td>
-                      <button class="btn btn-xs ${h.active ? 'btn-success' : 'btn-ghost'}" onclick="toggleHolidayStatus(${h.id}, ${!h.active})" title="Toggle Active Status">
-                        ${h.active ? 'Active' : 'Inactive'}
-                      </button>
-                    </td>
-                    <td>
-                      <div style="display:flex; gap:8px;">
-                        <button class="btn btn-secondary btn-xs" onclick="openHolidayModal(${h.id}, '${escapeHTML(h.name)}', '${h.holidayDate}', '${escapeHTML(h.description || '')}')">Edit</button>
-                        <button class="btn btn-danger btn-xs" onclick="deleteHoliday(${h.id})">Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
-  }
-}
-
-function openHolidayModal(id = null, name = "", date = "", desc = "") {
-  document.getElementById("holidayFormId").value = id || "";
-  document.getElementById("holidayFormName").value = name;
-  document.getElementById("holidayFormDate").value = date;
-  document.getElementById("holidayFormDesc").value = desc;
-  document.getElementById("holidayModalTitle").textContent = id ? "Edit Holiday" : "Add New Holiday";
-  document.getElementById("holidayModal").classList.remove("hidden");
-}
-
-async function toggleHolidayStatus(id, active) {
-  try {
-    await apiRequest(`/api/admin/holidays/${id}/status?active=${active}`, { method: "PATCH" });
-    toast("Holiday status updated", "success");
-    renderAdminHolidaysView();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-async function deleteHoliday(id) {
-  if (!confirm("Are you sure you want to delete this holiday?")) return;
-  try {
-    await apiRequest(`/api/admin/holidays/${id}`, { method: "DELETE" });
-    toast("Holiday deleted successfully", "success");
-    renderAdminHolidaysView();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-
-// --- 5. SHIFT HANDOVER MANAGEMENT ---
 async function renderAdminHandoversView() {
   const container = dom.views.adminHandovers;
   if (!container) return;
@@ -596,7 +501,7 @@ async function renderAdminHandoversView() {
 }
 
 
-// --- 6. EMPLOYEE WORKLOAD ANALYTICS ---
+// --- 5. EMPLOYEE WORKLOAD ANALYTICS ---
 async function renderAdminWorkloadView() {
   const container = dom.views.adminWorkload;
   if (!container) return;
@@ -721,20 +626,18 @@ async function renderExportCenterView() {
     },
     {
       title: "Workforce Master Data",
-      desc: "Comprehensive employee records, skill ratings, certifications, and workload analytics.",
+      desc: "Comprehensive employee records and workload analytics.",
       reports: [
         { type: "EMPLOYEE_MASTER", title: "Employee Master Directory", icon: WRMS_ICONS.employees || "👥", desc: "Complete workforce directory with employee codes, emails, contact numbers, and status." },
-        { type: "SKILL_MATRIX", title: "Employee Skill Matrix", icon: WRMS_ICONS.skills || "⭐", desc: "Workforce competency catalog with verified employee proficiency ratings and certifications." },
         { type: "WORKLOAD_REPORT", title: "Employee Workload Analytics", icon: WRMS_ICONS.workload || "📈", desc: "Duty hours, night shift counts, consecutive work days, and composite workload scores." }
       ]
     },
     {
       title: "Governance & Compliance",
-      desc: "Leave records, system audit trail, and organizational holiday schedules.",
+      desc: "Leave records and system audit trail.",
       reports: [
         { type: "LEAVE_REGISTER", title: "Leave Register & History", icon: WRMS_ICONS.leaves || "🏖️", desc: "Comprehensive log of all approved, pending, and past employee leave requests." },
-        { type: "AUDIT_REPORT", title: "System Audit Trail", icon: WRMS_ICONS.audit || "📜", desc: "Complete security and operation audit trail of manual overrides, swaps, and lifecycle events." },
-        { type: "HOLIDAY_CALENDAR", title: "Official Holiday Calendar", icon: WRMS_ICONS.holidays || "🎉", desc: "List of recognized organization and public holidays across scheduling cycles." }
+        { type: "AUDIT_REPORT", title: "System Audit Trail", icon: WRMS_ICONS.audit || "📜", desc: "Complete security and operation audit trail of manual overrides, swaps, and lifecycle events." }
       ]
     }
   ];
@@ -925,166 +828,8 @@ function resetExportFilters() {
 }
 
 
-// --- 8. EMPLOYEE SKILL MATRIX ---
-async function renderAdminSkillsView() {
-  const container = dom.views.adminSkills;
-  if (!container) return;
-  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading workforce skill matrix...</p></div>`;
+// --- 7. ROSTER VERSION HISTORY & VERSION COMPARISON ---
 
-  try {
-    const [skills, matrix, employees] = await Promise.all([
-      apiRequest("/api/admin/skills"),
-      apiRequest("/api/admin/skills/employee-matrix"),
-      apiRequest("/api/employees")
-    ]);
-
-    container.innerHTML = `
-      <div class="view-header-bar">
-        <div>
-          <h2>Employee Skill Matrix & Competency Catalog</h2>
-          <p class="text-muted">Track verified workforce competencies, certifications, and operational proficiency levels</p>
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-primary btn-sm" onclick="openAssignSkillModal()">
-            ${WRMS_ICONS.skills}
-            <span>Assign Skill to Employee</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="openSkillModal()">
-            ${WRMS_ICONS.skills}
-            <span>New Skill</span>
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminSkillsView()">
-            ${WRMS_ICONS.refresh}
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Employee Assigned Skills Matrix -->
-      <div class="card" style="margin-bottom:24px;">
-        <div class="card-header">
-          <h3>Workforce Verified Skills Matrix (${matrix.length} assignments)</h3>
-        </div>
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Skill Name</th>
-                <th>Category</th>
-                <th>Proficiency</th>
-                <th>Certified</th>
-                <th>Certification Title</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${matrix.length === 0 ? `<tr><td colspan="7" class="text-center text-muted" style="padding:32px;">No skill assignments recorded yet</td></tr>` :
-                matrix.map(m => `
-                  <tr>
-                    <td><strong>${escapeHTML(m.employeeName)}</strong><br><small class="text-muted">${escapeHTML(m.employeeCode)}</small></td>
-                    <td><strong>${escapeHTML(m.skillName)}</strong></td>
-                    <td>${escapeHTML(m.category || "GENERAL")}</td>
-                    <td><span class="proficiency-tag prof-${m.proficiencyLevel}">${m.proficiencyLevel}</span></td>
-                    <td>${m.certified ? 'Yes' : 'No'}</td>
-                    <td>${escapeHTML(m.certificationName || "-")}</td>
-                    <td>
-                      <button class="btn btn-danger btn-xs" onclick="deleteEmployeeSkill(${m.id})">Remove</button>
-                    </td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Skill Catalog List -->
-      <div class="card">
-        <div class="card-header">
-          <h3>Skill Catalog Directory (${skills.length})</h3>
-        </div>
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Skill ID</th>
-                <th>Skill Name</th>
-                <th>Category</th>
-                <th>Description</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${skills.length === 0 ? `<tr><td colspan="5" class="text-center text-muted" style="padding:24px;">No catalog skills created</td></tr>` :
-                skills.map(s => `
-                  <tr>
-                    <td>#${s.id}</td>
-                    <td><strong>${escapeHTML(s.name)}</strong></td>
-                    <td>${escapeHTML(s.category || "-")}</td>
-                    <td>${escapeHTML(s.description || "-")}</td>
-                    <td>
-                      <button class="btn btn-danger btn-xs" onclick="deleteSkill(${s.id})">Delete</button>
-                    </td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    // Populate Assign Skill Modal selects
-    const empSelect = document.getElementById("assignSkillEmp");
-    if (empSelect) {
-      empSelect.innerHTML = employees.map(e => `<option value="${e.id}">${escapeHTML(e.firstName)} ${escapeHTML(e.lastName || '')} (${e.employeeCode})</option>`).join("");
-    }
-    const skillSelect = document.getElementById("assignSkillId");
-    if (skillSelect) {
-      skillSelect.innerHTML = skills.map(s => `<option value="${s.id}">${escapeHTML(s.name)} [${s.category || 'General'}]</option>`).join("");
-    }
-
-  } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading skill matrix: ${escapeHTML(err.message)}</div></div>`;
-  }
-}
-
-function openSkillModal() {
-  document.getElementById("skillFormId").value = "";
-  document.getElementById("skillFormName").value = "";
-  document.getElementById("skillFormCategory").value = "";
-  document.getElementById("skillFormDesc").value = "";
-  document.getElementById("skillModal").classList.remove("hidden");
-}
-
-function openAssignSkillModal() {
-  document.getElementById("assignSkillCertName").value = "";
-  document.getElementById("assignSkillModal").classList.remove("hidden");
-}
-
-async function deleteSkill(id) {
-  if (!confirm("Delete this skill from catalog?")) return;
-  try {
-    await apiRequest(`/api/admin/skills/${id}`, { method: "DELETE" });
-    toast("Skill deleted from catalog", "success");
-    renderAdminSkillsView();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-async function deleteEmployeeSkill(id) {
-  if (!confirm("Remove skill assignment?")) return;
-  try {
-    await apiRequest(`/api/admin/skills/employee-skill/${id}`, { method: "DELETE" });
-    toast("Skill assignment removed", "success");
-    renderAdminSkillsView();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-
-// --- 9. ROSTER VERSION HISTORY & VERSION COMPARISON ---
 async function renderRosterVersionsView() {
   const container = dom.views.rosterVersions;
   if (!container) return;
@@ -1593,90 +1338,6 @@ async function completeHandover(id) {
   }
 }
 
-// Render Employee Skills Tab
-async function renderEmployeeSkillsTabHTML() {
-  try {
-    const list = await apiRequest("/api/skills/my");
-    return `
-      <div class="card">
-        <div class="card-header">
-          <h3>My Verified Skills & Competencies</h3>
-          <p class="text-muted" style="margin:0; font-size:0.84rem;">Operational qualifications, certifications, and proficiency ratings verified by administration</p>
-        </div>
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Skill Name</th>
-                <th>Category</th>
-                <th>Proficiency Level</th>
-                <th>Certified</th>
-                <th>Certification Title</th>
-                <th>Verified Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${list.length === 0 ? `<tr><td colspan="6" class="text-center text-muted" style="padding:32px;">No skills recorded on your profile yet</td></tr>` :
-                list.map(s => `
-                  <tr>
-                    <td><strong>${escapeHTML(s.skillName)}</strong></td>
-                    <td>${escapeHTML(s.category || "GENERAL")}</td>
-                    <td><span class="proficiency-tag prof-${s.proficiencyLevel}">${s.proficiencyLevel}</span></td>
-                    <td>${s.certified ? '✅ Certified' : 'Standard'}</td>
-                    <td>${escapeHTML(s.certificationName || "-")}</td>
-                    <td>${formatDate(s.createdAt)}</td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading skills: ${escapeHTML(err.message)}</div></div>`;
-  }
-}
-
-// Render Employee Holidays Tab
-async function renderEmployeeHolidaysTabHTML() {
-  try {
-    const list = await apiRequest("/api/holidays");
-    return `
-      <div class="card">
-        <div class="card-header">
-          <h3>Official Company Holidays</h3>
-          <p class="text-muted" style="margin:0; font-size:0.84rem;">Upcoming recognized public and organizational holidays</p>
-        </div>
-        <div class="card-body" style="padding:0; overflow-x:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Holiday Name</th>
-                <th>Description</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${list.length === 0 ? `<tr><td colspan="4" class="text-center text-muted" style="padding:32px;">No company holidays scheduled</td></tr>` :
-                list.map(h => `
-                  <tr>
-                    <td><strong>${formatDate(h.holidayDate)}</strong></td>
-                    <td><strong>${escapeHTML(h.name)}</strong></td>
-                    <td>${escapeHTML(h.description || "-")}</td>
-                    <td><span class="badge" style="background:#dcfce7; color:#166534;">Official Holiday</span></td>
-                  </tr>
-                `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading holidays: ${escapeHTML(err.message)}</div></div>`;
-  }
-}
-
 // Global modal bindings
 document.addEventListener("DOMContentLoaded", () => {
   const prefDecisionForm = document.getElementById("adminPrefDecisionForm");
@@ -1695,37 +1356,6 @@ document.addEventListener("DOMContentLoaded", () => {
         toast(`Preference ${status.toLowerCase()} successfully!`, "success");
         document.getElementById("adminPrefDecisionModal").classList.add("hidden");
         renderAdminPreferencesView();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-    });
-  }
-
-  const holidayForm = document.getElementById("holidayModalForm");
-  if (holidayForm) {
-    holidayForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const id = document.getElementById("holidayFormId").value;
-      const name = document.getElementById("holidayFormName").value;
-      const holidayDate = document.getElementById("holidayFormDate").value;
-      const description = document.getElementById("holidayFormDesc").value;
-
-      try {
-        if (id) {
-          await apiRequest(`/api/admin/holidays/${id}`, {
-            method: "PUT",
-            body: { name, holidayDate, description, active: true }
-          });
-          toast("Holiday updated successfully!", "success");
-        } else {
-          await apiRequest("/api/admin/holidays", {
-            method: "POST",
-            body: { name, holidayDate, description, active: true }
-          });
-          toast("Holiday created successfully!", "success");
-        }
-        document.getElementById("holidayModal").classList.add("hidden");
-        renderAdminHolidaysView();
       } catch (err) {
         toast(err.message, "error");
       }
@@ -1958,52 +1588,6 @@ document.addEventListener("DOMContentLoaded", () => {
           const spinner = submitBtn.querySelector(".spinner");
           if (spinner) spinner.classList.add("hidden");
         }
-      }
-    });
-  }
-
-  const skillForm = document.getElementById("skillModalForm");
-  if (skillForm) {
-    skillForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const name = document.getElementById("skillFormName").value;
-      const category = document.getElementById("skillFormCategory").value;
-      const description = document.getElementById("skillFormDesc").value;
-
-      try {
-        await apiRequest("/api/admin/skills", {
-          method: "POST",
-          body: { name, category, description, active: true }
-        });
-        toast("Skill created successfully!", "success");
-        document.getElementById("skillModal").classList.add("hidden");
-        renderAdminSkillsView();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-    });
-  }
-
-  const assignForm = document.getElementById("assignSkillForm");
-  if (assignForm) {
-    assignForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const employeeId = parseInt(document.getElementById("assignSkillEmp").value, 10);
-      const skillId = parseInt(document.getElementById("assignSkillId").value, 10);
-      const proficiencyLevel = document.getElementById("assignSkillProficiency").value;
-      const certified = document.getElementById("assignSkillCertified").value === "true";
-      const certificationName = document.getElementById("assignSkillCertName").value;
-
-      try {
-        await apiRequest("/api/admin/skills/assign", {
-          method: "POST",
-          body: { employeeId, skillId, proficiencyLevel, certified, certificationName }
-        });
-        toast("Skill assigned to employee successfully!", "success");
-        document.getElementById("assignSkillModal").classList.add("hidden");
-        renderAdminSkillsView();
-      } catch (err) {
-        toast(err.message, "error");
       }
     });
   }

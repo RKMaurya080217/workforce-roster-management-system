@@ -40,9 +40,6 @@ public class Batch15CombinedFeaturesTest {
     private ExportCenterService exportCenterService;
 
     @Autowired
-    private SkillMatrixService skillMatrixService;
-
-    @Autowired
     private EmployeeRepository employeeRepository;
 
     @Autowired
@@ -229,80 +226,10 @@ public class Batch15CombinedFeaturesTest {
     }
 
     @Test
-    @DisplayName("7. Skill Matrix: Create catalog skill")
-    void testCreateSkill() {
-        SkillRequest req = new SkillRequest("Network Security", "INFRASTRUCTURE", "Firewall and VPN management", true);
-        SkillResponse res = skillMatrixService.createSkill(req, "admin");
-
-        assertNotNull(res);
-        assertNotNull(res.id());
-        assertEquals("Network Security", res.name());
-        assertEquals("INFRASTRUCTURE", res.category());
-    }
-
-    @Test
-    @DisplayName("8. Skill Matrix: Prevent duplicate skill creation")
-    void testPreventDuplicateSkill() {
-        SkillRequest req = new SkillRequest("Database Administration", "DATABASE", "DB optimization", true);
-        skillMatrixService.createSkill(req, "admin");
-
-        assertThrows(BusinessException.class, () -> {
-            skillMatrixService.createSkill(req, "admin");
-        });
-    }
-
-    @Test
-    @DisplayName("9. Skill Matrix: Assign skill to employee with certification expiry")
-    void testAssignSkillToEmployee() {
-        Employee emp = employeeRepository.findAll().get(0);
-        SkillResponse skill = skillMatrixService.createSkill(new SkillRequest("Cloud Architecture", "CLOUD", "AWS and GCP", true), "admin");
-
-        AssignEmployeeSkillRequest assignReq = new AssignEmployeeSkillRequest(
-                emp.getId(),
-                skill.id(),
-                ProficiencyLevel.EXPERT,
-                "AWS Solutions Architect",
-                LocalDate.now().plusYears(2),
-                true
-        );
-
-        EmployeeSkillResponse assigned = skillMatrixService.assignSkillToEmployee(assignReq, "admin");
-        assertNotNull(assigned);
-        assertEquals(ProficiencyLevel.EXPERT, assigned.proficiencyLevel());
-        assertTrue(assigned.certified());
-
-        List<EmployeeSkillResponse> mySkills = skillMatrixService.getMySkills(emp.getId());
-        assertTrue(mySkills.stream().anyMatch(s -> s.skillId().equals(skill.id())));
-    }
-
-    @Test
-    @DisplayName("10. Skill Matrix: Prevent duplicate Employee + Skill assignment")
-    void testPreventDuplicateSkillAssignment() {
-        Employee emp = employeeRepository.findAll().get(0);
-        SkillResponse skill = skillMatrixService.createSkill(new SkillRequest("Kubernetes Operations", "DEVOPS", "K8s cluster management", true), "admin");
-
-        AssignEmployeeSkillRequest assignReq = new AssignEmployeeSkillRequest(
-                emp.getId(),
-                skill.id(),
-                ProficiencyLevel.INTERMEDIATE,
-                null, null, false
-        );
-
-        skillMatrixService.assignSkillToEmployee(assignReq, "admin");
-
-        assertThrows(BusinessException.class, () -> {
-            skillMatrixService.assignSkillToEmployee(assignReq, "admin");
-        });
-    }
-
-    @Test
     @WithMockUser(username = "admin", authorities = {"ROLE_ADMIN"})
-    @DisplayName("11. Security: Admin can access export center and skill management")
+    @DisplayName("7. Security: Admin can access export center and workload management")
     void testAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/admin/exports/download?reportType=WEEKLY_ROSTER&format=xlsx").accept(MediaType.APPLICATION_OCTET_STREAM))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/admin/skills").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/admin/workload").accept(MediaType.APPLICATION_JSON))
@@ -311,7 +238,7 @@ public class Batch15CombinedFeaturesTest {
 
     @Test
     @WithMockUser(username = "emp001", authorities = {"ROLE_EMPLOYEE"})
-    @DisplayName("12. Security: Employee blocked from Admin Export Center (403 Forbidden)")
+    @DisplayName("8. Security: Employee blocked from Admin Export Center (403 Forbidden)")
     void testEmployeeBlockedFromAdminExports() throws Exception {
         mockMvc.perform(get("/api/admin/exports/download?reportType=WEEKLY_ROSTER&format=xlsx"))
                 .andExpect(status().isForbidden());

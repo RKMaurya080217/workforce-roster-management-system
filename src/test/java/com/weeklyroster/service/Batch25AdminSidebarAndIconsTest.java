@@ -17,7 +17,7 @@ class Batch25AdminSidebarAndIconsTest {
     private static final Path STYLES_CSS = Path.of("src/main/resources/static/styles.css");
 
     @Test
-    @DisplayName("Admin Sidebar: Primary Navigation must contain dashboard, roster, employees, and unified approvals")
+    @DisplayName("Admin Sidebar: Primary Navigation must contain 7 core items (dashboard, roster, employees, approvals, handovers, reports, administration)")
     void testAdminPrimaryNavStructure() throws Exception {
         String js = Files.readString(APP_JS, StandardCharsets.UTF_8);
 
@@ -26,30 +26,37 @@ class Batch25AdminSidebarAndIconsTest {
         assertTrue(js.contains("id: \"roster\""), "Must include weekly roster in primary nav");
         assertTrue(js.contains("id: \"employees\""), "Must include employees in primary nav");
         assertTrue(js.contains("id: \"approvals\""), "Must include unified approvals in primary nav");
+        assertTrue(js.contains("id: \"adminHandovers\""), "Must include shift handovers in primary nav");
+        assertTrue(js.contains("id: \"reports\""), "Must include reports in primary nav");
+        assertTrue(js.contains("id: \"administration\""), "Must include administration in primary nav");
     }
 
     @Test
-    @DisplayName("Admin Sidebar: More Menu must contain the secondary management items")
+    @DisplayName("Admin Sidebar: Submenus must contain active management items and exclude skill matrix and holidays")
     void testAdminMoreNavStructure() throws Exception {
         String js = Files.readString(APP_JS, StandardCharsets.UTF_8);
 
         assertTrue(js.contains("const ADMIN_MORE_NAV = ["), "Must define ADMIN_MORE_NAV array");
         assertTrue(js.contains("id: \"analytics\""), "Must include roster analytics in more menu");
         assertTrue(js.contains("id: \"validation\""), "Must include conflict validator in more menu");
-        assertTrue(js.contains("id: \"adminHolidays\""), "Must include holiday calendar in more menu");
         assertTrue(js.contains("id: \"adminHandovers\""), "Must include shift handovers in more menu");
         assertTrue(js.contains("id: \"adminWorkload\""), "Must include workload analytics in more menu");
-        assertTrue(js.contains("id: \"adminSkills\""), "Must include skill matrix in more menu");
         assertTrue(js.contains("id: \"exportCenter\""), "Must include export center in more menu");
         assertTrue(js.contains("id: \"rosterVersions\""), "Must include roster versions in more menu");
         assertTrue(js.contains("id: \"health\""), "Must include roster health in more menu");
         assertTrue(js.contains("id: \"shifts\""), "Must include shift capacity in more menu");
         assertTrue(js.contains("id: \"history\""), "Must include roster history in more menu");
         assertTrue(js.contains("id: \"audit\""), "Must include audit trail in more menu");
+
+        // Skill matrix and holiday calendar must NOT be present in navigation items
+        assertFalse(js.contains("id: \"adminHolidays\""), "Must NOT include holiday calendar in navigation");
+        assertFalse(js.contains("id: \"adminSkills\""), "Must NOT include skill matrix in navigation");
+        assertFalse(js.contains("id: \"emp_skills\""), "Must NOT include skills in employee nav");
+        assertFalse(js.contains("id: \"emp_holidays\""), "Must NOT include holidays in employee nav");
     }
 
     @Test
-    @DisplayName("Admin Routing: Canonical routes and legacy aliases must all be supported")
+    @DisplayName("Admin Routing: Canonical routes must all be supported")
     void testAdminRoutingAndCanonicalHashes() throws Exception {
         String js = Files.readString(APP_JS, StandardCharsets.UTF_8);
 
@@ -60,10 +67,8 @@ class Batch25AdminSidebarAndIconsTest {
         assertTrue(js.contains("\"#/approvals\""), "Must support #/approvals");
         assertTrue(js.contains("\"#/roster-analytics\""), "Must support #/roster-analytics");
         assertTrue(js.contains("\"#/conflict-validator\""), "Must support #/conflict-validator");
-        assertTrue(js.contains("\"#/holiday-calendar\""), "Must support #/holiday-calendar");
         assertTrue(js.contains("\"#/shift-handovers\""), "Must support #/shift-handovers");
         assertTrue(js.contains("\"#/workload-analytics\""), "Must support #/workload-analytics");
-        assertTrue(js.contains("\"#/skill-matrix\""), "Must support #/skill-matrix");
         assertTrue(js.contains("\"#/export-center\""), "Must support #/export-center");
         assertTrue(js.contains("\"#/roster-versions\""), "Must support #/roster-versions");
         assertTrue(js.contains("\"#/roster-health\""), "Must support #/roster-health");

@@ -5,7 +5,6 @@ import com.weeklyroster.dto.response.WorkloadReportResponse;
 import com.weeklyroster.entity.*;
 import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.EmployeeRepository;
-import com.weeklyroster.repository.HolidayRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,14 +21,11 @@ public class WorkloadAnalyticsService {
 
     private final RosterAssignmentRepository assignmentRepository;
     private final EmployeeRepository employeeRepository;
-    private final HolidayRepository holidayRepository;
 
     public WorkloadAnalyticsService(RosterAssignmentRepository assignmentRepository,
-                                  EmployeeRepository employeeRepository,
-                                  HolidayRepository holidayRepository) {
+                                  EmployeeRepository employeeRepository) {
         this.assignmentRepository = assignmentRepository;
         this.employeeRepository = employeeRepository;
-        this.holidayRepository = holidayRepository;
     }
 
     public WorkloadReportResponse calculateWorkload(LocalDate startDate, LocalDate endDate, Long employeeIdFilter) {
@@ -52,11 +48,6 @@ public class WorkloadAnalyticsService {
         List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(startDate, endDate);
         Map<Long, List<RosterAssignment>> byEmp = assignments.stream()
                 .collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
-
-        Set<LocalDate> holidayDates = holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate).stream()
-                .filter(Holiday::isActive)
-                .map(Holiday::getHolidayDate)
-                .collect(Collectors.toSet());
 
         List<EmployeeWorkloadMetric> metrics = new ArrayList<>();
         double totalScoreSum = 0;
@@ -114,10 +105,6 @@ public class WorkloadAnalyticsService {
                     DayOfWeek dow = a.getRosterDate().getDayOfWeek();
                     if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) {
                         weekendDuties++;
-                    }
-
-                    if (holidayDates.contains(a.getRosterDate())) {
-                        holidayDuties++;
                     }
 
                     if (prevShift != null && prevShift != st) {

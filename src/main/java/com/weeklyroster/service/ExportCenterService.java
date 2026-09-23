@@ -27,10 +27,8 @@ public class ExportCenterService {
     private final EmployeeRepository employeeRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final AuditLogRepository auditLogRepository;
-    private final HolidayRepository holidayRepository;
     private final WorkloadAnalyticsService workloadAnalyticsService;
     private final RosterValidatorService rosterValidatorService;
-    private final EmployeeSkillRepository employeeSkillRepository;
     private final ShiftRepository shiftRepository;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -41,20 +39,16 @@ public class ExportCenterService {
                                EmployeeRepository employeeRepository,
                                LeaveRequestRepository leaveRequestRepository,
                                AuditLogRepository auditLogRepository,
-                               HolidayRepository holidayRepository,
                                WorkloadAnalyticsService workloadAnalyticsService,
                                RosterValidatorService rosterValidatorService,
-                               EmployeeSkillRepository employeeSkillRepository,
                                ShiftRepository shiftRepository) {
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.employeeRepository = employeeRepository;
         this.leaveRequestRepository = leaveRequestRepository;
         this.auditLogRepository = auditLogRepository;
-        this.holidayRepository = holidayRepository;
         this.workloadAnalyticsService = workloadAnalyticsService;
         this.rosterValidatorService = rosterValidatorService;
-        this.employeeSkillRepository = employeeSkillRepository;
         this.shiftRepository = shiftRepository;
     }
 
@@ -245,44 +239,6 @@ public class ExportCenterService {
                             l.getReason() != null ? l.getReason() : "-",
                             l.getSource() != null ? l.getSource() : "-",
                             l.getTimestamp() != null ? l.getTimestamp().format(TIME_FMT) : "-"
-                    });
-                }
-            }
-            case "HOLIDAY_CALENDAR" -> {
-                title = "WRMS Official Holiday Calendar";
-                rows.add(new String[]{"Holiday ID", "Name", "Date", "Description", "Active Status", "Created At"});
-                List<Holiday> holidays = holidayRepository.findAllByOrderByHolidayDateDesc();
-                for (Holiday h : holidays) {
-                    rows.add(new String[]{
-                            "#" + h.getId(),
-                            h.getName(),
-                            h.getHolidayDate() != null ? h.getHolidayDate().toString() : "-",
-                            h.getDescription() != null ? h.getDescription() : "-",
-                            h.isActive() ? "ACTIVE" : "INACTIVE",
-                            h.getCreatedAt() != null ? h.getCreatedAt().format(TIME_FMT) : "-"
-                    });
-                }
-            }
-            case "SKILL_MATRIX" -> {
-                title = "WRMS Workforce Skill Matrix & Competency Register";
-                rows.add(new String[]{"Employee Code", "Employee Name", "Skill Name", "Category", "Proficiency Level", "Certified", "Certification Name", "Expiry Date", "Status"});
-                List<EmployeeSkill> skills = employeeSkillRepository.findAllByOrderByEmployeeFirstNameAsc();
-                if (skills.isEmpty()) {
-                    skills = employeeSkillRepository.findAll();
-                }
-                for (EmployeeSkill es : skills) {
-                    Employee e = es.getEmployee();
-                    Skill s = es.getSkill();
-                    rows.add(new String[]{
-                            e != null ? e.getEmployeeCode() : "-",
-                            e != null ? e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "") : "-",
-                            s != null ? s.getName() : "-",
-                            s != null && s.getCategory() != null ? s.getCategory() : "-",
-                            es.getProficiencyLevel() != null ? es.getProficiencyLevel().name() : "-",
-                            es.isCertified() ? "YES" : "NO",
-                            es.getCertificationName() != null ? es.getCertificationName() : "-",
-                            es.getCertificationExpiryDate() != null ? es.getCertificationExpiryDate().toString() : "-",
-                            es.isActive() ? "ACTIVE" : "INACTIVE"
                     });
                 }
             }

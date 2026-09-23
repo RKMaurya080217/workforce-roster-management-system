@@ -44,6 +44,7 @@ public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
             "email_delivery_logs",
             "employee_activity_logs",
             "employee_preferences",
+            "employee_skills",
             "holidays",
             "profile_change_requests",
             "roster_change_requests",
@@ -58,7 +59,6 @@ public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
             "employees",
             "shifts",
             "master_reference_data",
-            "employee_skills",
             "roster_cycles",
             "roster_assignments",
             "leave_requests",
@@ -75,8 +75,8 @@ public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         log.info("================================================================================");
         log.info("  [BATCH 56 DATABASE CONSOLIDATION RUNNER INITIALIZING]");
-        log.info("  Target   : EXACTLY 12 CORE APPLICATION TABLES");
-        log.info("  Objective: Retire 11 obsolete tables with ZERO DATA LOSS & full verification");
+        log.info("  Target   : EXACTLY 11 CORE APPLICATION TABLES");
+        log.info("  Objective: Retire obsolete tables with ZERO DATA LOSS & full verification");
         log.info("--------------------------------------------------------------------------------");
 
         try {
@@ -252,12 +252,12 @@ public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
                 log.info("    {:2d}. {:<25} [{} rows] {}", (i + 1), tbl, (rows != null ? rows : 0), (isCore ? "✓ CORE" : "⚠ NON-CORE"));
             }
 
-            if (actualTables.size() == 12) {
+            if (actualTables.size() == 11) {
                 log.info("  ========================================================================");
-                log.info("  [SUCCESS] EXACTLY 12 CORE APPLICATION TABLES ACTIVE IN WRMS PRODUCTION!");
+                log.info("  [SUCCESS] EXACTLY 11 CORE APPLICATION TABLES ACTIVE IN WRMS PRODUCTION!");
                 log.info("  ========================================================================");
             } else {
-                log.warn("  [ATTENTION] Table count is {} (expected 12). Check non-core tables above.", actualTables.size());
+                log.warn("  [ATTENTION] Table count is {} (expected 11). Check non-core tables above.", actualTables.size());
             }
         } catch (Exception e) {
             log.error("  Error during final schema verification: {}", e.getMessage());

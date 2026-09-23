@@ -114,7 +114,6 @@ public class Batch59AuditAndOptimizationTest {
                 "roster_cycles",
                 "roster_assignments",
                 "master_reference_data",
-                "employee_skills",
                 "leave_requests",
                 "shift_handovers",
                 "notifications",
@@ -128,7 +127,8 @@ public class Batch59AuditAndOptimizationTest {
         // Extension tables added in Batch 62 (FCM device_tokens) and Batch 65 (sms_delivery_logs)
         assertTrue(tables.contains("device_tokens"), "Table 'device_tokens' must be present in database");
         assertTrue(tables.contains("sms_delivery_logs"), "Table 'sms_delivery_logs' must be present in database");
-        assertEquals(14, tables.size(), "Exact 14 production tables must be present in database. Found: " + tables);
+        assertFalse(tables.contains("employee_skills"), "Table 'employee_skills' must be retired");
+        assertEquals(13, tables.size(), "Exact 13 production tables must be present in database. Found: " + tables);
     }
 
     @Test

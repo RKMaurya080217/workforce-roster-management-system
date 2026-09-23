@@ -36,13 +36,7 @@ public class Batch55DatabaseConsolidationTest {
     private ShiftRepository shiftRepository;
 
     @Autowired
-    private HolidayRepository holidayRepository;
-
-    @Autowired
-    private SkillRepository skillRepository;
-
-    @Autowired
-    private EmployeeSkillRepository employeeSkillRepository;
+    private ApiClientRepository apiClientRepository;
 
     @Autowired
     private RosterCycleRepository rosterCycleRepository;
@@ -105,34 +99,23 @@ public class Batch55DatabaseConsolidationTest {
 
     @Test
     @Order(2)
-    @DisplayName("Verify Consolidated Table 4: master_reference_data (Holiday + Skill Polymorphic Inheritance)")
+    @DisplayName("Verify Consolidated Table 4: master_reference_data (ApiClient Polymorphic Inheritance)")
     @Transactional
     void test2_MasterReferenceDataConsolidation() {
-        // Create a Holiday
-        LocalDate testDate = LocalDate.of(2026, 12, 25);
-        Holiday holiday = new Holiday("Christmas Holiday Test", testDate, "Annual holiday test");
-        Holiday savedHoliday = holidayRepository.save(holiday);
-        assertNotNull(savedHoliday.getId());
+        // Create an ApiClient
+        ApiClient client = new ApiClient("Batch 55 Test Client", "hash_batch55", "READ_ROSTER", 120);
+        ApiClient savedClient = apiClientRepository.save(client);
+        assertNotNull(savedClient.getId());
 
-        // Create a Skill
-        Skill skill = new Skill("Cloud Architecture", "TECHNICAL", "Cloud infra and design");
-        Skill savedSkill = skillRepository.save(skill);
-        assertNotNull(savedSkill.getId());
-
-        // Verify Holiday Query
-        Optional<Holiday> foundHoliday = holidayRepository.findByHolidayDate(testDate);
-        assertTrue(foundHoliday.isPresent());
-        assertEquals("Christmas Holiday Test", foundHoliday.get().getName());
-
-        // Verify Skill Query
-        Optional<Skill> foundSkill = skillRepository.findByNameIgnoreCase("Cloud Architecture");
-        assertTrue(foundSkill.isPresent());
-        assertEquals("TECHNICAL", foundSkill.get().getCategory());
+        // Verify ApiClient Query
+        Optional<ApiClient> foundClient = apiClientRepository.findByClientName("Batch 55 Test Client");
+        assertTrue(foundClient.isPresent());
+        assertEquals("hash_batch55", foundClient.get().getApiKeyHash());
 
         // Verify underlying physical table
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM master_reference_data WHERE item_type IN ('HOLIDAY', 'SKILL')", Integer.class);
-        assertTrue(count != null && count >= 2, "master_reference_data should store both Holiday and Skill rows");
+            "SELECT COUNT(*) FROM master_reference_data WHERE item_type = 'API_CLIENT'", Integer.class);
+        assertTrue(count != null && count >= 1, "master_reference_data should store ApiClient rows");
     }
 
     @Test
@@ -280,7 +263,7 @@ public class Batch55DatabaseConsolidationTest {
 
     @Test
     @Order(6)
-    @DisplayName("Verify Exactly 12 Core Tables Active & Zero Data Loss")
+    @DisplayName("Verify Exactly 11 Core Tables Active & Zero Data Loss")
     void test6_ZeroDataLossAndConsolidationIntegrity() {
         // Query database table names
         List<String> activeCoreTables = List.of(
@@ -288,7 +271,6 @@ public class Batch55DatabaseConsolidationTest {
             "employees",
             "shifts",
             "master_reference_data",
-            "employee_skills",
             "roster_cycles",
             "roster_assignments",
             "leave_requests",

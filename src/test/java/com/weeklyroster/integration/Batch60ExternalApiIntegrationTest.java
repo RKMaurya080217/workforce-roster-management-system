@@ -327,10 +327,9 @@ public class Batch60ExternalApiIntegrationTest {
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name",
                 String.class);
 
-        Set<String> expected14 = Set.of(
+        Set<String> expected13 = Set.of(
                 "device_tokens",
                 "employee_requests",
-                "employee_skills",
                 "employees",
                 "leave_requests",
                 "master_reference_data",
@@ -344,8 +343,8 @@ public class Batch60ExternalApiIntegrationTest {
                 "users"
         );
 
-        assertEquals(14, actualTables.size(), "Database must strictly contain EXACTLY 14 tables");
-        assertEquals(expected14, Set.copyOf(actualTables), "14 production table names must match exact consolidated schema");
+        assertEquals(13, actualTables.size(), "Database must strictly contain EXACTLY 13 tables");
+        assertEquals(expected13, Set.copyOf(actualTables), "13 production table names must match exact consolidated schema");
     }
 
     @Test

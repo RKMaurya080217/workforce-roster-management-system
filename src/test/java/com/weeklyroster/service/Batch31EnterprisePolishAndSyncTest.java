@@ -56,9 +56,6 @@ class Batch31EnterprisePolishAndSyncTest {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
-    @Autowired
-    private HolidayRepository holidayRepository;
-
     private void authenticateAdmin() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin", "N/A", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
@@ -105,15 +102,6 @@ class Batch31EnterprisePolishAndSyncTest {
             }
         }
 
-        if (holidayRepository.count() == 0) {
-            Holiday h = new Holiday();
-            h.setName("Test Holiday");
-            h.setHolidayDate(LocalDate.now());
-            h.setDescription("National Holiday");
-            h.setActive(true);
-            holidayRepository.save(h);
-        }
-
         if (auditLogRepository.count() == 0) {
             AuditLog al = new AuditLog();
             al.setActor("admin");
@@ -134,7 +122,6 @@ class Batch31EnterprisePolishAndSyncTest {
                 "LEAVE_REPORT",
                 "WORKLOAD_REPORT",
                 "AUDIT_REPORT",
-                "HOLIDAY_CALENDAR",
                 "VALIDATION_REPORT"
         );
 

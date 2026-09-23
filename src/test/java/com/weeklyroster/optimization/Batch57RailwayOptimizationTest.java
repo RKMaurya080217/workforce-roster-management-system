@@ -82,12 +82,12 @@ public class Batch57RailwayOptimizationTest {
             System.out.println("  " + t + " -> " + count + " rows");
         });
 
-        assertEquals(14, tables.size(), "Exact 14 production tables must exist");
+        assertEquals(13, tables.size(), "Exact 13 production tables must exist");
         assertTrue(tables.contains("users"));
         assertTrue(tables.contains("employees"));
         assertTrue(tables.contains("shifts"));
         assertTrue(tables.contains("master_reference_data"));
-        assertTrue(tables.contains("employee_skills"));
+        assertFalse(tables.contains("employee_skills"));
         assertTrue(tables.contains("roster_cycles"));
         assertTrue(tables.contains("roster_assignments"));
         assertTrue(tables.contains("leave_requests"));

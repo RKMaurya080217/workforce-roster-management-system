@@ -54,11 +54,8 @@ public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
             // 5. Migrate roster_versions -> system_audit_logs (log_type = 'ROSTER_VERSION')
             migrateRosterVersions();
 
-            // 6. Migrate holidays -> master_reference_data (item_type = 'HOLIDAY')
-            migrateHolidays();
-
-            // 7. Migrate skills -> master_reference_data (item_type = 'SKILL')
-            migrateSkills();
+            // 6. Cleanup obsolete skill and holiday tables and reference records
+            cleanupSkillAndHolidayData();
 
             // 8. Migrate profile_change_requests -> employee_requests (request_type = 'PROFILE_CHANGE')
             migrateProfileChangeRequests();
@@ -172,27 +169,17 @@ public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
         }
     }
 
-    private void migrateHolidays() {
-        if (!tableExists("holidays") || !tableExists("master_reference_data")) return;
-        Integer legacyCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM holidays", Integer.class);
-        Integer consolidatedCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM master_reference_data WHERE item_type = 'HOLIDAY'", Integer.class);
-        if (legacyCount != null && legacyCount > 0 && (consolidatedCount == null || consolidatedCount == 0)) {
-            jdbcTemplate.execute(
-                "INSERT INTO master_reference_data (item_type, holiday_name, holiday_date, holiday_description, holiday_active, holiday_created_at, holiday_updated_at) " +
-                "SELECT 'HOLIDAY', name, holiday_date, description, active, created_at, updated_at FROM holidays");
-            log.info("  -> Migrated {} holidays records into master_reference_data", legacyCount);
-        }
-    }
-
-    private void migrateSkills() {
-        if (!tableExists("skills") || !tableExists("master_reference_data")) return;
-        Integer legacyCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM skills", Integer.class);
-        Integer consolidatedCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM master_reference_data WHERE item_type = 'SKILL'", Integer.class);
-        if (legacyCount != null && legacyCount > 0 && (consolidatedCount == null || consolidatedCount == 0)) {
-            jdbcTemplate.execute(
-                "INSERT INTO master_reference_data (item_type, skill_name, skill_category, skill_description, skill_active, skill_created_at) " +
-                "SELECT 'SKILL', name, category, description, active, created_at FROM skills");
-            log.info("  -> Migrated {} skills records into master_reference_data", legacyCount);
+    private void cleanupSkillAndHolidayData() {
+        try {
+            jdbcTemplate.execute("DROP TABLE IF EXISTS employee_skills");
+            if (tableExists("master_reference_data")) {
+                int deleted = jdbcTemplate.update("DELETE FROM master_reference_data WHERE item_type IN ('SKILL', 'HOLIDAY')");
+                if (deleted > 0) {
+                    log.info("  -> Cleaned {} obsolete skill and holiday records from master_reference_data", deleted);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("  Could not complete skill and holiday table cleanup: {}", e.getMessage());
         }
     }
 
@@ -253,20 +240,19 @@ public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
 
     private void logConsolidationSummary() {
         log.info("--------------------------------------------------------------------------------");
-        log.info("  [CONSOLIDATED 12 CORE TABLES STATUS SUMMARY]");
+        log.info("  [CONSOLIDATED CORE TABLES STATUS SUMMARY]");
         logTableCount("1.  users (Security/Auth)", "users");
         logTableCount("2.  employees (Master Profiles)", "employees");
         logTableCount("3.  shifts (Shift Config & Capacity)", "shifts");
-        logTableCount("4.  master_reference_data (holidays + skills)", "master_reference_data");
-        logTableCount("5.  employee_skills (Skill Competencies)", "employee_skills");
-        logTableCount("6.  roster_cycles (Weekly Cycles)", "roster_cycles");
-        logTableCount("7.  roster_assignments (Assignments + Overrides)", "roster_assignments");
-        logTableCount("8.  leave_requests (Leave Applications)", "leave_requests");
-        logTableCount("9.  shift_handovers (Shift Handovers & Tasks)", "shift_handovers");
-        logTableCount("10. notifications (In-app Alerts)", "notifications");
-        logTableCount("11. employee_requests (profile + roster + prefs)", "employee_requests");
-        logTableCount("12. system_audit_logs (audit + activity + emails + reviews + versions)", "system_audit_logs");
-        log.info("  Consolidation Status: 12 CORE NORMALIZED TABLES ACTIVE - ZERO DATA LOSS VERIFIED");
+        logTableCount("4.  master_reference_data (API clients + visitor statistics)", "master_reference_data");
+        logTableCount("5.  roster_cycles (Weekly Cycles)", "roster_cycles");
+        logTableCount("6.  roster_assignments (Assignments + Overrides)", "roster_assignments");
+        logTableCount("7.  leave_requests (Leave Applications)", "leave_requests");
+        logTableCount("8.  shift_handovers (Shift Handovers & Tasks)", "shift_handovers");
+        logTableCount("9.  notifications (In-app Alerts)", "notifications");
+        logTableCount("10. employee_requests (profile + roster + prefs)", "employee_requests");
+        logTableCount("11. system_audit_logs (audit + activity + emails + reviews + versions)", "system_audit_logs");
+        log.info("  Consolidation Status: 11 CORE NORMALIZED TABLES ACTIVE - ZERO DATA LOSS VERIFIED");
         log.info("--------------------------------------------------------------------------------");
     }
 

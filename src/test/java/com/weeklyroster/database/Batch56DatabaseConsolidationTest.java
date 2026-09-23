@@ -28,7 +28,6 @@ public class Batch56DatabaseConsolidationTest {
     private static final Set<String> EXPECTED_12_CORE_TABLES = new TreeSet<>(Arrays.asList(
             "device_tokens",
             "employee_requests",
-            "employee_skills",
             "employees",
             "leave_requests",
             "master_reference_data",
@@ -47,6 +46,7 @@ public class Batch56DatabaseConsolidationTest {
             "email_delivery_logs",
             "employee_activity_logs",
             "employee_preferences",
+            "employee_skills",
             "holidays",
             "profile_change_requests",
             "roster_change_requests",
@@ -112,8 +112,8 @@ public class Batch56DatabaseConsolidationTest {
         System.out.println("=== ACTUAL DATABASE TABLES IN WRMS (" + actualTables.size() + ") ===");
         actualTables.forEach(t -> System.out.println("  -> " + t));
 
-        assertEquals(14, actualTables.size(), "Total application-owned table count in MySQL must be EXACTLY 14");
-        assertEquals(EXPECTED_12_CORE_TABLES, new TreeSet<>(actualTables), "The 14 tables must match expected tables exactly");
+        assertEquals(13, actualTables.size(), "Total application-owned table count in MySQL must be EXACTLY 13");
+        assertEquals(EXPECTED_12_CORE_TABLES, new TreeSet<>(actualTables), "The 13 tables must match expected tables exactly");
 
         // Verify none of the 11 retired tables exist in MySQL
         for (String retired : RETIRED_OBSOLETE_TABLES) {

@@ -183,7 +183,6 @@ public class Batch60CleanupAndStabilityTest {
                 "roster_cycles",
                 "roster_assignments",
                 "master_reference_data",
-                "employee_skills",
                 "leave_requests",
                 "shift_handovers",
                 "notifications",
@@ -192,6 +191,9 @@ public class Batch60CleanupAndStabilityTest {
                 "sms_delivery_logs",
                 "device_tokens"
         );
+
+        assertFalse(schemaContent.toLowerCase().contains("create table if not exists employee_skills"),
+                "schema.sql must NOT contain DDL for retired table: employee_skills");
 
         for (String table : expectedTables) {
             assertTrue(schemaContent.toLowerCase().contains("create table if not exists " + table),
