@@ -307,6 +307,34 @@ button {
   cursor: not-allowed;
 }
 
+/* Button Group Utility for View Switchers */
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-group .btn {
+  border-radius: 0;
+  border: none;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.btn-group .btn + .btn {
+  border-left: 1px solid var(--border-light);
+}
+
+.btn-group .btn.btn-primary + .btn.btn-secondary {
+  border-left: 1px solid var(--border-light);
+}
+
 /* ==========================================================================
    FORM INPUTS & LABELS
    ========================================================================== */
@@ -1329,9 +1357,6 @@ textarea {
   transition: padding 0.25s ease;
 }
 
-.sidebar-collapse-btn {
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), background-color var(--trans-fast);
-}
 
 .sidebar-brand-text {
   transition: opacity 0.2s ease, width 0.2s ease;
@@ -1645,16 +1670,6 @@ textarea {
   margin: 0 auto;
 }
 
-.app-layout.sidebar-collapsed .app-sidebar .sidebar-collapse-btn,
-.app-sidebar.collapsed .sidebar-collapse-btn {
-  transform: rotate(180deg);
-  margin: 0 auto;
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-}
 
 .app-layout.sidebar-collapsed .app-sidebar .sidebar-nav,
 .app-sidebar.collapsed .sidebar-nav {
@@ -5864,9 +5879,6 @@ body.sidebar-mobile-locked {
 
   .sidebar-mobile-close-btn {
     display: inline-flex !important;
-  }
-  .sidebar-collapse-btn {
-    display: none !important;
   }
 
   .app-main {
