@@ -36,6 +36,12 @@ public class EmployeeController {
 		return ResponseEntity.ok(employeeService.active());
 	}
 
+	@PreAuthorize("hasAuthority('ROLE_ADMIN')")
+	@GetMapping("/next-id")
+	public ResponseEntity<java.util.Map<String, String>> nextId() {
+		return ResponseEntity.ok(java.util.Map.of("employeeId", employeeService.generateNextEmployeeCode()));
+	}
+
 	@GetMapping("/me")
 	public ResponseEntity<EmployeeResponse> getMyProfile() {
 		return ResponseEntity.ok(employeeService.getMyProfile());

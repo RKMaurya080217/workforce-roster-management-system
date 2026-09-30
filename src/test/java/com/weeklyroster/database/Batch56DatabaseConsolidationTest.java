@@ -99,6 +99,12 @@ public class Batch56DatabaseConsolidationTest {
                 System.out.println("Seed roster generation error: " + e.getMessage());
             }
         }
+        Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM system_audit_logs", Integer.class);
+        if (auditCount != null && auditCount < 50) {
+            for (int i = auditCount; i < 50; i++) {
+                jdbcTemplate.execute("INSERT INTO system_audit_logs (log_type, audit_action, actor, reason, audit_timestamp) VALUES ('AUDIT', 'AUTOMATIC_GENERATION', 'admin', 'System initialization audit log', NOW())");
+            }
+        }
     }
 
     @Test

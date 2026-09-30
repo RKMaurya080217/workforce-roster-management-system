@@ -197,7 +197,9 @@ const dom = {
     adminHandovers: document.getElementById("viewAdminHandovers"),
     adminWorkload: document.getElementById("viewAdminWorkload"),
     exportCenter: document.getElementById("viewExportCenter"),
-    rosterVersions: document.getElementById("viewRosterVersions")
+    rosterVersions: document.getElementById("viewRosterVersions"),
+    adminHolidays: document.getElementById("viewAdminHolidays"),
+    adminWorkReport: document.getElementById("viewAdminWorkReport")
   }
 };
 
@@ -278,6 +280,7 @@ const ADMIN_PRIMARY_NAV = [
     icon: WRMS_ICONS.exports,
     children: [
       { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
+      { id: "adminWorkReport", route: "work-report", label: "Work-Day Report", icon: WRMS_ICONS.workload },
       { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
       { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload }
     ]
@@ -294,7 +297,7 @@ const ADMIN_PRIMARY_NAV = [
   }
 ];
 
-// Admin Secondary Navigation Menu Items (Clean Submenu Flat Reference without Skills/Holidays)
+// Admin Secondary Navigation Menu Items (Clean Submenu Flat Reference)
 const ADMIN_MORE_NAV = [
   { id: "commandCenter", route: "command-center", label: "Command Center", icon: WRMS_ICONS.commandCenter },
   { id: "shifts", route: "shift-capacity", label: "Shift Capacity", icon: WRMS_ICONS.shifts },
@@ -304,6 +307,7 @@ const ADMIN_MORE_NAV = [
   { id: "history", route: "roster-history", label: "Roster History", icon: WRMS_ICONS.history },
   { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
   { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
+  { id: "adminWorkReport", route: "work-report", label: "Work-Day Report", icon: WRMS_ICONS.workload },
   { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
   { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
   { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
@@ -1434,12 +1438,20 @@ function parseRouteTarget(target) {
       "admin/preferences": "approvals",
       "admin/shift-preferences": "approvals",
       
-      "adminHolidays": "dashboard",
-      "holiday-calendar": "dashboard",
-      "holiday_calendar": "dashboard",
-      "holidays": "dashboard",
-      "admin/holidays": "dashboard",
-      "admin/holiday-calendar": "dashboard",
+      "adminHolidays": "adminHolidays",
+      "holiday-calendar": "adminHolidays",
+      "holiday_calendar": "adminHolidays",
+      "holidays": "adminHolidays",
+      "admin/holidays": "adminHolidays",
+      "admin/holiday-calendar": "adminHolidays",
+
+      "adminWorkReport": "adminWorkReport",
+      "work-report": "adminWorkReport",
+      "work_report": "adminWorkReport",
+      "work-days": "adminWorkReport",
+      "work_days": "adminWorkReport",
+      "admin/work-report": "adminWorkReport",
+      "admin/reports/work-days": "adminWorkReport",
       
       "adminHandovers": "adminHandovers",
       "shift-handovers": "adminHandovers",
@@ -1534,6 +1546,8 @@ function parseRouteTarget(target) {
       shifts: "#/shift-capacity",
       history: "#/roster-history",
       audit: "#/audit-trail",
+      adminHolidays: "#/holiday-calendar",
+      adminWorkReport: "#/work-report",
       employeeRosterDetail: "#/employee-roster"
     };
 
@@ -1805,6 +1819,8 @@ function updateTopbarTitle(pageId) {
     history: { title: "Roster Cycle History & Explorer", bc: "History" },
     audit: { title: "Complete Roster Audit Trail", bc: "Audit Trail" },
     profileApprovals: { title: "Unified Request Approvals (Profile Requests)", bc: "Approvals" },
+    adminHolidays: { title: "Official Holiday Calendar & Configuration", bc: "Holidays" },
+    adminWorkReport: { title: "Employee Work-Day & Attendance Audit Report", bc: "Work-Day Report" },
     employeeWorkspace: employeeTitles[currentTab] || { title: "Staff Self-Service Workspace", bc: "My Workspace" },
     employeeRosterDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Schedule`, bc: "Employee Roster" }
   };
@@ -1876,6 +1892,12 @@ async function loadActiveView() {
       state.activeApprovalCategory = "profile";
       await renderUnifiedApprovalsView();
       break;
+    case "adminHolidays":
+      if (typeof renderAdminHolidaysView === "function") await renderAdminHolidaysView();
+      break;
+    case "adminWorkReport":
+      if (typeof renderAdminWorkReportView === "function") await renderAdminWorkReportView();
+      break;
     case "employeeWorkspace":
       await renderEmployeeWorkspaceView();
       break;
@@ -1938,10 +1960,16 @@ async function renderDashboardView() {
             ${activeCycle ? `Active Roster Cycle: <strong>${formatDate(activeCycle.startDate)}</strong> to <strong>${formatDate(activeCycle.endDate)}</strong> (${activeCycle.assignments?.length || 0} assignments)` : 'No active roster cycle generated yet'}
           </span>
         </div>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" id="dashGenerateBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             <span>Generate Roster</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="dashHolidaysBtn" title="View Official Holiday Calendar">
+            <span>📅 Holidays</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="dashWorkReportBtn" title="View Employee Work-Day Report">
+            <span>📊 Work Report</span>
           </button>
           <button class="btn btn-secondary btn-sm" id="dashViewRosterBtn">View Full Roster</button>
         </div>
@@ -2100,6 +2128,22 @@ async function renderDashboardView() {
           <!-- Populated by loadDashboardScheduleView -->
         </div>
       </div>
+
+      <!-- Upcoming Official Holidays Widget (Batch 66) -->
+      <div class="card" style="margin-top:20px;">
+        <div class="card-header" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <h3>Upcoming Official Holidays</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">Official gazetted holidays automatically mapped into weekly rosters and attendance audits</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="dashManageHolidaysBtn" style="font-weight:600;">
+            <span>Configure Calendar &rarr;</span>
+          </button>
+        </div>
+        <div class="card-body" id="dashUpcomingHolidaysContent" style="padding:14px 18px;">
+          <div class="empty-state-box" style="padding:12px;"><div class="spinner"></div><p style="font-size:0.78rem;">Loading upcoming holidays...</p></div>
+        </div>
+      </div>
     `;
 
     // Static Buttons
@@ -2107,10 +2151,57 @@ async function renderDashboardView() {
       e.stopPropagation();
       openGenerateRosterModal();
     });
+    document.getElementById("dashHolidaysBtn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigateTo("holiday-calendar");
+    });
+    document.getElementById("dashManageHolidaysBtn")?.addEventListener("click", () => {
+      navigateTo("holiday-calendar");
+    });
+    document.getElementById("dashWorkReportBtn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigateTo("work-report");
+    });
     document.getElementById("dashViewRosterBtn").addEventListener("click", (e) => {
       e.stopPropagation();
       navigateTo("roster");
     });
+
+    // Populate Upcoming Holidays Widget
+    apiRequest("/api/holidays/upcoming")
+      .then(holidays => {
+        const holBox = document.getElementById("dashUpcomingHolidaysContent");
+        if (!holBox) return;
+        if (!Array.isArray(holidays) || holidays.length === 0) {
+          holBox.innerHTML = `
+            <div style="padding:14px; text-align:center; color:var(--text-muted); font-size:0.82rem;">
+              No upcoming official holidays registered in calendar. 
+              <a href="javascript:void(0)" onclick="navigateTo('holiday-calendar')" style="color:var(--primary); font-weight:600; margin-left:4px;">Add a Holiday</a>
+            </div>
+          `;
+          return;
+        }
+        holBox.innerHTML = `
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+            ${holidays.slice(0, 6).map(h => `
+              <div style="background:var(--bg-hover, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:12px; display:flex; align-items:center; gap:12px;">
+                <div style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-radius:8px; padding:8px 10px; text-align:center; min-width:55px;">
+                  <strong style="display:block; font-size:1.1rem; line-height:1;">${new Date(h.holidayDate + 'T00:00:00').getDate()}</strong>
+                  <span style="font-size:0.68rem; text-transform:uppercase; font-weight:700;">${new Date(h.holidayDate + 'T00:00:00').toLocaleString('en-US', { month: 'short' })}</span>
+                </div>
+                <div style="overflow:hidden;">
+                  <strong style="display:block; font-size:0.85rem; color:var(--text-primary); text-overflow:ellipsis; white-space:nowrap; overflow:hidden;" title="${escapeHtml(h.name)}">${escapeHtml(h.name)}</strong>
+                  <span style="display:block; font-size:0.74rem; color:var(--text-muted); margin-top:2px;">${h.dayOfWeek || ''} &bull; ${escapeHtml(h.description || 'Official Holiday')}</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      })
+      .catch(err => {
+        const holBox = document.getElementById("dashUpcomingHolidaysContent");
+        if (holBox) holBox.innerHTML = `<p style="font-size:0.75rem; color:var(--text-muted);">Could not load upcoming holidays.</p>`;
+      });
 
     // Schedule View Mode Toggle Buttons
     const dayViewBtn = document.getElementById("dashScheduleDayBtn");
@@ -6442,14 +6533,16 @@ function closeModal(id) {
 }
 
 // Add/Edit Employee Modal
-function openEmployeeModal(emp) {
+async function openEmployeeModal(emp) {
   const form = document.getElementById("employeeModalForm");
   form.reset();
+  const codeInput = document.getElementById("empFormCode");
 
   if (emp) {
     document.getElementById("employeeModalTitle").textContent = `Edit Employee (${emp.employeeCode})`;
     document.getElementById("empFormId").value = emp.id;
-    document.getElementById("empFormCode").value = emp.employeeCode;
+    codeInput.value = emp.employeeCode;
+    codeInput.readOnly = true;
     document.getElementById("empFormGender").value = emp.gender;
     document.getElementById("empFormFirstName").value = emp.firstName;
     document.getElementById("empFormLastName").value = emp.lastName || "";
@@ -6459,6 +6552,21 @@ function openEmployeeModal(emp) {
     document.getElementById("employeeModalTitle").textContent = "Add New Employee";
     document.getElementById("empFormId").value = "";
     document.getElementById("empAccountFields").style.display = "grid";
+    codeInput.value = "Generating ID...";
+    codeInput.readOnly = true;
+
+    // Asynchronously fetch the next sequential Employee ID from backend
+    try {
+      const res = await apiRequest("/api/admin/employees/next-id");
+      if (res && res.employeeId) {
+        codeInput.value = res.employeeId;
+      }
+    } catch (err) {
+      console.warn("Could not pre-fetch next employee ID:", err);
+      if (codeInput.value === "Generating ID...") {
+        codeInput.value = "";
+      }
+    }
   }
 
   openModal("employeeModal");
@@ -6467,7 +6575,10 @@ function openEmployeeModal(emp) {
 async function handleSaveEmployee(e) {
   e.preventDefault();
   const id = document.getElementById("empFormId").value;
-  const employeeCode = document.getElementById("empFormCode").value.trim();
+  let employeeCode = document.getElementById("empFormCode").value.trim();
+  if (employeeCode === "Generating ID...") {
+    employeeCode = "";
+  }
   const gender = document.getElementById("empFormGender").value;
   const firstName = document.getElementById("empFormFirstName").value.trim();
   const lastName = document.getElementById("empFormLastName").value.trim();

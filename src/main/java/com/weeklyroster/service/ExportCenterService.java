@@ -30,6 +30,8 @@ public class ExportCenterService {
     private final WorkloadAnalyticsService workloadAnalyticsService;
     private final RosterValidatorService rosterValidatorService;
     private final ShiftRepository shiftRepository;
+    private final WorkDayReportService workDayReportService;
+    private final HolidayRepository holidayRepository;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -41,7 +43,9 @@ public class ExportCenterService {
                                AuditLogRepository auditLogRepository,
                                WorkloadAnalyticsService workloadAnalyticsService,
                                RosterValidatorService rosterValidatorService,
-                               ShiftRepository shiftRepository) {
+                               ShiftRepository shiftRepository,
+                               WorkDayReportService workDayReportService,
+                               HolidayRepository holidayRepository) {
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.employeeRepository = employeeRepository;
@@ -50,6 +54,8 @@ public class ExportCenterService {
         this.workloadAnalyticsService = workloadAnalyticsService;
         this.rosterValidatorService = rosterValidatorService;
         this.shiftRepository = shiftRepository;
+        this.workDayReportService = workDayReportService;
+        this.holidayRepository = holidayRepository;
     }
 
     public byte[] generateExport(ExportReportRequest req) {
@@ -292,6 +298,39 @@ public class ExportCenterService {
                             start.toString() + " to " + end.toString(),
                             "The selected roster passed all compliance rules and operational constraints with 0 violations.",
                             "Compliant Roster"
+                    });
+                }
+            }
+            case "WORK_DAY_REPORT", "WORK_REPORT" -> {
+                title = "WRMS Employee Work-Day Report (" + start + " to " + end + ")";
+                rows.add(new String[]{"Employee Code", "Employee Name", "Gender", "Worked Days", "Holiday Days", "Leave Days", "Weekly Off Days", "Period Total Days"});
+                WorkDayReportResponse report = workDayReportService.generateReport(start, end, req.employeeId(), null);
+                if (report != null && report.employeeSummaries() != null) {
+                    for (EmployeeWorkDaySummary s : report.employeeSummaries()) {
+                        rows.add(new String[]{
+                                s.employeeCode(),
+                                s.employeeName(),
+                                s.gender() != null ? s.gender().name() : "-",
+                                String.valueOf(s.workedDays()),
+                                String.valueOf(s.holidayDays()),
+                                String.valueOf(s.leaveDays()),
+                                String.valueOf(s.weeklyOffDays()),
+                                String.valueOf(s.totalPeriodDays())
+                        });
+                    }
+                }
+            }
+            case "HOLIDAY_CALENDAR", "HOLIDAYS" -> {
+                title = "WRMS Official Holiday Calendar";
+                rows.add(new String[]{"Date", "Day of Week", "Holiday Name", "Description", "Active"});
+                List<Holiday> holidays = holidayRepository.findAllByOrderByHolidayDateAsc();
+                for (Holiday h : holidays) {
+                    rows.add(new String[]{
+                            h.getHolidayDate() != null ? h.getHolidayDate().toString() : "-",
+                            h.getHolidayDate() != null ? h.getHolidayDate().getDayOfWeek().name() : "-",
+                            h.getName() != null ? h.getName() : "-",
+                            h.getDescription() != null ? h.getDescription() : "-",
+                            h.isActive() ? "YES" : "NO"
                     });
                 }
             }

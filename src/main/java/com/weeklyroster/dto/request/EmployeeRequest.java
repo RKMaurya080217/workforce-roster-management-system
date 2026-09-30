@@ -7,7 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record EmployeeRequest(
-        @NotBlank @Size(max = 40) String employeeCode,
+        @Size(max = 40) String employeeCode,
         @NotBlank @Size(max = 80) String firstName,
         @Size(max = 80) String lastName,
         @NotBlank @Email @Size(max = 160) String email,

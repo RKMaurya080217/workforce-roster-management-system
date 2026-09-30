@@ -25,4 +25,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 	long countByActiveTrue();
 
 	long countByActiveFalse();
+
+	@org.springframework.data.jpa.repository.Query("SELECT e.employeeCode FROM Employee e")
+	List<String> findAllEmployeeCodes();
 }

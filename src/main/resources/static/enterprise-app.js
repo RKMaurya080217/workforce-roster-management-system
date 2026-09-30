@@ -1590,6 +1590,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     });
+  const holidayForm = document.getElementById("holidayModalForm");
+  if (holidayForm) {
+    holidayForm.addEventListener("submit", handleSaveHoliday);
   }
 });
 
@@ -1602,3 +1605,603 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     });
+
+/* ==========================================================================
+   BATCH 66: ADMIN HOLIDAY MANAGEMENT & ROSTER CALENDAR
+   ========================================================================== */
+
+let currentHolidaysData = [];
+
+async function renderAdminHolidaysView() {
+  const container = dom.views.adminHolidays;
+  if (!container) return;
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading Official Holiday Calendar...</p></div>`;
+
+  try {
+    const holidays = await apiRequest("/api/admin/holidays");
+    currentHolidaysData = Array.isArray(holidays) ? holidays : [];
+
+    const activeHolidays = currentHolidaysData.filter(h => h.active);
+    const todayStr = new Date().toISOString().split("T")[0];
+    const upcomingHolidays = activeHolidays.filter(h => h.holidayDate >= todayStr);
+
+    container.innerHTML = `
+      <div class="view-header-bar">
+        <div>
+          <h2>Official Holiday Calendar &amp; Configuration</h2>
+          <p class="text-muted">Manage official holidays recognized in automated weekly roster generation and employee work-day calculations</p>
+        </div>
+        <div class="header-actions" style="display:flex; gap:8px;">
+          <button class="btn btn-primary btn-sm" id="openAddHolidayBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Add Holiday</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="refreshHolidaysBtn">
+            ${WRMS_ICONS.refresh || '🔄'}
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Holiday Metric Summary Cards -->
+      <div class="metric-cards-grid" style="margin-bottom:20px;">
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">📅</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Registered Holidays</span>
+            <strong class="metric-value">${currentHolidaysData.length}</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">✅</div>
+          <div class="metric-details">
+            <span class="metric-label">Active Holidays</span>
+            <strong class="metric-value">${activeHolidays.length}</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">⏳</div>
+          <div class="metric-details">
+            <span class="metric-label">Upcoming This Year</span>
+            <strong class="metric-value">${upcomingHolidays.length}</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">⏸️</div>
+          <div class="metric-details">
+            <span class="metric-label">Inactive / Archived</span>
+            <strong class="metric-value">${currentHolidaysData.length - activeHolidays.length}</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Holidays Table Card -->
+      <div class="card">
+        <div class="card-header" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h3>Official Holiday Schedule</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">Active holidays exempt personnel from normal shifts and are audited separately in work-day reporting</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="holidaySearchInput" placeholder="Search holidays..." class="form-control" style="font-size:0.8rem; padding:4px 10px; width:180px;">
+            <select id="holidayStatusFilter" class="form-control" style="font-size:0.8rem; padding:4px 8px;">
+              <option value="ALL">All Status</option>
+              <option value="ACTIVE">Active Only</option>
+              <option value="INACTIVE">Inactive Only</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0; overflow-x:auto;">
+          <table class="data-table" id="holidaysDataTable">
+            <thead>
+              <tr>
+                <th>Holiday Date</th>
+                <th>Day</th>
+                <th>Holiday Name</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="holidaysTableBody">
+              <!-- Populated by populateHolidaysTable -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("openAddHolidayBtn")?.addEventListener("click", () => openHolidayModal(null));
+    document.getElementById("refreshHolidaysBtn")?.addEventListener("click", () => renderAdminHolidaysView());
+    document.getElementById("holidaySearchInput")?.addEventListener("input", filterHolidaysTable);
+    document.getElementById("holidayStatusFilter")?.addEventListener("change", filterHolidaysTable);
+
+    populateHolidaysTable(currentHolidaysData);
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Failed to load holidays: ${err.message}</p></div>`;
+  }
+}
+
+function populateHolidaysTable(list) {
+  const tbody = document.getElementById("holidaysTableBody");
+  if (!tbody) return;
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted);">No official holidays found matching criteria.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(h => {
+    const d = new Date(h.holidayDate + "T00:00:00");
+    const dayName = h.dayOfWeek || d.toLocaleDateString("en-US", { weekday: "long" });
+    const isPast = h.holidayDate < new Date().toISOString().split("T")[0];
+
+    return `
+      <tr style="${isPast ? 'opacity:0.85;' : ''}">
+        <td>
+          <strong style="color:var(--text-primary); font-size:0.88rem;">${formatDate(h.holidayDate)}</strong>
+          ${isPast ? '<span style="font-size:0.68rem; color:var(--text-muted); margin-left:4px;">(Past)</span>' : '<span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.65rem; margin-left:4px;">Upcoming</span>'}
+        </td>
+        <td><span class="badge" style="background:var(--bg-hover, #f1f5f9); color:var(--text-secondary); font-size:0.72rem;">${dayName}</span></td>
+        <td>
+          <strong style="font-size:0.88rem;">${escapeHtml(h.name)}</strong>
+        </td>
+        <td style="color:var(--text-muted); font-size:0.8rem; max-width:240px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden;" title="${escapeHtml(h.description || '')}">
+          ${escapeHtml(h.description || '-')}
+        </td>
+        <td>
+          <span class="status-pill ${h.active ? 'active' : 'inactive'}" style="cursor:pointer;" onclick="toggleHolidayActiveStatus(${h.id})" title="Click to toggle active status">
+            <span class="badge-dot"></span> ${h.active ? 'Active' : 'Inactive'}
+          </span>
+        </td>
+        <td style="text-align:right;">
+          <div style="display:inline-flex; gap:6px;">
+            <button class="btn btn-secondary btn-sm" onclick='openHolidayModal(${JSON.stringify(h)})' title="Edit Holiday">
+              ✏️ Edit
+            </button>
+            <button class="btn btn-secondary btn-sm" style="color:var(--danger, #ef4444);" onclick="confirmDeleteHoliday(${h.id}, '${escapeHtml(h.name)}')" title="Delete Holiday">
+              🗑️
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function filterHolidaysTable() {
+  const query = (document.getElementById("holidaySearchInput")?.value || "").toLowerCase().trim();
+  const statusFilter = document.getElementById("holidayStatusFilter")?.value || "ALL";
+
+  let filtered = currentHolidaysData;
+  if (statusFilter === "ACTIVE") {
+    filtered = filtered.filter(h => h.active);
+  } else if (statusFilter === "INACTIVE") {
+    filtered = filtered.filter(h => !h.active);
+  }
+
+  if (query) {
+    filtered = filtered.filter(h =>
+      (h.name && h.name.toLowerCase().includes(query)) ||
+      (h.description && h.description.toLowerCase().includes(query)) ||
+      (h.holidayDate && h.holidayDate.includes(query))
+    );
+  }
+
+  populateHolidaysTable(filtered);
+}
+
+function openHolidayModal(holiday) {
+  const form = document.getElementById("holidayModalForm");
+  if (!form) return;
+  form.reset();
+
+  const titleEl = document.getElementById("holidayModalTitle");
+  const idEl = document.getElementById("holidayFormId");
+  const dateEl = document.getElementById("holidayFormDate");
+  const nameEl = document.getElementById("holidayFormName");
+  const descEl = document.getElementById("holidayFormDescription");
+  const activeEl = document.getElementById("holidayFormActive");
+
+  if (holiday) {
+    if (titleEl) titleEl.textContent = `Edit Holiday: ${holiday.name}`;
+    if (idEl) idEl.value = holiday.id;
+    if (dateEl) dateEl.value = holiday.holidayDate;
+    if (nameEl) nameEl.value = holiday.name;
+    if (descEl) descEl.value = holiday.description || "";
+    if (activeEl) activeEl.checked = holiday.active;
+  } else {
+    if (titleEl) titleEl.textContent = "Add Official Holiday";
+    if (idEl) idEl.value = "";
+    if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
+    if (activeEl) activeEl.checked = true;
+  }
+
+  openModal("holidayModal");
+}
+
+async function handleSaveHoliday(e) {
+  e.preventDefault();
+  const id = document.getElementById("holidayFormId")?.value;
+  const holidayDate = document.getElementById("holidayFormDate")?.value;
+  const name = document.getElementById("holidayFormName")?.value.trim();
+  const description = document.getElementById("holidayFormDescription")?.value.trim();
+  const active = document.getElementById("holidayFormActive")?.checked ?? true;
+  const saveBtn = document.getElementById("saveHolidayBtn");
+
+  if (!holidayDate || !name) {
+    toast("Please enter both Holiday Date and Name", "warning");
+    return;
+  }
+
+  const payload = { holidayDate, name, description, active };
+
+  try {
+    if (saveBtn) saveBtn.disabled = true;
+    if (id) {
+      await apiRequest(`/api/admin/holidays/${id}`, { method: "PUT", body: payload });
+      toast("Holiday updated successfully!", "success");
+    } else {
+      await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
+      toast("Official Holiday added successfully!", "success");
+    }
+    closeModal("holidayModal");
+    await renderAdminHolidaysView();
+    if (typeof broadcastDataMutation === "function") {
+      broadcastDataMutation("HOLIDAY_UPDATED");
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function toggleHolidayActiveStatus(id) {
+  try {
+    await apiRequest(`/api/admin/holidays/${id}/toggle-active`, { method: "PATCH" });
+    toast("Holiday status updated successfully!", "success");
+    await renderAdminHolidaysView();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function confirmDeleteHoliday(id, name) {
+  if (!confirm(`Are you sure you want to delete the holiday "${name}"? This action cannot be undone.`)) {
+    return;
+  }
+  try {
+    await apiRequest(`/api/admin/holidays/${id}`, { method: "DELETE" });
+    toast("Holiday deleted successfully!", "success");
+    await renderAdminHolidaysView();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+/* ==========================================================================
+   BATCH 66: ADMIN EMPLOYEE WORK-DAY REPORT
+   ========================================================================== */
+
+let currentWorkReportData = null;
+
+async function renderAdminWorkReportView() {
+  const container = dom.views.adminWorkReport;
+  if (!container) return;
+
+  // Compute default date range: current month (1st of month to last of month)
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const firstDay = `${year}-${month}-01`;
+  const lastDay = new Date(year, now.getMonth() + 1, 0).toISOString().split("T")[0];
+
+  container.innerHTML = `
+    <div class="view-header-bar">
+      <div>
+        <h2>Employee Work-Day &amp; Attendance Audit Report</h2>
+        <p class="text-muted">Authoritative administrative audit of days worked, recognized holidays, approved leaves, and scheduled weekly offs</p>
+      </div>
+      <div class="header-actions" style="display:flex; gap:8px;">
+        <button class="btn btn-secondary btn-sm" id="exportWorkReportCsvBtn" onclick="exportWorkReportData('csv')">
+          📥 Export CSV
+        </button>
+        <button class="btn btn-secondary btn-sm" id="exportWorkReportExcelBtn" onclick="exportWorkReportData('excel')">
+          📥 Export Excel
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters Toolbar Card -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body" style="padding:14px 18px;">
+        <form id="workReportFilterForm" style="display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;">
+          <div class="form-group" style="margin-bottom:0; min-width:180px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">Start Date</label>
+            <input type="date" id="workReportStartDate" value="${firstDay}" class="form-control" style="font-size:0.82rem; padding:6px 10px;" required>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0; min-width:180px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">End Date</label>
+            <input type="date" id="workReportEndDate" value="${lastDay}" class="form-control" style="font-size:0.82rem; padding:6px 10px;" required>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0; min-width:200px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">Filter Employee</label>
+            <select id="workReportEmployeeSelect" class="form-control" style="font-size:0.82rem; padding:6px 10px;">
+              <option value="">All Workforce Personnel</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0; min-width:160px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">Shift Type</label>
+            <select id="workReportShiftSelect" class="form-control" style="font-size:0.82rem; padding:6px 10px;">
+              <option value="">All Shift Types</option>
+              <option value="MORNING">Morning Shift</option>
+              <option value="GENERAL">General Shift</option>
+              <option value="EVENING">Evening Shift</option>
+              <option value="NIGHT">Night Shift</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-sm" id="generateWorkReportBtn" style="height:36px; padding:0 16px;">
+            <span>Run Audit Report</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Container for Metrics and Report Table -->
+    <div id="workReportResultContainer">
+      <div class="empty-state-box"><div class="spinner"></div><p>Generating workforce work-day metrics...</p></div>
+    </div>
+  `;
+
+  await populateWorkReportEmployeeDropdown();
+
+  document.getElementById("workReportFilterForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    fetchAndDisplayWorkReport();
+  });
+
+  await fetchAndDisplayWorkReport();
+}
+
+async function populateWorkReportEmployeeDropdown() {
+  const sel = document.getElementById("workReportEmployeeSelect");
+  if (!sel) return;
+
+  try {
+    const employees = await apiRequest("/api/employees");
+    if (Array.isArray(employees)) {
+      sel.innerHTML = `<option value="">All Workforce Personnel (${employees.length})</option>` +
+        employees.map(e => `<option value="${e.id}">${e.employeeCode} - ${e.firstName} ${e.lastName || ''}</option>`).join("");
+    }
+  } catch (err) {
+    console.warn("Could not load employees for filter:", err);
+  }
+}
+
+async function fetchAndDisplayWorkReport() {
+  const resultBox = document.getElementById("workReportResultContainer");
+  if (!resultBox) return;
+  resultBox.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Calculating work days, holidays, leaves, and offs...</p></div>`;
+
+  const startDate = document.getElementById("workReportStartDate")?.value;
+  const endDate = document.getElementById("workReportEndDate")?.value;
+  const employeeId = document.getElementById("workReportEmployeeSelect")?.value;
+  const shiftType = document.getElementById("workReportShiftSelect")?.value;
+
+  const params = new URLSearchParams();
+  if (startDate) params.append("startDate", startDate);
+  if (endDate) params.append("endDate", endDate);
+  if (employeeId) params.append("employeeId", employeeId);
+  if (shiftType) params.append("shiftType", shiftType);
+
+  try {
+    const report = await apiRequest(`/api/admin/reports/work-days?${params.toString()}`);
+    currentWorkReportData = report;
+
+    const summaries = report.employeeSummaries || [];
+
+    resultBox.innerHTML = `
+      <!-- Aggregate KPI Summary Cards -->
+      <div class="metric-cards-grid" style="margin-bottom:20px;">
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">⏱️</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Worked Duties</span>
+            <strong class="metric-value">${report.totalWorkedDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">📅</div>
+          <div class="metric-details">
+            <span class="metric-label">Official Holidays Logged</span>
+            <strong class="metric-value">${report.totalHolidayDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">🏖️</div>
+          <div class="metric-details">
+            <span class="metric-label">Approved Leave Days</span>
+            <strong class="metric-value">${report.totalLeaveDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">🌴</div>
+          <div class="metric-details">
+            <span class="metric-label">Scheduled Weekly Offs</span>
+            <strong class="metric-value">${report.totalWeeklyOffDays || 0} Days</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Report Table Card -->
+      <div class="card">
+        <div class="card-header" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h3>Workforce Summary (${formatDate(report.startDate)} to ${formatDate(report.endDate)})</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">${summaries.length} employees &bull; Period: ${report.totalPeriodDays || 0} total calendar days</span>
+          </div>
+          <div class="status-pill active"><span class="badge-dot"></span> Audit Verified</div>
+        </div>
+        <div class="card-body" style="padding:0; overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Employee Code</th>
+                <th>Employee Name</th>
+                <th>Gender</th>
+                <th style="text-align:center;">Worked Days</th>
+                <th style="text-align:center;">Holiday Days</th>
+                <th style="text-align:center;">Leave Days</th>
+                <th style="text-align:center;">Weekly Offs</th>
+                <th style="text-align:center;">Period Total</th>
+                <th style="text-align:right;">Daily Breakdown</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summaries.length === 0 ? `
+                <tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-muted);">No employee work records found for this period and filters.</td></tr>
+              ` : summaries.map(s => `
+                <tr>
+                  <td><strong>${s.employeeCode}</strong></td>
+                  <td>${s.employeeName}</td>
+                  <td><span class="badge ${s.gender === 'FEMALE' ? 'rose' : 'indigo'}" style="font-size:0.7rem;">${s.gender}</span></td>
+                  <td style="text-align:center;"><strong style="color:var(--primary, #2563eb); font-size:0.95rem;">${s.workedDays}</strong></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.78rem;">${s.holidayDays}</span></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#fee2e2; color:#991b1b; font-size:0.78rem;">${s.leaveDays}</span></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#dcfce7; color:#166534; font-size:0.78rem;">${s.weeklyOffDays}</span></td>
+                  <td style="text-align:center; color:var(--text-muted); font-size:0.85rem;">${s.totalPeriodDays} d</td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-secondary btn-sm" onclick="openWorkReportDetailModal(${s.employeeId})">
+                      🔍 View Details
+                    </button>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading work-day report: ${err.message}</p></div>`;
+  }
+}
+
+function openWorkReportDetailModal(employeeId) {
+  if (!currentWorkReportData || !currentWorkReportData.employeeSummaries) {
+    toast("No active report data available", "warning");
+    return;
+  }
+
+  const summary = currentWorkReportData.employeeSummaries.find(s => s.employeeId === employeeId);
+  if (!summary) {
+    toast("Employee record not found in current report", "warning");
+    return;
+  }
+
+  const titleEl = document.getElementById("workReportDetailTitle");
+  const subtitleEl = document.getElementById("workReportDetailSubtitle");
+  const summaryBarEl = document.getElementById("workReportDetailSummaryBar");
+  const wrapperEl = document.getElementById("workReportDetailTableWrapper");
+
+  if (titleEl) titleEl.textContent = `${summary.employeeName} (${summary.employeeCode})`;
+  if (subtitleEl) subtitleEl.textContent = `Daily Breakdown from ${formatDate(currentWorkReportData.startDate)} to ${formatDate(currentWorkReportData.endDate)}`;
+
+  if (summaryBarEl) {
+    summaryBarEl.innerHTML = `
+      <div style="display:flex; flex-wrap:wrap; gap:10px; background:var(--bg-hover, #f8fafc); padding:10px 14px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); font-size:0.82rem;">
+        <div>Worked Days: <strong style="color:var(--primary, #2563eb);">${summary.workedDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Holidays: <strong style="color:#d97706;">${summary.holidayDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Leaves: <strong style="color:#dc2626;">${summary.leaveDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Weekly Offs: <strong style="color:#16a34a;">${summary.weeklyOffDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Total Days: <strong>${summary.totalPeriodDays}</strong></div>
+      </div>
+    `;
+  }
+
+  if (wrapperEl) {
+    const records = summary.dailyRecords || [];
+    wrapperEl.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Shift / Timing</th>
+            <th>Audit Category</th>
+            <th>Remarks / Policy Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${records.map(r => {
+            let catBadge = '';
+            if (r.status === 'WORKED') {
+              catBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">WORKED</span>';
+            } else if (r.status === 'HOLIDAY') {
+              catBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">OFFICIAL HOLIDAY</span>';
+            } else if (r.status === 'LEAVE') {
+              catBadge = '<span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700;">APPROVED LEAVE</span>';
+            } else if (r.status === 'WEEKLY_OFF') {
+              catBadge = '<span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">WEEKLY OFF</span>';
+            } else {
+              catBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b;">UNASSIGNED / OFF</span>';
+            }
+
+            return `
+              <tr>
+                <td><strong>${formatDate(r.date)}</strong></td>
+                <td><span class="badge" style="background:var(--bg-hover, #f1f5f9); color:var(--text-secondary); font-size:0.72rem;">${r.dayOfWeek}</span></td>
+                <td>${r.shiftName || '-'}</td>
+                <td>${catBadge}</td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${escapeHtml(r.remarks || '-')}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  openModal("workReportDetailModal");
+}
+
+function exportWorkReportData(format) {
+  if (!currentWorkReportData || !currentWorkReportData.employeeSummaries) {
+    toast("No work report data to export. Please run report first.", "warning");
+    return;
+  }
+
+  const summaries = currentWorkReportData.employeeSummaries;
+  const headers = ["Employee Code", "Employee Name", "Gender", "Worked Days", "Holiday Days", "Leave Days", "Weekly Off Days", "Total Period Days"];
+  const rows = summaries.map(s => [
+    `"${s.employeeCode}"`,
+    `"${s.employeeName}"`,
+    `"${s.gender}"`,
+    s.workedDays,
+    s.holidayDays,
+    s.leaveDays,
+    s.weeklyOffDays,
+    s.totalPeriodDays
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `WRMS_Work_Day_Report_${currentWorkReportData.startDate}_to_${currentWorkReportData.endDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Work-Day Report exported as ${format.toUpperCase()}`, "success");
+}

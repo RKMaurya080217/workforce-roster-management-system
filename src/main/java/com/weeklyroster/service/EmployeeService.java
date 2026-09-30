@@ -46,10 +46,54 @@ public class EmployeeService {
 		return employeeRepository.findByActiveTrueOrderByIdAsc().stream().map(this::toResponse).toList();
 	}
 
+	@Transactional(readOnly = true)
+	public synchronized String generateNextEmployeeCode() {
+		List<String> codes = employeeRepository.findAllEmployeeCodes();
+		int maxNum = 0;
+		int digitCount = 3;
+		String prefix = "EMP";
+
+		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^([A-Za-z]+)(\\d+)$");
+		for (String code : codes) {
+			if (code == null) continue;
+			java.util.regex.Matcher m = pattern.matcher(code.trim().toUpperCase());
+			if (m.matches()) {
+				String p = m.group(1);
+				String numStr = m.group(2);
+				try {
+					int num = Integer.parseInt(numStr);
+					if (num > maxNum) {
+						maxNum = num;
+						prefix = p;
+						digitCount = Math.max(digitCount, numStr.length());
+					}
+				} catch (NumberFormatException ignored) {}
+			}
+		}
+
+		int nextNum = maxNum + 1;
+		int targetDigits = Math.max(digitCount, String.valueOf(nextNum).length());
+		String nextCode = String.format("%s%0" + targetDigits + "d", prefix, nextNum);
+
+		while (employeeRepository.existsByEmployeeCode(nextCode)) {
+			nextNum++;
+			targetDigits = Math.max(digitCount, String.valueOf(nextNum).length());
+			nextCode = String.format("%s%0" + targetDigits + "d", prefix, nextNum);
+		}
+		return nextCode;
+	}
+
 	@Transactional
 	public EmployeeResponse create(EmployeeRequest request) {
-		if (employeeRepository.existsByEmployeeCode(request.employeeCode())) {
-			throw new BusinessException("Employee code already exists");
+		String code = request.employeeCode();
+		if (code == null || code.isBlank()) {
+			code = generateNextEmployeeCode();
+		} else {
+			code = code.trim().toUpperCase();
+		}
+
+		if (employeeRepository.existsByEmployeeCode(code)) {
+			throw new BusinessException("Employee code already exists: " + code);
 		}
 		if (employeeRepository.existsByEmail(request.email())) {
 			throw new BusinessException("Employee email already exists");
@@ -69,8 +113,19 @@ public class EmployeeService {
 
 		Employee employee = new Employee();
 		apply(employee, request);
+		employee.setEmployeeCode(code);
 		employee.setUser(user);
-		Employee saved = employeeRepository.save(employee);
+
+		Employee saved;
+		try {
+			saved = employeeRepository.save(employee);
+		} catch (org.springframework.dao.DataIntegrityViolationException dive) {
+			if (dive.getMessage() != null && dive.getMessage().toLowerCase().contains("employee_code")) {
+				throw new BusinessException("Duplicate Employee ID detected. Please retry with a freshly generated ID.");
+			}
+			throw dive;
+		}
+
 		if (devCredentialMirrorService != null) {
 			devCredentialMirrorService.updateProfile(saved, request.password() == null ? "password123" : request.password());
 		}
