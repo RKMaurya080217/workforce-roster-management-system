@@ -135,6 +135,9 @@ function escapeHTML(str) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+window.escapeHTML = escapeHTML;
+window.escapeHtml = escapeHTML;
+const escapeHtml = escapeHTML;
 
 // Helper to get formatted timing for any shift type
 function getShiftTimingDisplay(type) {
@@ -292,7 +295,8 @@ const ADMIN_PRIMARY_NAV = [
     label: "Administration",
     icon: WRMS_ICONS.audit,
     children: [
-      { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
+      { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit },
+      { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays }
     ]
   }
 ];
@@ -310,7 +314,8 @@ const ADMIN_MORE_NAV = [
   { id: "adminWorkReport", route: "work-report", label: "Work-Day Report", icon: WRMS_ICONS.workload },
   { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
   { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
-  { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
+  { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit },
+  { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays }
 ];
 
 // Flat Admin Navigation Compatibility Reference
@@ -1439,9 +1444,12 @@ function parseRouteTarget(target) {
       "admin/shift-preferences": "approvals",
       
       "adminHolidays": "adminHolidays",
+      "holidayCalendar": "adminHolidays",
       "holiday-calendar": "adminHolidays",
       "holiday_calendar": "adminHolidays",
       "holidays": "adminHolidays",
+      "holiday": "adminHolidays",
+      "admin/holiday": "adminHolidays",
       "admin/holidays": "adminHolidays",
       "admin/holiday-calendar": "adminHolidays",
 

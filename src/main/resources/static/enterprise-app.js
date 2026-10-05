@@ -1590,21 +1590,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     });
+  }
+
   const holidayForm = document.getElementById("holidayModalForm");
   if (holidayForm) {
     holidayForm.addEventListener("submit", handleSaveHoliday);
   }
-});
 
-    // Batch 38: Roster Health Trigger from Roster View or Analytics
-    document.querySelectorAll("[data-action='view-roster-health']").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const cycleId = btn.getAttribute("data-cycle-id") || state.selectedCycleId;
-        if (typeof openRosterHealthModal === "function") {
-          openRosterHealthModal(cycleId);
-        }
-      });
+  // Batch 38: Roster Health Trigger from Roster View or Analytics
+  document.querySelectorAll("[data-action='view-roster-health']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cycleId = btn.getAttribute("data-cycle-id") || state.selectedCycleId;
+      if (typeof openRosterHealthModal === "function") {
+        openRosterHealthModal(cycleId);
+      }
     });
+  });
+});
 
 /* ==========================================================================
    BATCH 66: ADMIN HOLIDAY MANAGEMENT & ROSTER CALENDAR
@@ -1756,10 +1758,10 @@ function populateHolidaysTable(list) {
         </td>
         <td style="text-align:right;">
           <div style="display:inline-flex; gap:6px;">
-            <button class="btn btn-secondary btn-sm" onclick='openHolidayModal(${JSON.stringify(h)})' title="Edit Holiday">
+            <button class="btn btn-secondary btn-sm" onclick="openHolidayModalById(${h.id})" title="Edit Holiday">
               ✏️ Edit
             </button>
-            <button class="btn btn-secondary btn-sm" style="color:var(--danger, #ef4444);" onclick="confirmDeleteHoliday(${h.id}, '${escapeHtml(h.name)}')" title="Delete Holiday">
+            <button class="btn btn-secondary btn-sm" style="color:var(--danger, #ef4444);" onclick="confirmDeleteHoliday(${h.id})" title="Delete Holiday">
               🗑️
             </button>
           </div>
@@ -1767,6 +1769,11 @@ function populateHolidaysTable(list) {
       </tr>
     `;
   }).join("");
+}
+
+function openHolidayModalById(id) {
+  const h = currentHolidaysData.find(item => item.id === id);
+  openHolidayModal(h || null);
 }
 
 function filterHolidaysTable() {
@@ -1867,7 +1874,9 @@ async function toggleHolidayActiveStatus(id) {
   }
 }
 
-async function confirmDeleteHoliday(id, name) {
+async function confirmDeleteHoliday(id) {
+  const h = currentHolidaysData.find(item => item.id === id);
+  const name = h ? h.name : "this holiday";
   if (!confirm(`Are you sure you want to delete the holiday "${name}"? This action cannot be undone.`)) {
     return;
   }
@@ -1879,6 +1888,15 @@ async function confirmDeleteHoliday(id, name) {
     toast(err.message, "error");
   }
 }
+
+// Global window attachments
+window.openHolidayModalById = openHolidayModalById;
+window.openHolidayModal = openHolidayModal;
+window.handleSaveHoliday = handleSaveHoliday;
+window.toggleHolidayActiveStatus = toggleHolidayActiveStatus;
+window.confirmDeleteHoliday = confirmDeleteHoliday;
+window.renderAdminHolidaysView = renderAdminHolidaysView;
+window.filterHolidaysTable = filterHolidaysTable;
 
 /* ==========================================================================
    BATCH 66: ADMIN EMPLOYEE WORK-DAY REPORT
