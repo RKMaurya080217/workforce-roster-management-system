@@ -10,6 +10,7 @@ import java.util.Optional;
 @Repository
 public interface HolidayRepository extends JpaRepository<Holiday, Long> {
     Optional<Holiday> findByHolidayDate(LocalDate holidayDate);
+    Optional<Holiday> findByHolidayDateAndActiveTrue(LocalDate holidayDate);
     boolean existsByHolidayDate(LocalDate holidayDate);
     boolean existsByHolidayDateAndIdNot(LocalDate holidayDate, Long id);
     List<Holiday> findByActiveTrueOrderByHolidayDateAsc();

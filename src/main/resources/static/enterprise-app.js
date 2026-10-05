@@ -1846,13 +1846,26 @@ async function handleSaveHoliday(e) {
   try {
     if (saveBtn) saveBtn.disabled = true;
     if (id) {
-      await apiRequest(`/api/admin/holidays/${id}`, { method: "PUT", body: payload });
+      try {
+        await apiRequest(`/api/admin/holidays/${id}`, { method: "PUT", body: payload });
+      } catch (err) {
+        // Fallback to /api/holidays/{id} if needed
+        await apiRequest(`/api/holidays/${id}`, { method: "PUT", body: payload });
+      }
       toast("Holiday updated successfully!", "success");
     } else {
-      await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
+      try {
+        await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
+      } catch (err) {
+        // Fallback to /api/holidays if needed
+        await apiRequest("/api/holidays", { method: "POST", body: payload });
+      }
       toast("Official Holiday added successfully!", "success");
     }
     closeModal("holidayModal");
+    if (typeof window.ensureHolidaysLoaded === "function") {
+      await window.ensureHolidaysLoaded(true);
+    }
     await renderAdminHolidaysView();
     if (typeof broadcastDataMutation === "function") {
       broadcastDataMutation("HOLIDAY_UPDATED");
@@ -1868,6 +1881,9 @@ async function toggleHolidayActiveStatus(id) {
   try {
     await apiRequest(`/api/admin/holidays/${id}/toggle-active`, { method: "PATCH" });
     toast("Holiday status updated successfully!", "success");
+    if (typeof window.ensureHolidaysLoaded === "function") {
+      await window.ensureHolidaysLoaded(true);
+    }
     await renderAdminHolidaysView();
   } catch (err) {
     toast(err.message, "error");
@@ -1881,8 +1897,15 @@ async function confirmDeleteHoliday(id) {
     return;
   }
   try {
-    await apiRequest(`/api/admin/holidays/${id}`, { method: "DELETE" });
+    try {
+      await apiRequest(`/api/admin/holidays/${id}`, { method: "DELETE" });
+    } catch (err) {
+      await apiRequest(`/api/holidays/${id}`, { method: "DELETE" });
+    }
     toast("Holiday deleted successfully!", "success");
+    if (typeof window.ensureHolidaysLoaded === "function") {
+      await window.ensureHolidaysLoaded(true);
+    }
     await renderAdminHolidaysView();
   } catch (err) {
     toast(err.message, "error");

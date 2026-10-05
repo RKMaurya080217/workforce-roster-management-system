@@ -112,7 +112,12 @@ const state = {
 
   // Selected Detail Drilldown
   inspectedEmployeeId: null,
-  inspectedEmployeeName: ""
+  inspectedEmployeeName: "",
+
+  // Official Holidays Cache (Batch 68)
+  holidays: [],
+  holidaysMap: {},
+  holidaysLoaded: false
 };
 
 // Dynamic Shift Timings Reference Map (updated automatically from backend)
@@ -138,6 +143,26 @@ function escapeHTML(str) {
 window.escapeHTML = escapeHTML;
 window.escapeHtml = escapeHTML;
 const escapeHtml = escapeHTML;
+
+// Centralized Official Holidays Loader & Cache (Batch 68)
+async function ensureHolidaysLoaded(force = false) {
+  if (!force && state.holidaysLoaded && state.holidaysMap && Object.keys(state.holidaysMap).length > 0) {
+    return state.holidaysMap;
+  }
+  try {
+    const hols = await apiRequest("/api/holidays");
+    state.holidays = Array.isArray(hols) ? hols : [];
+    state.holidaysMap = {};
+    state.holidays.filter(h => h.active).forEach(h => {
+      state.holidaysMap[h.holidayDate] = h;
+    });
+    state.holidaysLoaded = true;
+  } catch (_) {
+    state.holidaysMap = state.holidaysMap || {};
+  }
+  return state.holidaysMap;
+}
+window.ensureHolidaysLoaded = ensureHolidaysLoaded;
 
 // Helper to get formatted timing for any shift type
 function getShiftTimingDisplay(type) {
@@ -2815,7 +2840,11 @@ async function renderRosterView() {
   container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading weekly roster schedule...</p></div>`;
 
   try {
-    state.cycles = await apiRequest("/api/rosters");
+    const [cycles] = await Promise.all([
+      apiRequest("/api/rosters"),
+      ensureHolidaysLoaded()
+    ]);
+    state.cycles = cycles;
 
     if (!state.cycles.length) {
       container.innerHTML = `
@@ -3167,11 +3196,13 @@ function renderRosterMatrixHTML(cycle) {
             const dt = new Date(d);
             const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
             const dayNum = dt.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
+            const hol = (state.holidaysMap && state.holidaysMap[d]);
             return `
-              <th>
+              <th style="${hol ? 'background: #fef3c7; color: #b45309; border-bottom: 2px solid #f59e0b;' : ''}">
                 <div class="date-header-cell">
                   <span class="day-name">${dayName}</span>
                   <span class="day-num">${dayNum}</span>
+                  ${hol ? `<span class="badge" style="background:#fde68a; color:#b45309; font-size:0.62rem; margin-top:2px;" title="${escapeHTML(hol.name)}">🎉 Holiday</span>` : ''}
                 </div>
               </th>
             `;
@@ -3209,6 +3240,22 @@ function renderRosterMatrixHTML(cycle) {
 }
 
 function renderCellChip(assign) {
+  const hol = (state.holidaysMap && state.holidaysMap[assign.rosterDate]);
+  if (hol) {
+    return `
+      <div class="matrix-cell-chip holiday" 
+           data-assign-id="${assign.id}" 
+           data-emp-name="${assign.employeeName}"
+           data-date="${assign.rosterDate}"
+           data-shift="${assign.shiftType}"
+           style="background:#fef3c7; border: 1.5px solid #fde68a; color:#b45309; font-weight:700;"
+           title="Official Holiday: ${escapeHTML(hol.name)}">
+        <span style="font-weight:700; color:#b45309;">🎉 HOLIDAY</span>
+        <span class="cell-timing" style="color:#b45309; font-weight:600;">${escapeHTML(hol.name)}</span>
+        <span class="flag-tag" style="background:#fde68a; color:#b45309; font-weight:700;">Gazetted</span>
+      </div>
+    `;
+  }
   const typeLower = String(assign.shiftType).toLowerCase();
   const isOff = assign.weeklyOff || assign.shiftType === 'OFF';
   const isLeave = assign.onLeave || assign.shiftType === 'LEAVE';
@@ -3255,7 +3302,9 @@ function renderRosterTableHTML(cycle) {
         </tr>
       </thead>
       <tbody>
-        ${list.map(a => `
+        ${list.map(a => {
+          const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+          return `
           <tr>
             <td><strong>${formatDate(a.rosterDate)}</strong></td>
             <td>
@@ -3263,13 +3312,19 @@ function renderRosterTableHTML(cycle) {
               <span style="display:block; font-size:0.74rem; color:var(--text-muted);">${a.employeeCode} (${a.gender})</span>
             </td>
             <td>
-              <span class="badge ${String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
-                ${a.shiftType} (${getShiftTimingDisplay(a.shiftType)})
-              </span>
+              ${hol ? `
+                <span class="badge holiday" style="background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">
+                  🎉 HOLIDAY (${escapeHTML(hol.name)})
+                </span>
+              ` : `
+                <span class="badge ${String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
+                  ${a.shiftType} (${getShiftTimingDisplay(a.shiftType)})
+                </span>
+              `}
               ${a.assignmentReason ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${escapeHTML(a.assignmentReason)}</div>` : ''}
             </td>
             <td>
-              ${[a.weeklyOff ? "Weekly OFF" : "", a.onLeave ? "On Leave" : "", a.overridden ? "Overridden" : ""].filter(Boolean).join(", ") || "-"}
+              ${hol ? `<span class="flag-badge flag-holiday" style="background:#fef3c7; color:#b45309; font-weight:700;">🎉 Official Holiday</span>` : [a.weeklyOff ? "Weekly OFF" : "", a.onLeave ? "On Leave" : "", a.overridden ? "Overridden" : ""].filter(Boolean).join(", ") || "-"}
             </td>
             <td style="text-align:right;">
               <button class="btn btn-secondary btn-sm" data-action="override-shift" data-id="${a.id}" data-emp="${a.employeeName}" data-date="${a.rosterDate}" data-shift="${a.shiftType}">
@@ -3277,7 +3332,8 @@ function renderRosterTableHTML(cycle) {
               </button>
             </td>
           </tr>
-        `).join("")}
+        `;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -4114,7 +4170,8 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
       apiRequest(`/api/notifications/my`, { timeout: 8000 }),
       apiRequest(`/api/activities/my?page=0&size=20`, { timeout: 8000 }),
       apiRequest(`/api/employees/${empId}`, { timeout: 8000 }),
-      apiRequest(`/api/profile-change-requests/my`, { timeout: 8000 })
+      apiRequest(`/api/profile-change-requests/my`, { timeout: 8000 }),
+      apiRequest(`/api/holidays`, { timeout: 8000 })
     ]);
 
     const rawDuty = results[0].status === "fulfilled" ? results[0].value : null;
@@ -4125,6 +4182,14 @@ async function renderEmployeeWorkspaceView(forceFullReload = false) {
     const actPage = (results[5].status === "fulfilled" && results[5].value) ? results[5].value : { content: [], totalElements: 0, hasMore: false, page: 0, totalPages: 0 };
     const empProfile = results[6].status === "fulfilled" ? results[6].value : null;
     const myChangeRequests = (results[7].status === "fulfilled" && Array.isArray(results[7].value)) ? results[7].value : [];
+    const holidays = (results[8].status === "fulfilled" && Array.isArray(results[8].value)) ? results[8].value : [];
+
+    state.holidays = holidays;
+    state.holidaysMap = {};
+    holidays.filter(h => h.active).forEach(h => {
+      state.holidaysMap[h.holidayDate] = h;
+    });
+    state.holidaysLoaded = true;
 
     state.sectionErrors = {
       duty: results[0].status === "rejected" ? (results[0].reason?.message || "Failed to load duty schedule") : null,
@@ -4448,7 +4513,14 @@ function renderWorkspaceOverviewHTML(data) {
   let iconBg = "#f1f5f9";
   let iconColor = "#64748b";
 
-  if (duty.status === "LEAVE") {
+  if (duty.status === "HOLIDAY") {
+    shiftTitle = "OFFICIAL HOLIDAY";
+    timingSubtext = duty.leaveReason ? `Holiday: ${duty.leaveReason}` : (duty.shiftName || "Gazetted Holiday (Office Closed)");
+    statusBadge = `<span class="flag-badge flag-holiday" style="background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">🎉 OFF — Official Holiday</span>`;
+    iconEmoji = "🎉";
+    iconBg = "#fef3c7";
+    iconColor = "#b45309";
+  } else if (duty.status === "LEAVE") {
     shiftTitle = "ON LEAVE";
     timingSubtext = duty.leaveReason ? `Approved: ${duty.leaveReason}` : (duty.leaveType || "Approved Absence");
     statusBadge = `<span class="flag-badge flag-leave">🏖️ OFF — Approved Leave</span>`;
@@ -4522,7 +4594,12 @@ function renderWorkspaceOverviewHTML(data) {
       let shiftLabel = a.shiftType || "OFF";
       let timeSummary = getShiftTimingDisplay(a.shiftType);
 
-      if (a.onLeave) {
+      const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+      if (hol) {
+        badgeClass = "holiday";
+        shiftLabel = "🎉 HOLIDAY";
+        timeSummary = hol.name || "Official Holiday";
+      } else if (a.onLeave) {
         badgeClass = "flag-leave";
         shiftLabel = "LEAVE";
         timeSummary = "Approved Leave";
@@ -4533,31 +4610,35 @@ function renderWorkspaceOverviewHTML(data) {
       } else if (a.shiftType === "MORNING") {
         badgeClass = "morning";
         shiftLabel = "MORNING";
+        timeSummary = getShiftTimingDisplay("MORNING");
       } else if (a.shiftType === "GENERAL") {
         badgeClass = "general";
         shiftLabel = "GENERAL";
+        timeSummary = getShiftTimingDisplay("GENERAL");
       } else if (a.shiftType === "EVENING") {
         badgeClass = "evening";
         shiftLabel = "EVENING";
+        timeSummary = getShiftTimingDisplay("EVENING");
       } else if (a.shiftType === "NIGHT") {
         badgeClass = "night";
         shiftLabel = "NIGHT";
+        timeSummary = getShiftTimingDisplay("NIGHT");
       }
 
       return `
-        <div style="flex: 1; min-width: 95px; padding: 12px 10px; border-radius: var(--radius-md); background: ${isToday ? 'var(--primary-light)' : 'var(--surface)'}; border: 1.5px solid ${isToday ? 'var(--primary)' : 'var(--border)'}; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; box-shadow: ${isToday ? '0 2px 8px rgba(37,99,235,0.18)' : 'none'};">
-          <div style="font-size: 0.72rem; font-weight: 700; color: ${isToday ? 'var(--primary)' : 'var(--text-muted)'}; letter-spacing: 0.05em;">
+        <div style="flex: 1; min-width: 95px; padding: 12px 10px; border-radius: var(--radius-md); background: ${isToday ? 'var(--primary-light)' : (hol ? '#fffbeb' : 'var(--surface)')}; border: 1.5px solid ${isToday ? 'var(--primary)' : (hol ? '#fde68a' : 'var(--border)')}; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; box-shadow: ${isToday ? '0 2px 8px rgba(37,99,235,0.18)' : 'none'};">
+          <div style="font-size: 0.72rem; font-weight: 700; color: ${isToday ? 'var(--primary)' : (hol ? '#b45309' : 'var(--text-muted)')}; letter-spacing: 0.05em;">
             ${dayName} ${isToday ? '• TODAY' : ''}
           </div>
-          <div style="font-size: 1.15rem; font-weight: 800; color: var(--text-main);">
+          <div style="font-size: 1.15rem; font-weight: 800; color: ${hol ? '#b45309' : 'var(--text-main)'};">
             ${dayNum}
           </div>
           <div style="margin-top: 2px;">
-            <span class="badge ${badgeClass}" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px;">
+            <span class="badge ${badgeClass}" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; ${hol ? 'background:#fef3c7; color:#b45309; border:1px solid #fde68a;' : ''}">
               ${a.overridden ? '⚡ ' : ''}${shiftLabel}
             </span>
           </div>
-          <div style="font-size: 0.70rem; color: var(--text-muted); line-height: 1.2; margin-top: 2px;">
+          <div style="font-size: 0.70rem; color: ${hol ? '#b45309' : 'var(--text-muted)'}; line-height: 1.2; margin-top: 2px; font-weight:${hol ? '600' : 'normal'};">
             ${timeSummary}
           </div>
         </div>
@@ -6475,14 +6556,35 @@ function renderMyRosterTableHTML(list) {
         </tr>
       </thead>
       <tbody>
-        ${list.map(a => `
+        ${list.map(a => {
+          const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+          return `
           <tr>
             <td><strong>${formatDate(a.rosterDate)}</strong></td>
-            <td><span class="badge ${String(a.shiftType).toLowerCase()}">${a.onLeave ? 'OFF (Leave)' : a.shiftType}</span></td>
-            <td><small style="font-weight:600; color:var(--text-muted);">${a.onLeave ? 'Approved Leave' : getShiftTimingDisplay(a.shiftType)}</small></td>
-            <td>${a.onLeave ? '<span class="flag-badge flag-leave">🏖️ OFF — Leave</span>' : a.weeklyOff ? '<span class="flag-badge flag-weeklyoff">🛋️ OFF — Weekly OFF</span>' : a.overridden ? '<span class="flag-badge flag-override">⚡ OVERRIDE</span>' : '<span class="flag-badge flag-working">WORKING</span>'}</td>
+            <td>
+              ${hol ? `
+                <span class="badge holiday" style="background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">
+                  🎉 HOLIDAY
+                </span>
+              ` : `
+                <span class="badge ${String(a.shiftType).toLowerCase()}">${a.onLeave ? 'OFF (Leave)' : a.shiftType}</span>
+              `}
+            </td>
+            <td>
+              ${hol ? `
+                <small style="font-weight:700; color:#b45309;">${escapeHTML(hol.name)}</small>
+              ` : `
+                <small style="font-weight:600; color:var(--text-muted);">${a.onLeave ? 'Approved Leave' : getShiftTimingDisplay(a.shiftType)}</small>
+              `}
+            </td>
+            <td>
+              ${hol ? `
+                <span class="flag-badge flag-holiday" style="background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">🎉 HOLIDAY: ${escapeHTML(hol.name)}</span>
+              ` : a.onLeave ? '<span class="flag-badge flag-leave">🏖️ OFF — Leave</span>' : a.weeklyOff ? '<span class="flag-badge flag-weeklyoff">🛋️ OFF — Weekly OFF</span>' : a.overridden ? '<span class="flag-badge flag-override">⚡ OVERRIDE</span>' : '<span class="flag-badge flag-working">WORKING</span>'}
+            </td>
           </tr>
-        `).join("")}
+        `;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -6497,11 +6599,13 @@ async function renderEmployeeRosterDetailView() {
   const container = dom.views.employeeRosterDetail;
   const empId = state.inspectedEmployeeId;
 
-
   container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading schedule for ${state.inspectedEmployeeName}...</p></div>`;
 
   try {
-    const roster = await apiRequest(`/api/rosters/employee/${empId}`);
+    const [roster] = await Promise.all([
+      apiRequest(`/api/rosters/employee/${empId}`),
+      ensureHolidaysLoaded()
+    ]);
 
     container.innerHTML = `
       <div class="card">

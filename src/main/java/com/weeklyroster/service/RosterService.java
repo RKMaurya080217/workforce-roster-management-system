@@ -94,6 +94,9 @@ public class RosterService {
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private RosterVersionService rosterVersionService;
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private com.weeklyroster.repository.HolidayRepository holidayRepository;
+
 	@org.springframework.beans.factory.annotation.Autowired
 	public RosterService(EmployeeRepository employeeRepository, ShiftRepository shiftRepository,
 			RosterCycleRepository cycleRepository, RosterAssignmentRepository assignmentRepository,
@@ -3545,6 +3548,21 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			return res;
 		}
 
+		// 1b. Check if date is an Official Gazetted / Company Holiday
+		if (holidayRepository != null) {
+			java.util.Optional<com.weeklyroster.entity.Holiday> holidayOpt = holidayRepository.findByHolidayDateAndActiveTrue(date);
+			if (holidayOpt.isPresent()) {
+				com.weeklyroster.entity.Holiday holiday = holidayOpt.get();
+				res.status = "HOLIDAY";
+				res.source = "HOLIDAY";
+				res.leaveType = "Official Holiday";
+				res.leaveReason = holiday.getName() != null ? holiday.getName() : "Official Holiday";
+				res.shiftType = null;
+				res.shiftName = "🎉 Holiday: " + (holiday.getName() != null ? holiday.getName() : "Official Holiday");
+				return res;
+			}
+		}
+
 		// 2. Check Roster Assignment & Override for the date
 		List<RosterAssignment> assignments = assignmentRepository.findByEmployeeIdAndRosterDate(employee.getId(), date);
 		if (assignments.isEmpty()) {
@@ -3617,6 +3635,7 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 
 	private String calculateDynamicStatusText(DutyResolution res, LocalDate date, LocalDateTime currentDateTime) {
 		if (res == null) return "Standby / Not Assigned";
+		if ("HOLIDAY".equals(res.status)) return "Official Holiday: " + (res.leaveReason != null ? res.leaveReason : "Gazetted Holiday");
 		if ("LEAVE".equals(res.status)) return "On approved leave.";
 		if ("OFF".equals(res.status)) return "Today is your weekly OFF.";
 		if ("NO_ASSIGNMENT".equals(res.status)) return "Standby / Not Assigned";
