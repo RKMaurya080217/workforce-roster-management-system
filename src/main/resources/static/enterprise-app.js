@@ -1593,7 +1593,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const holidayForm = document.getElementById("holidayModalForm");
-  if (holidayForm) {
+  if (holidayForm && !holidayForm.dataset.boundSubmit) {
+    holidayForm.dataset.boundSubmit = "true";
     holidayForm.addEventListener("submit", handleSaveHoliday);
   }
 
@@ -1825,11 +1826,18 @@ function openHolidayModal(holiday) {
   }
 
   openModal("holidayModal");
-  form.onsubmit = handleSaveHoliday;
+  form.onsubmit = null;
 }
 
+let isSavingHoliday = false;
+
 async function handleSaveHoliday(e) {
-  if (e && e.preventDefault) e.preventDefault();
+  if (e) {
+    if (e.preventDefault) e.preventDefault();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+  if (isSavingHoliday) return;
+
   const id = document.getElementById("holidayFormId")?.value;
   const holidayDate = document.getElementById("holidayFormDate")?.value;
   const name = document.getElementById("holidayFormName")?.value.trim();
@@ -1843,24 +1851,20 @@ async function handleSaveHoliday(e) {
   }
 
   const payload = { holidayDate, name, description, active };
+  const origBtnContent = saveBtn ? saveBtn.innerHTML : "Save Holiday";
 
   try {
-    if (saveBtn) saveBtn.disabled = true;
+    isSavingHoliday = true;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = "<span>⏳ Saving...</span>";
+    }
+
     if (id) {
-      try {
-        await apiRequest(`/api/admin/holidays/${id}`, { method: "PUT", body: payload });
-      } catch (err) {
-        // Fallback to /api/holidays/{id} if needed
-        await apiRequest(`/api/holidays/${id}`, { method: "PUT", body: payload });
-      }
+      await apiRequest(`/api/admin/holidays/${id}`, { method: "PUT", body: payload });
       toast("Holiday updated successfully!", "success");
     } else {
-      try {
-        await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
-      } catch (err) {
-        // Fallback to /api/holidays if needed
-        await apiRequest("/api/holidays", { method: "POST", body: payload });
-      }
+      await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
       toast("Official Holiday added successfully!", "success");
     }
     closeModal("holidayModal");
@@ -1872,9 +1876,13 @@ async function handleSaveHoliday(e) {
       broadcastDataMutation("HOLIDAY_UPDATED");
     }
   } catch (err) {
-    toast(err.message, "error");
+    toast(err.message || "Failed to save holiday", "error");
   } finally {
-    if (saveBtn) saveBtn.disabled = false;
+    isSavingHoliday = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = origBtnContent;
+    }
   }
 }
 

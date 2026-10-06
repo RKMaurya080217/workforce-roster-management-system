@@ -173,9 +173,9 @@ public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
         try {
             jdbcTemplate.execute("DROP TABLE IF EXISTS employee_skills");
             if (tableExists("master_reference_data")) {
-                int deleted = jdbcTemplate.update("DELETE FROM master_reference_data WHERE item_type IN ('SKILL', 'HOLIDAY')");
+                int deleted = jdbcTemplate.update("DELETE FROM master_reference_data WHERE item_type IN ('SKILL')");
                 if (deleted > 0) {
-                    log.info("  -> Cleaned {} obsolete skill and holiday records from master_reference_data", deleted);
+                    log.info("  -> Cleaned {} obsolete skill records from master_reference_data", deleted);
                 }
             }
         } catch (Exception e) {

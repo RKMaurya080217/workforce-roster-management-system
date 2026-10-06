@@ -21,6 +21,8 @@ public class HolidayService {
     private final HolidayRepository holidayRepository;
     private final AuditService auditService;
 
+    private final Object holidayLock = new Object();
+
     public HolidayService(HolidayRepository holidayRepository, AuditService auditService) {
         this.holidayRepository = holidayRepository;
         this.auditService = auditService;
@@ -56,49 +58,72 @@ public class HolidayService {
     }
 
     public HolidayResponse createHoliday(HolidayRequest req, String adminUsername) {
-        if (holidayRepository.existsByHolidayDate(req.holidayDate())) {
-            throw new BusinessException("A holiday is already configured for date: " + req.holidayDate());
+        if (req == null || req.holidayDate() == null) {
+            throw new BusinessException("Holiday date is mandatory.");
         }
-
-        Holiday holiday = new Holiday(
-                req.name().trim(),
-                req.holidayDate(),
-                req.description() != null ? req.description().trim() : null
-        );
-        if (req.active() != null) {
-            holiday.setActive(req.active());
+        String trimmedName = req.name() != null ? req.name().trim() : "";
+        if (trimmedName.isEmpty()) {
+            throw new BusinessException("Holiday name is mandatory.");
         }
-        Holiday saved = holidayRepository.save(holiday);
+        String trimmedDesc = req.description() != null ? req.description().trim() : null;
 
-        auditService.log(AuditAction.HOLIDAY_CREATED, "HOLIDAY", saved.getId(), null,
-                null, null, null, saved.getName(), "Created holiday: " + saved.getName(), "MANUAL");
+        synchronized (holidayLock) {
+            List<Holiday> existing = holidayRepository.findByHolidayDate(req.holidayDate());
+            if (!existing.isEmpty() || holidayRepository.existsByHolidayDate(req.holidayDate())) {
+                throw new BusinessException("Holiday already exists for date: " + req.holidayDate());
+            }
 
-        return toResponse(saved);
+            Holiday holiday = new Holiday(
+                    trimmedName,
+                    req.holidayDate(),
+                    trimmedDesc
+            );
+            if (req.active() != null) {
+                holiday.setActive(req.active());
+            }
+            Holiday saved = holidayRepository.save(holiday);
+
+            auditService.log(AuditAction.HOLIDAY_CREATED, "HOLIDAY", saved.getId(), null,
+                    null, null, null, saved.getName(), "Created holiday: " + saved.getName(), "MANUAL");
+
+            return toResponse(saved);
+        }
     }
 
     public HolidayResponse updateHoliday(Long id, HolidayRequest req, String adminUsername) {
-        Holiday holiday = holidayRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Holiday not found with id: " + id));
-
-        if (holidayRepository.existsByHolidayDateAndIdNot(req.holidayDate(), id)) {
-            throw new BusinessException("Another holiday already exists on date: " + req.holidayDate());
+        if (req == null || req.holidayDate() == null) {
+            throw new BusinessException("Holiday date is mandatory.");
         }
-
-        String oldVal = holiday.getName() + " (" + holiday.getHolidayDate() + ")";
-        holiday.setName(req.name().trim());
-        holiday.setHolidayDate(req.holidayDate());
-        holiday.setDescription(req.description() != null ? req.description().trim() : null);
-        if (req.active() != null) {
-            holiday.setActive(req.active());
+        String trimmedName = req.name() != null ? req.name().trim() : "";
+        if (trimmedName.isEmpty()) {
+            throw new BusinessException("Holiday name is mandatory.");
         }
-        holiday.setUpdatedAt(LocalDateTime.now());
-        Holiday updated = holidayRepository.save(holiday);
+        String trimmedDesc = req.description() != null ? req.description().trim() : null;
 
-        auditService.log(AuditAction.HOLIDAY_MODIFIED, "HOLIDAY", updated.getId(), null,
-                null, null, oldVal, updated.getName() + " (" + updated.getHolidayDate() + ")",
-                "Updated holiday #" + updated.getId(), "MANUAL");
+        synchronized (holidayLock) {
+            Holiday holiday = holidayRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Holiday not found with id: " + id));
 
-        return toResponse(updated);
+            if (holidayRepository.existsByHolidayDateAndIdNot(req.holidayDate(), id)) {
+                throw new BusinessException("Another holiday already exists on date: " + req.holidayDate());
+            }
+
+            String oldVal = holiday.getName() + " (" + holiday.getHolidayDate() + ")";
+            holiday.setName(trimmedName);
+            holiday.setHolidayDate(req.holidayDate());
+            holiday.setDescription(trimmedDesc);
+            if (req.active() != null) {
+                holiday.setActive(req.active());
+            }
+            holiday.setUpdatedAt(LocalDateTime.now());
+            Holiday updated = holidayRepository.save(holiday);
+
+            auditService.log(AuditAction.HOLIDAY_MODIFIED, "HOLIDAY", updated.getId(), null,
+                    null, null, oldVal, updated.getName() + " (" + updated.getHolidayDate() + ")",
+                    "Updated holiday #" + updated.getId(), "MANUAL");
+
+            return toResponse(updated);
+        }
     }
 
     public HolidayResponse toggleActive(Long id, String adminUsername) {
@@ -128,9 +153,15 @@ public class HolidayService {
     @Transactional(readOnly = true)
     public boolean isHoliday(LocalDate date) {
         if (date == null) return false;
-        return holidayRepository.findByHolidayDate(date)
-                .map(Holiday::isActive)
-                .orElse(false);
+        List<Holiday> holidays = holidayRepository.findByHolidayDateAndActiveTrue(date);
+        return !holidays.isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Holiday> findHolidayByDate(LocalDate date) {
+        if (date == null) return java.util.Optional.empty();
+        List<Holiday> holidays = holidayRepository.findByHolidayDateAndActiveTrue(date);
+        return holidays.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(holidays.get(0));
     }
 
     private HolidayResponse toResponse(Holiday h) {

@@ -224,6 +224,7 @@ public class RosterService {
 			try { assignmentRepository.deleteByCycleIdNative(existing.getId()); } catch (Exception ignored) {}
 		}
 		try { assignmentRepository.deleteByDateRangeNative(startDate, endDate); } catch (Exception ignored) {}
+		try { assignmentRepository.flush(); } catch (Exception ignored) {}
 
 		if (emailDeliveryLogRepository != null) {
 			for (RosterCycle existing : overlapping) {
@@ -431,7 +432,39 @@ public class RosterService {
 			throw new BusinessException("Validation failure: " + firstCrit);
 		}
 
-		List<RosterAssignment> generated = new ArrayList<>(assignmentRepository.saveAll(bestGenerated));
+		List<RosterAssignment> existingAssignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(startDate, endDate);
+		Map<String, RosterAssignment> existingMap = new HashMap<>();
+		for (RosterAssignment ea : existingAssignments) {
+			if (ea.getEmployee() != null && ea.getRosterDate() != null) {
+				existingMap.put(ea.getEmployee().getId() + "_" + ea.getRosterDate(), ea);
+			}
+		}
+
+		List<RosterAssignment> toSave = new ArrayList<>();
+		for (RosterAssignment candidate : bestGenerated) {
+			String key = candidate.getEmployee().getId() + "_" + candidate.getRosterDate();
+			RosterAssignment target = existingMap.remove(key);
+			if (target != null) {
+				target.setCycle(cycle);
+				target.setShift(candidate.getShift());
+				target.setWeeklyOff(candidate.isWeeklyOff());
+				target.setOnLeave(candidate.isOnLeave());
+				target.setOverridden(candidate.isOverridden());
+				target.setAssignmentReason(candidate.getAssignmentReason());
+				target.setPreviousShiftType(candidate.getPreviousShiftType());
+				target.setOverrideReason(candidate.getOverrideReason());
+				target.setOverrideCreatedAt(candidate.getOverrideCreatedAt());
+				toSave.add(target);
+			} else {
+				candidate.setCycle(cycle);
+				toSave.add(candidate);
+			}
+		}
+		if (!existingMap.isEmpty()) {
+			try { assignmentRepository.deleteAll(existingMap.values()); } catch (Exception ignored) {}
+		}
+
+		List<RosterAssignment> generated = new ArrayList<>(assignmentRepository.saveAll(toSave));
 
 		if (!priorOverrideMap.isEmpty()) {
 			List<RosterOverride> reestablishedOverrides = new ArrayList<>();
@@ -866,7 +899,17 @@ public class RosterService {
 				throw new AccessDeniedException("Access denied: You can only view your own roster");
 			}
 		}
-		return assignmentRepository.findByEmployeeIdOrderByRosterDateAsc(employeeId).stream()
+		List<RosterAssignment> rawAssignments = assignmentRepository.findByEmployeeIdOrderByRosterDateAsc(employeeId);
+		java.util.Map<java.time.LocalDate, RosterAssignment> dedupMap = new java.util.LinkedHashMap<>();
+		for (RosterAssignment a : rawAssignments) {
+			if (a.getRosterDate() != null) {
+				RosterAssignment current = dedupMap.get(a.getRosterDate());
+				if (current == null || a.isOverridden() || (a.getCycle() != null && a.getCycle().getStatus() == RosterStatus.PUBLISHED)) {
+					dedupMap.put(a.getRosterDate(), a);
+				}
+			}
+		}
+		return dedupMap.values().stream()
 				.map(this::toAssignmentResponse).toList();
 	}
 
@@ -3386,10 +3429,10 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		boolean isHoliday = false;
 		String holidayName = null;
 		if (holidayRepository != null && assignment.getRosterDate() != null) {
-			java.util.Optional<com.weeklyroster.entity.Holiday> holOpt = holidayRepository.findByHolidayDateAndActiveTrue(assignment.getRosterDate());
-			if (holOpt.isPresent()) {
+			List<com.weeklyroster.entity.Holiday> holidays = holidayRepository.findByHolidayDateAndActiveTrue(assignment.getRosterDate());
+			if (!holidays.isEmpty()) {
 				isHoliday = true;
-				holidayName = holOpt.get().getName();
+				holidayName = holidays.get(0).getName();
 			}
 		}
 		return new RosterAssignmentResponse(assignment.getId(), cycleId,
@@ -3559,10 +3602,10 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		}
 
 		// 1b. Check if date is an Official Gazetted / Company Holiday
-		if (holidayRepository != null) {
-			java.util.Optional<com.weeklyroster.entity.Holiday> holidayOpt = holidayRepository.findByHolidayDateAndActiveTrue(date);
-			if (holidayOpt.isPresent()) {
-				com.weeklyroster.entity.Holiday holiday = holidayOpt.get();
+		if (holidayRepository != null && date != null) {
+			List<com.weeklyroster.entity.Holiday> holidays = holidayRepository.findByHolidayDateAndActiveTrue(date);
+			if (!holidays.isEmpty()) {
+				com.weeklyroster.entity.Holiday holiday = holidays.get(0);
 				res.status = "HOLIDAY";
 				res.source = "HOLIDAY";
 				res.leaveType = "Official Holiday";
