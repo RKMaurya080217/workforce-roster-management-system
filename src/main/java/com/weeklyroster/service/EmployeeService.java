@@ -53,21 +53,42 @@ public class EmployeeService {
 		int digitCount = 3;
 		String prefix = "EMP";
 
-		java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^([A-Za-z]+)(\\d+)$");
+		java.util.regex.Pattern empPattern = java.util.regex.Pattern.compile("^EMP(\\d+)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+		boolean foundEmp = false;
+
 		for (String code : codes) {
 			if (code == null) continue;
-			java.util.regex.Matcher m = pattern.matcher(code.trim().toUpperCase());
+			java.util.regex.Matcher m = empPattern.matcher(code.trim());
 			if (m.matches()) {
-				String p = m.group(1);
-				String numStr = m.group(2);
+				String numStr = m.group(1);
 				try {
 					int num = Integer.parseInt(numStr);
 					if (num > maxNum) {
 						maxNum = num;
-						prefix = p;
 						digitCount = Math.max(digitCount, numStr.length());
 					}
+					foundEmp = true;
 				} catch (NumberFormatException ignored) {}
+			}
+		}
+
+		if (!foundEmp) {
+			java.util.regex.Pattern generalPattern = java.util.regex.Pattern.compile("^([A-Za-z]+)(\\d+)$");
+			for (String code : codes) {
+				if (code == null) continue;
+				java.util.regex.Matcher m = generalPattern.matcher(code.trim().toUpperCase());
+				if (m.matches()) {
+					String p = m.group(1);
+					String numStr = m.group(2);
+					try {
+						int num = Integer.parseInt(numStr);
+						if (num > maxNum) {
+							maxNum = num;
+							prefix = p;
+							digitCount = Math.max(digitCount, numStr.length());
+						}
+					} catch (NumberFormatException ignored) {}
+				}
 			}
 		}
 
@@ -84,7 +105,7 @@ public class EmployeeService {
 	}
 
 	@Transactional
-	public EmployeeResponse create(EmployeeRequest request) {
+	public synchronized EmployeeResponse create(EmployeeRequest request) {
 		String code = request.employeeCode();
 		if (code == null || code.isBlank()) {
 			code = generateNextEmployeeCode();
@@ -93,7 +114,13 @@ public class EmployeeService {
 		}
 
 		if (employeeRepository.existsByEmployeeCode(code)) {
-			throw new BusinessException("Employee code already exists: " + code);
+			// Handle race condition: if frontend-cached ID was just claimed, generate authoritative next ID
+			if (code.matches("^EMP\\d+$")) {
+				code = generateNextEmployeeCode();
+			}
+			if (employeeRepository.existsByEmployeeCode(code)) {
+				throw new BusinessException("Employee code already exists: " + code);
+			}
 		}
 		if (employeeRepository.existsByEmail(request.email())) {
 			throw new BusinessException("Employee email already exists");

@@ -1942,7 +1942,7 @@ async function renderAdminWorkReportView() {
   container.innerHTML = `
     <div class="view-header-bar">
       <div>
-        <h2>Employee Work-Day &amp; Attendance Audit Report</h2>
+        <h2>Employee Work-Day Report</h2>
         <p class="text-muted">Authoritative administrative audit of days worked, recognized holidays, approved leaves, and scheduled weekly offs</p>
       </div>
       <div class="header-actions" style="display:flex; gap:8px;">
@@ -2035,6 +2035,12 @@ async function fetchAndDisplayWorkReport() {
   const employeeId = document.getElementById("workReportEmployeeSelect")?.value;
   const shiftType = document.getElementById("workReportShiftSelect")?.value;
 
+  if (startDate && endDate && startDate > endDate) {
+    toast("Start Date cannot be after End Date", "warning");
+    resultBox.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Start Date cannot be after End Date.</p></div>`;
+    return;
+  }
+
   const params = new URLSearchParams();
   if (startDate) params.append("startDate", startDate);
   if (endDate) params.append("endDate", endDate);
@@ -2093,20 +2099,20 @@ async function fetchAndDisplayWorkReport() {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Employee Code</th>
+                <th>Employee ID</th>
                 <th>Employee Name</th>
                 <th>Gender</th>
                 <th style="text-align:center;">Worked Days</th>
                 <th style="text-align:center;">Holiday Days</th>
                 <th style="text-align:center;">Leave Days</th>
-                <th style="text-align:center;">Weekly Offs</th>
+                <th style="text-align:center;">Weekly Off Days</th>
                 <th style="text-align:center;">Period Total</th>
                 <th style="text-align:right;">Daily Breakdown</th>
               </tr>
             </thead>
             <tbody>
               ${summaries.length === 0 ? `
-                <tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-muted);">No employee work records found for this period and filters.</td></tr>
+                <tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-muted);">No work records found for the selected period.</td></tr>
               ` : summaries.map(s => `
                 <tr>
                   <td><strong>${s.employeeCode}</strong></td>

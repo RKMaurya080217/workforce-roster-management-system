@@ -6741,6 +6741,7 @@ async function openEmployeeModal(emp) {
     document.getElementById("empAccountFields").style.display = "grid";
     codeInput.value = "Generating ID...";
     codeInput.readOnly = true;
+    openModal("employeeModal");
 
     // Asynchronously fetch the next sequential Employee ID from backend
     try {
@@ -6754,6 +6755,7 @@ async function openEmployeeModal(emp) {
         codeInput.value = "";
       }
     }
+    return;
   }
 
   openModal("employeeModal");
@@ -6763,7 +6765,7 @@ async function handleSaveEmployee(e) {
   e.preventDefault();
   const id = document.getElementById("empFormId").value;
   let employeeCode = document.getElementById("empFormCode").value.trim();
-  if (employeeCode === "Generating ID...") {
+  if (employeeCode === "Generating ID..." || employeeCode === "Auto-generating ID...") {
     employeeCode = "";
   }
   const gender = document.getElementById("empFormGender").value;
@@ -6786,8 +6788,8 @@ async function handleSaveEmployee(e) {
       await apiRequest(`/api/employees/${id}`, { method: "PUT", body: payload });
       toast("Employee updated successfully", "success");
     } else {
-      await apiRequest("/api/employees", { method: "POST", body: payload });
-      toast("Employee created successfully", "success");
+      const created = await apiRequest("/api/employees", { method: "POST", body: payload });
+      toast(`✓ Employee ${created && created.employeeCode ? created.employeeCode : ''} created successfully`, "success");
     }
     closeModal("employeeModal");
     await renderEmployeesView();
