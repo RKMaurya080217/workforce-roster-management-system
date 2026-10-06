@@ -2261,3 +2261,399 @@ function exportWorkReportData(format) {
   URL.revokeObjectURL(url);
   toast(`Work-Day Report exported as ${format.toUpperCase()}`, "success");
 }
+
+/* ==========================================================================
+   VIEW 23: ADMIN WEEKLY EMPLOYEE WORK SUMMARY (BATCH 72)
+   ========================================================================== */
+
+let currentWeeklyWorkSummaryData = null;
+let currentWeeklyWorkSummaryMonday = null;
+
+function getMondayOfWeekDateStr(d) {
+  let dt;
+  if (!d) {
+    dt = new Date();
+  } else if (typeof d === "string") {
+    const parts = d.split("-");
+    if (parts.length === 3) {
+      dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    } else {
+      dt = new Date(d);
+    }
+  } else {
+    dt = new Date(d.getTime());
+  }
+  const day = dt.getDay(); // 0 is Sun, 1 is Mon...
+  const diff = dt.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(dt.getFullYear(), dt.getMonth(), diff);
+  const year = mon.getFullYear();
+  const month = String(mon.getMonth() + 1).padStart(2, "0");
+  const date = String(mon.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+}
+
+function shiftMondayByWeeks(mondayStr, weekOffset) {
+  const parts = mondayStr.split("-");
+  const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  dt.setDate(dt.getDate() + (weekOffset * 7));
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const date = String(dt.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+}
+
+async function renderAdminWeeklyWorkSummaryView() {
+  const container = dom.views.adminWeeklyWorkSummary;
+  if (!container) return;
+
+  if (!currentWeeklyWorkSummaryMonday) {
+    currentWeeklyWorkSummaryMonday = getMondayOfWeekDateStr(new Date());
+  }
+
+  container.innerHTML = `
+    <div class="view-header-bar">
+      <div>
+        <h2>Weekly Employee Work Summary</h2>
+        <p class="text-muted">Admin-only weekly workforce audit: days worked, leaves, holidays, weekly offs, and unaccounted days</p>
+      </div>
+      <div class="header-actions" style="display:flex; gap:8px;">
+        <button class="btn btn-secondary btn-sm" id="exportWeeklySummaryCsvBtn" onclick="exportWeeklySummaryData('csv')">
+          📥 Export CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Week Selector & Filter Toolbar Card -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body" style="padding:14px 18px;">
+        <form id="weeklySummaryFilterForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+          <div style="display:flex; gap:6px; align-items:flex-end;">
+            <button type="button" class="btn btn-secondary btn-sm" id="weeklySummaryPrevWeekBtn" style="height:36px; padding:0 12px;" title="Previous Week">
+              ◀ Prev Week
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="weeklySummaryCurrentWeekBtn" style="height:36px; padding:0 12px;" title="Current Week">
+              Current Week
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" id="weeklySummaryNextWeekBtn" style="height:36px; padding:0 12px;" title="Next Week">
+              Next Week ▶
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0; min-width:180px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">Week Starting (Monday)</label>
+            <input type="date" id="weeklySummaryDatePicker" value="${currentWeeklyWorkSummaryMonday}" class="form-control" style="font-size:0.82rem; padding:6px 10px;" required>
+          </div>
+
+          <div class="form-group" style="margin-bottom:0; min-width:200px;">
+            <label style="font-size:0.75rem; font-weight:600; margin-bottom:4px; display:block;">Filter Employee</label>
+            <select id="weeklySummaryEmployeeSelect" class="form-control" style="font-size:0.82rem; padding:6px 10px;">
+              <option value="">All Workforce Personnel</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-sm" id="generateWeeklySummaryBtn" style="height:36px; padding:0 16px;">
+            <span>Generate Summary</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Container for Metrics and Summary Table -->
+    <div id="weeklySummaryResultContainer">
+      <div class="empty-state-box"><div class="spinner"></div><p>Calculating weekly employee work summary...</p></div>
+    </div>
+  `;
+
+  // Attach button event listeners
+  document.getElementById("weeklySummaryPrevWeekBtn")?.addEventListener("click", () => {
+    currentWeeklyWorkSummaryMonday = shiftMondayByWeeks(currentWeeklyWorkSummaryMonday, -1);
+    const dateInput = document.getElementById("weeklySummaryDatePicker");
+    if (dateInput) dateInput.value = currentWeeklyWorkSummaryMonday;
+    fetchAndDisplayWeeklySummary();
+  });
+
+  document.getElementById("weeklySummaryCurrentWeekBtn")?.addEventListener("click", () => {
+    currentWeeklyWorkSummaryMonday = getMondayOfWeekDateStr(new Date());
+    const dateInput = document.getElementById("weeklySummaryDatePicker");
+    if (dateInput) dateInput.value = currentWeeklyWorkSummaryMonday;
+    fetchAndDisplayWeeklySummary();
+  });
+
+  document.getElementById("weeklySummaryNextWeekBtn")?.addEventListener("click", () => {
+    currentWeeklyWorkSummaryMonday = shiftMondayByWeeks(currentWeeklyWorkSummaryMonday, 1);
+    const dateInput = document.getElementById("weeklySummaryDatePicker");
+    if (dateInput) dateInput.value = currentWeeklyWorkSummaryMonday;
+    fetchAndDisplayWeeklySummary();
+  });
+
+  document.getElementById("weeklySummaryDatePicker")?.addEventListener("change", (e) => {
+    if (e.target.value) {
+      currentWeeklyWorkSummaryMonday = getMondayOfWeekDateStr(e.target.value);
+      e.target.value = currentWeeklyWorkSummaryMonday;
+    }
+  });
+
+  document.getElementById("weeklySummaryFilterForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const dateInput = document.getElementById("weeklySummaryDatePicker");
+    if (dateInput && dateInput.value) {
+      currentWeeklyWorkSummaryMonday = getMondayOfWeekDateStr(dateInput.value);
+      dateInput.value = currentWeeklyWorkSummaryMonday;
+    }
+    fetchAndDisplayWeeklySummary();
+  });
+
+  await populateWeeklySummaryEmployeeDropdown();
+  await fetchAndDisplayWeeklySummary();
+}
+
+async function populateWeeklySummaryEmployeeDropdown() {
+  const sel = document.getElementById("weeklySummaryEmployeeSelect");
+  if (!sel) return;
+
+  try {
+    const employees = await apiRequest("/api/employees");
+    if (Array.isArray(employees)) {
+      sel.innerHTML = `<option value="">All Workforce Personnel (${employees.length})</option>` +
+        employees.map(e => `<option value="${e.id}">${e.employeeCode} - ${e.firstName} ${e.lastName || ''}</option>`).join("");
+    }
+  } catch (err) {
+    console.warn("Could not load employees for weekly summary filter:", err);
+  }
+}
+
+async function fetchAndDisplayWeeklySummary() {
+  const resultBox = document.getElementById("weeklySummaryResultContainer");
+  if (!resultBox) return;
+
+  resultBox.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Calculating weekly work days, leaves, holidays, and offs...</p></div>`;
+
+  const weekStart = currentWeeklyWorkSummaryMonday || getMondayOfWeekDateStr(new Date());
+  const employeeId = document.getElementById("weeklySummaryEmployeeSelect")?.value;
+
+  const params = new URLSearchParams();
+  if (weekStart) params.append("weekStart", weekStart);
+  if (employeeId) params.append("employeeId", employeeId);
+
+  try {
+    const report = await apiRequest(`/api/admin/reports/weekly-work-summary?${params.toString()}`);
+    currentWeeklyWorkSummaryData = report;
+
+    const summaries = report.employeeSummaries || [];
+
+    resultBox.innerHTML = `
+      <!-- Aggregate Summary Cards -->
+      <div class="metric-cards-grid" style="margin-bottom:20px;">
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#ede9fe; color:#6d28d9;">👥</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Employees</span>
+            <strong class="metric-value">${report.totalEmployees || 0}</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">⏱️</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Worked Days</span>
+            <strong class="metric-value">${report.totalWorkedDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">🏖️</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Leave Days</span>
+            <strong class="metric-value">${report.totalLeaveDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">📅</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Holiday Days</span>
+            <strong class="metric-value">${report.totalHolidayDays || 0} Days</strong>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">🌴</div>
+          <div class="metric-details">
+            <span class="metric-label">Total Weekly Off Days</span>
+            <strong class="metric-value">${report.totalWeeklyOffDays || 0} Days</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Summary Table Card -->
+      <div class="card">
+        <div class="card-header" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h3>Weekly Work Summary (${formatDate(report.weekStartDate)} to ${formatDate(report.weekEndDate)})</h3>
+            <span style="font-size:0.76rem; color:var(--text-muted);">${summaries.length} employees &bull; Week total: 7 calendar days per employee</span>
+          </div>
+          <div class="status-pill active"><span class="badge-dot"></span> Admin Audit Verified</div>
+        </div>
+        <div class="card-body" style="padding:0; overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Employee ID</th>
+                <th>Employee Name</th>
+                <th>Gender</th>
+                <th style="text-align:center;">Worked</th>
+                <th style="text-align:center;">Leave</th>
+                <th style="text-align:center;">Holiday</th>
+                <th style="text-align:center;">Weekly Off</th>
+                <th style="text-align:center;">Absent / Unassigned</th>
+                <th style="text-align:center;">Total</th>
+                <th style="text-align:right;">Daily Breakdown</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summaries.length === 0 ? `
+                <tr><td colspan="10" style="text-align:center; padding:24px; color:var(--text-muted);">No workforce data found for the selected week.</td></tr>
+              ` : summaries.map(s => `
+                <tr>
+                  <td><strong>${escapeHtml(s.employeeCode)}</strong></td>
+                  <td>${escapeHtml(s.employeeName)}</td>
+                  <td><span class="badge ${s.gender === 'FEMALE' ? 'rose' : 'indigo'}" style="font-size:0.7rem;">${escapeHtml(s.gender || 'OTHER')}</span></td>
+                  <td style="text-align:center;"><strong style="color:var(--primary, #2563eb); font-size:0.95rem;">${s.workedDays}</strong></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#fee2e2; color:#991b1b; font-size:0.78rem;">${s.leaveDays}</span></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.78rem;">${s.holidayDays}</span></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#dcfce7; color:#166534; font-size:0.78rem;">${s.weeklyOffDays}</span></td>
+                  <td style="text-align:center;"><span class="badge" style="background:#f1f5f9; color:#64748b; font-size:0.78rem;">${s.absentDays}</span></td>
+                  <td style="text-align:center; font-weight:600; font-size:0.88rem;">${s.totalDays} / 7</td>
+                  <td style="text-align:right;">
+                    <button class="btn btn-secondary btn-sm" onclick="openWeeklyWorkSummaryDetailModal(${s.employeeId})">
+                      🔍 Breakdown
+                    </button>
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    resultBox.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading weekly work summary: ${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function openWeeklyWorkSummaryDetailModal(employeeId) {
+  if (!currentWeeklyWorkSummaryData || !currentWeeklyWorkSummaryData.employeeSummaries) {
+    toast("No active weekly summary data available", "warning");
+    return;
+  }
+
+  const summary = currentWeeklyWorkSummaryData.employeeSummaries.find(s => s.employeeId === employeeId);
+  if (!summary) {
+    toast("Employee record not found in current summary", "warning");
+    return;
+  }
+
+  const titleEl = document.getElementById("weeklyWorkSummaryDetailTitle");
+  const subtitleEl = document.getElementById("weeklyWorkSummaryDetailSubtitle");
+  const summaryBarEl = document.getElementById("weeklyWorkSummaryDetailSummaryBar");
+  const wrapperEl = document.getElementById("weeklyWorkSummaryDetailTableWrapper");
+
+  if (titleEl) titleEl.textContent = `${summary.employeeName} (${summary.employeeCode})`;
+  if (subtitleEl) subtitleEl.textContent = `Week: ${formatDate(currentWeeklyWorkSummaryData.weekStartDate)} to ${formatDate(currentWeeklyWorkSummaryData.weekEndDate)}`;
+
+  if (summaryBarEl) {
+    summaryBarEl.innerHTML = `
+      <div style="display:flex; flex-wrap:wrap; gap:10px; background:var(--bg-hover, #f8fafc); padding:10px 14px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); font-size:0.82rem;">
+        <div>Worked: <strong style="color:var(--primary, #2563eb);">${summary.workedDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Leaves: <strong style="color:#dc2626;">${summary.leaveDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Holidays: <strong style="color:#d97706;">${summary.holidayDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Weekly Offs: <strong style="color:#16a34a;">${summary.weeklyOffDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Absent/Unassigned: <strong style="color:#64748b;">${summary.absentDays}</strong></div>
+        <div style="color:var(--text-muted);">&bull;</div>
+        <div>Total Accounted: <strong>${summary.totalDays} / 7</strong></div>
+      </div>
+    `;
+  }
+
+  if (wrapperEl) {
+    const records = summary.dailyRecords || [];
+    wrapperEl.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Audit Status</th>
+            <th>Shift / Assignment</th>
+            <th>Remarks / Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${records.map(r => {
+            let catBadge = '';
+            if (r.status === 'WORKED') {
+              catBadge = '<span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">WORKED</span>';
+            } else if (r.status === 'HOLIDAY') {
+              catBadge = '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;">OFFICIAL HOLIDAY</span>';
+            } else if (r.status === 'LEAVE') {
+              catBadge = '<span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700;">APPROVED LEAVE</span>';
+            } else if (r.status === 'WEEKLY_OFF') {
+              catBadge = '<span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">WEEKLY OFF</span>';
+            } else {
+              catBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b;">ABSENT / UNASSIGNED</span>';
+            }
+
+            return `
+              <tr>
+                <td><strong>${formatDate(r.date)}</strong></td>
+                <td><span class="badge" style="background:var(--bg-hover, #f1f5f9); color:var(--text-secondary); font-size:0.72rem;">${escapeHtml(r.dayOfWeek)}</span></td>
+                <td>${catBadge}</td>
+                <td>${escapeHtml(r.shiftName || '-')}</td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${escapeHtml(r.remarks || '-')}</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  openModal("weeklyWorkSummaryDetailModal");
+}
+
+function exportWeeklySummaryData(format) {
+  if (!currentWeeklyWorkSummaryData || !currentWeeklyWorkSummaryData.employeeSummaries) {
+    toast("No weekly work summary data to export. Please generate summary first.", "warning");
+    return;
+  }
+
+  const summaries = currentWeeklyWorkSummaryData.employeeSummaries;
+  const headers = ["Employee Code", "Employee Name", "Gender", "Worked Days", "Leave Days", "Holiday Days", "Weekly Off Days", "Absent Days", "Total Days Accounted"];
+  const rows = summaries.map(s => [
+    `"${s.employeeCode}"`,
+    `"${s.employeeName}"`,
+    `"${s.gender}"`,
+    s.workedDays,
+    s.leaveDays,
+    s.holidayDays,
+    s.weeklyOffDays,
+    s.absentDays,
+    s.totalDays
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `WRMS_Weekly_Work_Summary_${currentWeeklyWorkSummaryData.weekStartDate}_to_${currentWeeklyWorkSummaryData.weekEndDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Weekly Work Summary exported as ${format.toUpperCase()}`, "success");
+}
+
+window.renderAdminWeeklyWorkSummaryView = renderAdminWeeklyWorkSummaryView;
+window.openWeeklyWorkSummaryDetailModal = openWeeklyWorkSummaryDetailModal;
+window.exportWeeklySummaryData = exportWeeklySummaryData;

@@ -284,7 +284,8 @@ const dom = {
     exportCenter: document.getElementById("viewExportCenter"),
     rosterVersions: document.getElementById("viewRosterVersions"),
     adminHolidays: document.getElementById("viewAdminHolidays"),
-    adminWorkReport: document.getElementById("viewAdminWorkReport")
+    adminWorkReport: document.getElementById("viewAdminWorkReport"),
+    adminWeeklyWorkSummary: document.getElementById("viewAdminWeeklyWorkSummary")
   }
 };
 
@@ -367,6 +368,7 @@ const ADMIN_PRIMARY_NAV = [
     children: [
       { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
       { id: "adminWorkReport", route: "work-report", label: "Work-Day Report", icon: WRMS_ICONS.workload },
+      { id: "adminWeeklyWorkSummary", route: "weekly-work-summary", label: "Weekly Work Summary", icon: WRMS_ICONS.workload },
       { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
       { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload }
     ]
@@ -394,6 +396,7 @@ const ADMIN_MORE_NAV = [
   { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
   { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports },
   { id: "adminWorkReport", route: "work-report", label: "Work-Day Report", icon: WRMS_ICONS.workload },
+  { id: "adminWeeklyWorkSummary", route: "weekly-work-summary", label: "Weekly Work Summary", icon: WRMS_ICONS.workload },
   { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
   { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
   { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit },
@@ -1542,6 +1545,14 @@ function parseRouteTarget(target) {
       "work_days": "adminWorkReport",
       "admin/work-report": "adminWorkReport",
       "admin/reports/work-days": "adminWorkReport",
+
+      "adminWeeklyWorkSummary": "adminWeeklyWorkSummary",
+      "weekly-work-summary": "adminWeeklyWorkSummary",
+      "weekly_work_summary": "adminWeeklyWorkSummary",
+      "weekly-summary": "adminWeeklyWorkSummary",
+      "work-summary": "adminWeeklyWorkSummary",
+      "admin/weekly-work-summary": "adminWeeklyWorkSummary",
+      "admin/reports/weekly-work-summary": "adminWeeklyWorkSummary",
       
       "adminHandovers": "adminHandovers",
       "shift-handovers": "adminHandovers",
@@ -1638,6 +1649,7 @@ function parseRouteTarget(target) {
       audit: "#/audit-trail",
       adminHolidays: "#/holiday-calendar",
       adminWorkReport: "#/work-report",
+      adminWeeklyWorkSummary: "#/weekly-work-summary",
       employeeRosterDetail: "#/employee-roster"
     };
 
@@ -1911,6 +1923,7 @@ function updateTopbarTitle(pageId) {
     profileApprovals: { title: "Unified Request Approvals (Profile Requests)", bc: "Approvals" },
     adminHolidays: { title: "Official Holiday Calendar & Configuration", bc: "Holidays" },
     adminWorkReport: { title: "Employee Work-Day & Attendance Audit Report", bc: "Work-Day Report" },
+    adminWeeklyWorkSummary: { title: "Weekly Employee Work Summary", bc: "Weekly Work Summary" },
     employeeWorkspace: employeeTitles[currentTab] || { title: "Staff Self-Service Workspace", bc: "My Workspace" },
     employeeRosterDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Schedule`, bc: "Employee Roster" }
   };
@@ -1987,6 +2000,9 @@ async function loadActiveView() {
       break;
     case "adminWorkReport":
       if (typeof renderAdminWorkReportView === "function") await renderAdminWorkReportView();
+      break;
+    case "adminWeeklyWorkSummary":
+      if (typeof renderAdminWeeklyWorkSummaryView === "function") await renderAdminWeeklyWorkSummaryView();
       break;
     case "employeeWorkspace":
       await renderEmployeeWorkspaceView();

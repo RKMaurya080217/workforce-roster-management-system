@@ -519,6 +519,8 @@
           <!-- View 22: Admin Work-Day Report -->
           <section id="viewAdminWorkReport" class="view-panel hidden"></section>
 
+          <!-- View 23: Admin Weekly Employee Work Summary (Batch 72) -->
+          <section id="viewAdminWeeklyWorkSummary" class="view-panel hidden"></section>
         </div>
 
         <!-- Shared Global Application Footer -->
@@ -1715,6 +1717,31 @@
       </div>
       <div class="modal-footer" style="justify-content:flex-end;">
         <button type="button" class="btn btn-primary btn-sm" data-close-modal="workReportDetailModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 17: Admin Weekly Work Summary Drilldown Modal (Batch 72) -->
+  <div id="weeklyWorkSummaryDetailModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:840px; width:92%;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:1.3rem;">📅</span>
+          <div>
+            <h3 id="weeklyWorkSummaryDetailTitle">Weekly Employee Work Summary Breakdown</h3>
+            <span id="weeklyWorkSummaryDetailSubtitle" style="font-size:0.76rem; color:var(--text-muted);">7-Day Daily Breakdown &amp; Status Classification</span>
+          </div>
+        </div>
+        <button class="modal-close" data-close-modal="weeklyWorkSummaryDetailModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding-top:14px;">
+        <div id="weeklyWorkSummaryDetailSummaryBar" style="margin-bottom:14px;"></div>
+        <div class="table-wrap" id="weeklyWorkSummaryDetailTableWrapper" style="max-height:420px; overflow-y:auto;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-primary btn-sm" data-close-modal="weeklyWorkSummaryDetailModal">Done</button>
       </div>
     </div>
   </div>
