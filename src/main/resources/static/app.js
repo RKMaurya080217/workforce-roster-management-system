@@ -144,7 +144,58 @@ window.escapeHTML = escapeHTML;
 window.escapeHtml = escapeHTML;
 const escapeHtml = escapeHTML;
 
-// Centralized Official Holidays Loader & Cache (Batch 68)
+// Centralized Timezone-Safe Date Normalizer & Holiday Lookup (Batch 68 & 69)
+function normalizeDateStr(d) {
+  if (!d) return "";
+  if (typeof d === "string") {
+    const match = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const year = match[1];
+      const month = match[2].padStart(2, "0");
+      const day = match[3].padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+  }
+  if (d instanceof Date && !isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return String(d).substring(0, 10);
+}
+window.normalizeDateStr = normalizeDateStr;
+
+function getHolidayForDate(dateVal, assign = null) {
+  if (assign) {
+    if (assign.holiday && assign.holidayName) {
+      return { name: assign.holidayName, holidayDate: assign.rosterDate, active: true };
+    }
+    if (assign.isHoliday && assign.holidayName) {
+      return { name: assign.holidayName, holidayDate: assign.rosterDate, active: true };
+    }
+    if (assign.shiftType === "HOLIDAY" || assign.status === "HOLIDAY") {
+      const name = assign.holidayName || assign.shiftName || "Official Holiday";
+      return { name: String(name).replace(/^🎉\s*/, ''), holidayDate: assign.rosterDate, active: true };
+    }
+  }
+  const norm = normalizeDateStr(dateVal);
+  if (!norm) return null;
+  if (state.holidaysMap && state.holidaysMap[norm]) {
+    return state.holidaysMap[norm];
+  }
+  if (Array.isArray(state.holidays)) {
+    const found = state.holidays.find(h => h.active && normalizeDateStr(h.holidayDate) === norm);
+    if (found) {
+      if (state.holidaysMap) state.holidaysMap[norm] = found;
+      return found;
+    }
+  }
+  return null;
+}
+window.getHolidayForDate = getHolidayForDate;
+
+// Centralized Official Holidays Loader & Cache (Batch 68 & 69)
 async function ensureHolidaysLoaded(force = false) {
   if (!force && state.holidaysLoaded && state.holidaysMap && Object.keys(state.holidaysMap).length > 0) {
     return state.holidaysMap;
@@ -154,7 +205,13 @@ async function ensureHolidaysLoaded(force = false) {
     state.holidays = Array.isArray(hols) ? hols : [];
     state.holidaysMap = {};
     state.holidays.filter(h => h.active).forEach(h => {
-      state.holidaysMap[h.holidayDate] = h;
+      const norm = normalizeDateStr(h.holidayDate);
+      if (norm) {
+        state.holidaysMap[norm] = h;
+      }
+      if (h.holidayDate) {
+        state.holidaysMap[h.holidayDate] = h;
+      }
     });
     state.holidaysLoaded = true;
   } catch (_) {
@@ -299,6 +356,7 @@ const ADMIN_PRIMARY_NAV = [
   },
   { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
   { id: "approvals", route: "approvals", label: "Requests & Approvals", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals },
+  { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Management", icon: WRMS_ICONS.holidays },
   { id: "adminHandovers", route: "shift-handovers", label: "Shift Handovers", icon: WRMS_ICONS.handovers },
   {
     id: "reports",
@@ -320,8 +378,7 @@ const ADMIN_PRIMARY_NAV = [
     label: "Administration",
     icon: WRMS_ICONS.audit,
     children: [
-      { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit },
-      { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays }
+      { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
     ]
   }
 ];
@@ -340,7 +397,7 @@ const ADMIN_MORE_NAV = [
   { id: "analytics", route: "roster-analytics", label: "Roster Analytics", icon: WRMS_ICONS.analytics },
   { id: "adminWorkload", route: "workload-analytics", label: "Workload Analytics", icon: WRMS_ICONS.workload },
   { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit },
-  { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Calendar", icon: WRMS_ICONS.holidays }
+  { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Management", icon: WRMS_ICONS.holidays }
 ];
 
 // Flat Admin Navigation Compatibility Reference
@@ -1661,7 +1718,7 @@ function renderNavigation() {
 
   const navHtml = ADMIN_PRIMARY_NAV.map(item => {
     if (!item.children) {
-      const isActive = state.activePage === item.id;
+      const isActive = state.activePage === item.id || (item.id === "holidayCalendar" && state.activePage === "adminHolidays");
       let badgeHtml = "";
       if (item.badgeKey && state[item.badgeKey]) {
         const val = state[item.badgeKey];
@@ -3196,7 +3253,7 @@ function renderRosterMatrixHTML(cycle) {
             const dt = new Date(d);
             const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
             const dayNum = dt.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
-            const hol = (state.holidaysMap && state.holidaysMap[d]);
+            const hol = getHolidayForDate(d);
             return `
               <th style="${hol ? 'background: #fef3c7; color: #b45309; border-bottom: 2px solid #f59e0b;' : ''}">
                 <div class="date-header-cell">
@@ -3240,7 +3297,7 @@ function renderRosterMatrixHTML(cycle) {
 }
 
 function renderCellChip(assign) {
-  const hol = (state.holidaysMap && state.holidaysMap[assign.rosterDate]);
+  const hol = getHolidayForDate(assign.rosterDate, assign);
   if (hol) {
     return `
       <div class="matrix-cell-chip holiday" 
@@ -3303,7 +3360,7 @@ function renderRosterTableHTML(cycle) {
       </thead>
       <tbody>
         ${list.map(a => {
-          const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+          const hol = getHolidayForDate(a.rosterDate, a);
           return `
           <tr>
             <td><strong>${formatDate(a.rosterDate)}</strong></td>
@@ -4594,7 +4651,7 @@ function renderWorkspaceOverviewHTML(data) {
       let shiftLabel = a.shiftType || "OFF";
       let timeSummary = getShiftTimingDisplay(a.shiftType);
 
-      const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+      const hol = getHolidayForDate(a.rosterDate, a);
       if (hol) {
         badgeClass = "holiday";
         shiftLabel = "🎉 HOLIDAY";
@@ -4822,18 +4879,22 @@ function filterEmployeeRoster(roster) {
       const dateStr = (a.rosterDate || "").toLowerCase();
       const shiftStr = (a.shiftType || "").toLowerCase();
       const fmtDate = formatDate(a.rosterDate).toLowerCase();
-      const flagStr = a.onLeave ? "leave" : a.weeklyOff ? "off" : a.overridden ? "override" : "working";
-      return dateStr.includes(term) || shiftStr.includes(term) || fmtDate.includes(term) || flagStr.includes(term);
+      const hol = getHolidayForDate(a.rosterDate, a);
+      const holName = hol ? (hol.name || "holiday").toLowerCase() : "";
+      const flagStr = hol ? "holiday" : a.onLeave ? "leave" : a.weeklyOff ? "off" : a.overridden ? "override" : "working";
+      return dateStr.includes(term) || shiftStr.includes(term) || fmtDate.includes(term) || flagStr.includes(term) || holName.includes(term);
     });
   }
 
   const status = state.empRosterStatusFilter || "ALL";
   if (status === "WORKING") {
-    list = list.filter(a => !a.onLeave && !a.weeklyOff && a.shiftType !== "OFF");
+    list = list.filter(a => !getHolidayForDate(a.rosterDate, a) && !a.onLeave && !a.weeklyOff && a.shiftType !== "OFF");
   } else if (status === "OFF") {
-    list = list.filter(a => a.weeklyOff || a.shiftType === "OFF");
+    list = list.filter(a => !!getHolidayForDate(a.rosterDate, a) || a.weeklyOff || a.shiftType === "OFF");
   } else if (status === "LEAVE") {
     list = list.filter(a => a.onLeave);
+  } else if (status === "HOLIDAY") {
+    list = list.filter(a => !!getHolidayForDate(a.rosterDate, a));
   }
 
   return list;
@@ -4861,10 +4922,21 @@ function renderEmployeeRosterCalendarHTML(list) {
         const dayNum = isNaN(dateObj.getTime()) ? "-" : dateObj.getDate();
         const isToday = a.rosterDate === todayISO;
 
+        const hol = getHolidayForDate(a.rosterDate, a);
+
         let statusBadge = "";
         let bodyHtml = "";
 
-        if (a.onLeave) {
+        if (hol) {
+          statusBadge = `<span class="flag-badge flag-holiday" style="font-size:0.75rem; padding:3px 8px; background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">🎉 HOLIDAY</span>`;
+          bodyHtml = `
+            <div class="shift-subgroup" style="margin-top:8px;">
+              <strong style="color:#b45309; font-size:1.05rem;">🎉 HOLIDAY</strong>
+              <div style="font-size:0.88rem; font-weight:700; color:#92400e; margin-top:4px;">${escapeHTML(hol.name)}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Official Public Holiday • No Duty Required</div>
+            </div>
+          `;
+        } else if (a.onLeave) {
           statusBadge = `<span class="flag-badge flag-leave" style="font-size:0.75rem; padding:3px 8px;">🏖️ LEAVE</span>`;
           bodyHtml = `
             <div class="shift-subgroup" style="margin-top:8px;">
@@ -4912,13 +4984,16 @@ function renderEmployeeRosterCalendarHTML(list) {
         }
 
         return `
-          <div class="day-schedule-card" style="${isToday ? 'border-color:var(--primary); box-shadow:0 0 0 1px var(--primary);' : ''}">
+          <div class="day-schedule-card ${hol ? 'holiday-schedule-card' : ''}" style="${isToday ? 'border-color:var(--primary); box-shadow:0 0 0 1px var(--primary);' : ''} ${hol ? 'background:#fffdf5; border-color:#fde68a;' : ''}">
             <div class="day-card-header" style="display:flex; justify-content:space-between; align-items:center; padding-bottom:8px; border-bottom:1px solid var(--border-light);">
               <div class="day-title-group">
                 <strong style="font-size:1.05rem; color:var(--text-main);">${dayName} ${dayNum}</strong>
                 <span style="font-size:0.76rem; color:var(--text-muted);">${monthName} ${dateObj.getFullYear() || ''}</span>
               </div>
-              ${isToday ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:0.7rem; border:1px solid #bfdbfe;">TODAY</span>' : ''}
+              <div style="display:flex; gap:6px; align-items:center;">
+                ${isToday ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-weight:700; font-size:0.7rem; border:1px solid #bfdbfe;">TODAY</span>' : ''}
+                ${statusBadge}
+              </div>
             </div>
             <div class="day-card-body" style="padding-top:4px;">
               ${bodyHtml}
@@ -6557,7 +6632,7 @@ function renderMyRosterTableHTML(list) {
       </thead>
       <tbody>
         ${list.map(a => {
-          const hol = (state.holidaysMap && state.holidaysMap[a.rosterDate]);
+          const hol = getHolidayForDate(a.rosterDate, a);
           return `
           <tr>
             <td><strong>${formatDate(a.rosterDate)}</strong></td>

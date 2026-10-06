@@ -1630,13 +1630,13 @@ async function renderAdminHolidaysView() {
     container.innerHTML = `
       <div class="view-header-bar">
         <div>
-          <h2>Official Holiday Calendar &amp; Configuration</h2>
+          <h2>Holiday Management</h2>
           <p class="text-muted">Manage official holidays recognized in automated weekly roster generation and employee work-day calculations</p>
         </div>
         <div class="header-actions" style="display:flex; gap:8px;">
           <button class="btn btn-primary btn-sm" id="openAddHolidayBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            <span>Add Holiday</span>
+            <span>+ Add Holiday</span>
           </button>
           <button class="btn btn-secondary btn-sm" id="refreshHolidaysBtn">
             ${WRMS_ICONS.refresh || '🔄'}
@@ -1681,7 +1681,7 @@ async function renderAdminHolidaysView() {
       <div class="card">
         <div class="card-header" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
-            <h3>Official Holiday Schedule</h3>
+            <h3>Existing Holidays</h3>
             <span style="font-size:0.76rem; color:var(--text-muted);">Active holidays exempt personnel from normal shifts and are audited separately in work-day reporting</span>
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
@@ -1697,12 +1697,12 @@ async function renderAdminHolidaysView() {
           <table class="data-table" id="holidaysDataTable">
             <thead>
               <tr>
-                <th>Holiday Date</th>
+                <th>Date</th>
                 <th>Day</th>
-                <th>Holiday Name</th>
+                <th>Holiday</th>
                 <th>Description</th>
                 <th>Status</th>
-                <th style="text-align:right;">Actions</th>
+                <th style="text-align:right;">Action</th>
               </tr>
             </thead>
             <tbody id="holidaysTableBody">
@@ -1762,7 +1762,7 @@ function populateHolidaysTable(list) {
               ✏️ Edit
             </button>
             <button class="btn btn-secondary btn-sm" style="color:var(--danger, #ef4444);" onclick="confirmDeleteHoliday(${h.id})" title="Delete Holiday">
-              🗑️
+              🗑️ Delete
             </button>
           </div>
         </td>
@@ -1825,10 +1825,11 @@ function openHolidayModal(holiday) {
   }
 
   openModal("holidayModal");
+  form.onsubmit = handleSaveHoliday;
 }
 
 async function handleSaveHoliday(e) {
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
   const id = document.getElementById("holidayFormId")?.value;
   const holidayDate = document.getElementById("holidayFormDate")?.value;
   const name = document.getElementById("holidayFormName")?.value.trim();

@@ -16,8 +16,27 @@ public record RosterAssignmentResponse(
         boolean weeklyOff,
         boolean onLeave,
         boolean overridden,
-        String assignmentReason
+        String assignmentReason,
+        boolean holiday,
+        String holidayName
 ) {
+    public RosterAssignmentResponse(
+            Long id,
+            Long cycleId,
+            LocalDate rosterDate,
+            Long employeeId,
+            String employeeCode,
+            String employeeName,
+            Gender gender,
+            ShiftType shiftType,
+            boolean weeklyOff,
+            boolean onLeave,
+            boolean overridden,
+            String assignmentReason
+    ) {
+        this(id, cycleId, rosterDate, employeeId, employeeCode, employeeName, gender, shiftType, weeklyOff, onLeave, overridden, assignmentReason, false, null);
+    }
+
     public RosterAssignmentResponse(
             Long id,
             Long cycleId,
@@ -31,6 +50,6 @@ public record RosterAssignmentResponse(
             boolean onLeave,
             boolean overridden
     ) {
-        this(id, cycleId, rosterDate, employeeId, employeeCode, employeeName, gender, shiftType, weeklyOff, onLeave, overridden, null);
+        this(id, cycleId, rosterDate, employeeId, employeeCode, employeeName, gender, shiftType, weeklyOff, onLeave, overridden, null, false, null);
     }
 }

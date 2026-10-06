@@ -3383,11 +3383,21 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 	private RosterAssignmentResponse toAssignmentResponse(RosterAssignment assignment) {
 		Employee employee = assignment.getEmployee();
 		Long cycleId = assignment.getCycle() == null ? null : assignment.getCycle().getId();
+		boolean isHoliday = false;
+		String holidayName = null;
+		if (holidayRepository != null && assignment.getRosterDate() != null) {
+			java.util.Optional<com.weeklyroster.entity.Holiday> holOpt = holidayRepository.findByHolidayDateAndActiveTrue(assignment.getRosterDate());
+			if (holOpt.isPresent()) {
+				isHoliday = true;
+				holidayName = holOpt.get().getName();
+			}
+		}
 		return new RosterAssignmentResponse(assignment.getId(), cycleId,
 				assignment.getRosterDate(), employee.getId(), employee.getEmployeeCode(),
 				employee.getFirstName() + " " + employee.getLastName(), employee.getGender(),
 				assignment.getShift().getShiftType(), assignment.isWeeklyOff(), assignment.isOnLeave(),
-				assignment.isOverridden(), assignment.getAssignmentReason());
+				assignment.isOverridden(), assignment.getAssignmentReason(),
+				isHoliday, holidayName);
 	}
 
 	// -------------------------------------------------------------------------
