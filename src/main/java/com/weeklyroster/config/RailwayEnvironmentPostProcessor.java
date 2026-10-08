@@ -41,17 +41,13 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
         Map<String, Object> overrides = new HashMap<>();
         overrides.put("spring.main.headless", "true");
 
-        // Enforce Hibernate MySQL Dialect across all profiles and deployments
-        overrides.put("spring.jpa.database-platform", "org.hibernate.dialect.MySQLDialect");
-        overrides.put("spring.jpa.properties.hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
-
         // 1. Port mapping for Railway ($PORT)
         String railwayPort = cleanValue(environment.getProperty("PORT"));
         if (railwayPort != null && !railwayPort.isBlank()) {
             overrides.put("server.port", railwayPort.trim());
         }
 
-        // 2. Database configuration resolution with unified credential synthesis
+        // 2. Database configuration resolution with dual database support (Batch 73)
         // A. Parse full connection URL if available
         String rawUrl = cleanValue(getFirstNonBlank(environment,
                 "MYSQL_URL",
@@ -82,76 +78,117 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
                 "DATABASE_PASSWORD",
                 "SPRING_DATASOURCE_PASSWORD"));
 
-        // C. Check if running in Railway / remote MySQL environment
+        // C. Check if running in Railway / remote MySQL environment or explicitly requested prod profile
         boolean isRailwayOrRemote = (envHost != null && !envHost.isBlank() && !envHost.equalsIgnoreCase("localhost"))
                 || (parsedUrl != null && parsedUrl.host != null && !parsedUrl.host.equalsIgnoreCase("localhost"));
 
-        if (isRailwayOrRemote) {
-            String effectiveHost = (envHost != null && !envHost.isBlank() && !envHost.equalsIgnoreCase("localhost"))
-                    ? envHost
-                    : (parsedUrl != null ? parsedUrl.host : null);
+        boolean isExplicitProd = environment.acceptsProfiles(org.springframework.core.env.Profiles.of("prod", "production"))
+                || "prod".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")))
+                || "production".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")));
 
-            int effectivePort = 3306;
-            if (envPort != null && !envPort.isBlank()) {
-                try {
-                    effectivePort = Integer.parseInt(envPort);
-                } catch (NumberFormatException ignored) {}
-            } else if (parsedUrl != null && parsedUrl.port > 0) {
-                effectivePort = parsedUrl.port;
+        if (isRailwayOrRemote || isExplicitProd) {
+            // PRODUCTION / MYSQL MODE: Preserve 100% of existing Railway MySQL configuration
+            if (environment.getActiveProfiles().length == 0) {
+                environment.setActiveProfiles("prod");
             }
 
-            String effectiveDatabase = (envDb != null && !envDb.isBlank())
-                    ? envDb
-                    : (parsedUrl != null && parsedUrl.database != null && !parsedUrl.database.isBlank())
-                        ? parsedUrl.database
-                        : (effectiveHost != null && effectiveHost.contains("railway") ? "railway" : "weekly_roster_db");
+            overrides.put("spring.jpa.database-platform", "org.hibernate.dialect.MySQLDialect");
+            overrides.put("spring.jpa.properties.hibernate.dialect", "org.hibernate.dialect.MySQLDialect");
 
-            // Unified credential resolution: prefer individual var, fall back to URL credentials
-            String effectiveUsername = (envUser != null && !envUser.isBlank())
-                    ? envUser
-                    : (parsedUrl != null && parsedUrl.username != null && !parsedUrl.username.isBlank())
-                        ? parsedUrl.username
-                        : null;
+            if (isRailwayOrRemote) {
+                String effectiveHost = (envHost != null && !envHost.isBlank() && !envHost.equalsIgnoreCase("localhost"))
+                        ? envHost
+                        : (parsedUrl != null ? parsedUrl.host : null);
 
-            String effectivePassword = (envPass != null && !envPass.isBlank())
-                    ? envPass
-                    : (parsedUrl != null && parsedUrl.password != null && !parsedUrl.password.isBlank())
-                        ? parsedUrl.password
-                        : null;
+                int effectivePort = 3306;
+                if (envPort != null && !envPort.isBlank()) {
+                    try {
+                        effectivePort = Integer.parseInt(envPort);
+                    } catch (NumberFormatException ignored) {}
+                } else if (parsedUrl != null && parsedUrl.port > 0) {
+                    effectivePort = parsedUrl.port;
+                }
 
-            // Direct JDBC URL without credentials pass-through support
-            String jdbcUrl;
-            if (rawUrl != null && rawUrl.startsWith("jdbc:mysql://") && !rawUrl.contains("@")) {
-                jdbcUrl = rawUrl;
+                String effectiveDatabase = (envDb != null && !envDb.isBlank())
+                        ? envDb
+                        : (parsedUrl != null && parsedUrl.database != null && !parsedUrl.database.isBlank())
+                            ? parsedUrl.database
+                            : (effectiveHost != null && effectiveHost.contains("railway") ? "railway" : "weekly_roster_db");
+
+                // Unified credential resolution: prefer individual var, fall back to URL credentials
+                String effectiveUsername = (envUser != null && !envUser.isBlank())
+                        ? envUser
+                        : (parsedUrl != null && parsedUrl.username != null && !parsedUrl.username.isBlank())
+                            ? parsedUrl.username
+                            : null;
+
+                String effectivePassword = (envPass != null && !envPass.isBlank())
+                        ? envPass
+                        : (parsedUrl != null && parsedUrl.password != null && !parsedUrl.password.isBlank())
+                            ? parsedUrl.password
+                            : null;
+
+                // Direct JDBC URL without credentials pass-through support
+                String jdbcUrl;
+                if (rawUrl != null && rawUrl.startsWith("jdbc:mysql://") && !rawUrl.contains("@")) {
+                    jdbcUrl = rawUrl;
+                } else {
+                    jdbcUrl = "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + effectiveDatabase
+                            + "?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Kolkata";
+                }
+
+                overrides.put("spring.datasource.url", jdbcUrl);
+
+                if (effectiveUsername != null && !effectiveUsername.isBlank()) {
+                    overrides.put("spring.datasource.username", effectiveUsername);
+                }
+                if (effectivePassword != null) {
+                    overrides.put("spring.datasource.password", effectivePassword);
+                }
+
+                boolean hasPassword = (effectivePassword != null && !effectivePassword.isBlank());
+                String msg = String.format("[WRMS Production Config] Detected Railway MySQL environment. Configured host %s:%d, database %s, username %s, passwordConfigured=%b (Profile: prod)",
+                        effectiveHost, effectivePort, effectiveDatabase,
+                        (effectiveUsername != null ? effectiveUsername : "DEFAULT"),
+                        hasPassword);
+                System.out.println(msg);
+                log.info(msg);
+
+                if (!hasPassword) {
+                    String warnMsg = "[WRMS Production Config] WARNING: No MySQL password found in environment variables (MYSQLPASSWORD, MYSQL_URL, DATABASE_URL, etc.)! If connection fails with Access Denied (Error 1045), please ensure MYSQLPASSWORD or MYSQL_URL is added to Railway Web Service variables.";
+                    System.err.println(warnMsg);
+                    log.warn(warnMsg);
+                }
             } else {
-                jdbcUrl = "jdbc:mysql://" + effectiveHost + ":" + effectivePort + "/" + effectiveDatabase
-                        + "?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Kolkata";
-            }
-
-            overrides.put("spring.datasource.url", jdbcUrl);
-
-            if (effectiveUsername != null && !effectiveUsername.isBlank()) {
-                overrides.put("spring.datasource.username", effectiveUsername);
-            }
-            if (effectivePassword != null) {
-                overrides.put("spring.datasource.password", effectivePassword);
-            }
-
-            boolean hasPassword = (effectivePassword != null && !effectivePassword.isBlank());
-            String msg = String.format("[WRMS Production Config] Detected Railway MySQL environment. Configured host %s:%d, database %s, username %s, passwordConfigured=%b",
-                    effectiveHost, effectivePort, effectiveDatabase,
-                    (effectiveUsername != null ? effectiveUsername : "DEFAULT"),
-                    hasPassword);
-            System.out.println(msg);
-            log.info(msg);
-
-            if (!hasPassword) {
-                String warnMsg = "[WRMS Production Config] WARNING: No MySQL password found in environment variables (MYSQLPASSWORD, MYSQL_URL, DATABASE_URL, etc.)! If connection fails with Access Denied (Error 1045), please ensure MYSQLPASSWORD or MYSQL_URL is added to Railway Web Service variables.";
-                System.err.println(warnMsg);
-                log.warn(warnMsg);
+                String msg = "[WRMS Production Config] Explicit 'prod' profile active. Using local MySQL datasource fallback.";
+                System.out.println(msg);
+                log.info(msg);
             }
         } else {
-            String msg = "[WRMS Production Config] No remote Railway MySQL variables detected. Using default datasource fallback.";
+            // LOCAL / SQLITE MODE (Batch 73): Default local development uses SQLite (data/wrms.db)
+            if (environment.getActiveProfiles().length == 0) {
+                environment.setActiveProfiles("local");
+            }
+
+            java.io.File dataDir = new java.io.File("data");
+            if (!dataDir.exists()) {
+                dataDir.mkdirs();
+            }
+
+            overrides.put("spring.datasource.url", "jdbc:sqlite:data/wrms.db");
+            overrides.put("spring.datasource.driver-class-name", "org.sqlite.JDBC");
+            overrides.put("spring.datasource.username", "");
+            overrides.put("spring.datasource.password", "");
+            overrides.put("spring.jpa.database-platform", "org.hibernate.community.dialect.SQLiteDialect");
+            overrides.put("spring.jpa.properties.hibernate.dialect", "org.hibernate.community.dialect.SQLiteDialect");
+            overrides.put("spring.jpa.hibernate.ddl-auto", "update");
+            overrides.put("spring.datasource.hikari.maximum-pool-size", 1);
+            overrides.put("spring.datasource.hikari.minimum-idle", 1);
+            overrides.put("spring.datasource.hikari.connection-timeout", 30000);
+            overrides.put("spring.datasource.hikari.idle-timeout", 60000);
+            overrides.put("spring.datasource.hikari.pool-name", "WRMSSqlitePool");
+
+            String msg = "[WRMS Local Config] Local development detected. Using SQLite database: data/wrms.db (Profile: local)";
             System.out.println(msg);
             log.info(msg);
         }

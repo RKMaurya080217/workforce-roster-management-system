@@ -34,6 +34,7 @@ import java.util.Map;
  * removing deprecated foreign keys, and safely retiring the 11 obsolete tables.
  */
 @Component
+@org.springframework.context.annotation.Profile("!local")
 @Order(6)
 public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
 
@@ -73,6 +74,18 @@ public class Batch56DatabaseConsolidationRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        try {
+            if (jdbcTemplate.getDataSource() != null) {
+                try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+                    String dbProduct = conn.getMetaData().getDatabaseProductName();
+                    if (!dbProduct.toLowerCase().contains("mysql")) {
+                        log.info("  [BATCH 56] Non-MySQL database detected ({}). Skipping legacy retirement runner.", dbProduct);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
         log.info("================================================================================");
         log.info("  [BATCH 56 DATABASE CONSOLIDATION RUNNER INITIALIZING]");
         log.info("  Target   : EXACTLY 11 CORE APPLICATION TABLES");

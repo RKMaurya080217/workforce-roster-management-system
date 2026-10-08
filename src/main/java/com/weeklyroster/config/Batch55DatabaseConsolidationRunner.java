@@ -20,6 +20,7 @@ import java.util.Map;
  * Legacy tables are preserved intact as deprecated fallbacks.
  */
 @Component
+@org.springframework.context.annotation.Profile("!local")
 @Order(5)
 public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
 
@@ -30,6 +31,18 @@ public class Batch55DatabaseConsolidationRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        try {
+            if (jdbcTemplate.getDataSource() != null) {
+                try (java.sql.Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+                    String dbProduct = conn.getMetaData().getDatabaseProductName();
+                    if (!dbProduct.toLowerCase().contains("mysql")) {
+                        log.info("  [BATCH 55] Non-MySQL database detected ({}). Skipping legacy consolidation runner.", dbProduct);
+                        return;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
         log.info("================================================================================");
         log.info("  [BATCH 55 DATABASE CONSOLIDATION RUNNER INITIALIZING]");
         log.info("  Objective: Consolidate 20 fragmented tables into 12 core normalized tables");

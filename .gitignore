@@ -1,3 +1,5 @@
 /target/
 .local/
 *.local
+data/*.db
+data/*.db-*
