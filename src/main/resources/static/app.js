@@ -2785,6 +2785,68 @@ function updateEmployeeTable() {
   }
 }
 
+function formatShiftName(shift) {
+  if (!shift || shift === "-" || shift === "null") return null;
+  const s = String(shift).trim().toUpperCase();
+  if (s === "MORNING") return "Morning";
+  if (s === "GENERAL") return "General";
+  if (s === "EVENING") return "Evening";
+  if (s === "NIGHT") return "Night";
+  return shift;
+}
+
+function formatShiftBadgeClass(shift) {
+  if (!shift) return "general";
+  const s = String(shift).trim().toUpperCase();
+  if (s === "MORNING") return "morning";
+  if (s === "GENERAL") return "general";
+  if (s === "EVENING") return "evening";
+  if (s === "NIGHT") return "night";
+  return "general";
+}
+
+function openAdminShiftPreferenceModal(empId, empCode, empName, currentPref) {
+  const modal = document.getElementById("adminShiftPrefModal");
+  if (!modal) return;
+  document.getElementById("adminShiftPrefEmpId").value = empId;
+  const infoEl = document.getElementById("adminShiftPrefEmpInfo");
+  if (infoEl) {
+    infoEl.innerHTML = `<strong>${escapeHTML(empName)}</strong> <code>${escapeHTML(empCode)}</code> &bull; Current Preference: <strong>${escapeHTML(formatShiftName(currentPref) || "Not Set")}</strong>`;
+  }
+  const selectEl = document.getElementById("adminShiftPrefSelect");
+  if (selectEl) {
+    selectEl.value = (currentPref || "").toUpperCase();
+  }
+  openModal("adminShiftPrefModal");
+}
+
+function initAdminShiftPrefModal() {
+  const form = document.getElementById("adminShiftPrefForm");
+  if (form && !form.dataset.bound) {
+    form.dataset.bound = "true";
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const empId = document.getElementById("adminShiftPrefEmpId").value;
+      const preferredShift = document.getElementById("adminShiftPrefSelect").value;
+      const saveBtn = document.getElementById("saveShiftPrefBtn");
+      try {
+        if (saveBtn) saveBtn.disabled = true;
+        await apiRequest(`/api/admin/preferences/employee/${empId}`, {
+          method: "PUT",
+          body: { preferredShift }
+        });
+        toast("Shift preference updated successfully.", "success");
+        closeModal("adminShiftPrefModal");
+        await renderEmployeesView();
+      } catch (err) {
+        toast(err.message || "Failed to update shift preference", "error");
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    });
+  }
+}
+
 function renderEmployeeTableHTML(list) {
   if (!list.length) {
     return `<div class="empty-state-box"><div class="empty-state-icon">👥</div><h3>No employees found</h3><p>Try adjusting your search query or filters.</p></div>`;
@@ -2797,6 +2859,7 @@ function renderEmployeeTableHTML(list) {
           <th>Code</th>
           <th>Employee Details</th>
           <th>Gender / Eligibility</th>
+          <th>Shift Preference</th>
           <th>Status</th>
           <th>Login Account</th>
           <th style="text-align:right;">Actions</th>
@@ -2816,6 +2879,15 @@ function renderEmployeeTableHTML(list) {
               </span>
             </td>
             <td>
+              ${emp.shiftPreference ? `
+                <span class="badge ${formatShiftBadgeClass(emp.shiftPreference)}">
+                  ${escapeHTML(formatShiftName(emp.shiftPreference))}
+                </span>
+              ` : `
+                <span style="font-size:0.8rem; color:var(--text-muted);">Not Set</span>
+              `}
+            </td>
+            <td>
               <span class="status-pill ${emp.active ? 'active' : 'inactive'}">
                 <span class="badge-dot"></span> ${emp.active ? 'Active' : 'Inactive'}
               </span>
@@ -2827,7 +2899,10 @@ function renderEmployeeTableHTML(list) {
             </td>
             <td>
               <div class="row-actions" style="justify-content:flex-end;">
-                <button class="btn btn-secondary btn-sm" data-action="view-roster" data-id="${emp.id}" data-name="${emp.firstName} ${emp.lastName || ''}">
+                <button class="btn btn-secondary btn-sm" data-action="set-preference" data-id="${emp.id}" data-code="${emp.employeeCode}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="Admin configure shift preference">
+                  Pref
+                </button>
+                <button class="btn btn-secondary btn-sm" data-action="view-roster" data-id="${emp.id}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-code="${escapeHTML(emp.employeeCode)}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="View employee details, roster and shift preference">
                   Roster
                 </button>
                 <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${emp.id}">
@@ -2876,7 +2951,19 @@ function bindEmployeeRowActions() {
     btn.addEventListener("click", () => {
       state.inspectedEmployeeId = btn.getAttribute("data-id");
       state.inspectedEmployeeName = btn.getAttribute("data-name");
+      state.inspectedEmployeeCode = btn.getAttribute("data-code");
+      state.inspectedEmployeePref = btn.getAttribute("data-pref");
       navigateTo("employeeRosterDetail");
+    });
+  });
+
+  document.querySelectorAll("[data-action='set-preference']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      const name = btn.getAttribute("data-name");
+      const code = btn.getAttribute("data-code");
+      const pref = btn.getAttribute("data-pref");
+      openAdminShiftPreferenceModal(id, code, name, pref);
     });
   });
 
@@ -2887,6 +2974,8 @@ function bindEmployeeRowActions() {
       if (emp) openEmployeeModal(emp);
     });
   });
+
+  initAdminShiftPrefModal();
 
   document.querySelectorAll("[data-action='toggle-status']").forEach(chk => {
     chk.addEventListener("change", async (e) => {
@@ -5702,6 +5791,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
               </div>
             </div>
 
+            <!-- Shift Preference (Admin Controlled) -->
+            <div class="profile-field-item">
+              <div class="profile-field-meta">
+                <span class="profile-field-label">Shift Preference</span>
+                <strong class="profile-field-val">
+                  ${(employee && employee.shiftPreference) ? `
+                    <span class="badge ${formatShiftBadgeClass(employee.shiftPreference)}">${escapeHTML(formatShiftName(employee.shiftPreference))}</span>
+                  ` : `<span style="color:var(--text-muted); font-size:0.85rem;">Not Set</span>`}
+                </strong>
+              </div>
+              <div class="profile-field-action">
+                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Managed by Admin (Read-Only)</span>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -6690,22 +6794,102 @@ async function renderEmployeeRosterDetailView() {
   const container = dom.views.employeeRosterDetail;
   const empId = state.inspectedEmployeeId;
 
-  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading schedule for ${state.inspectedEmployeeName}...</p></div>`;
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading details & schedule for ${state.inspectedEmployeeName || 'Employee'}...</p></div>`;
 
   try {
-    const [roster] = await Promise.all([
-      apiRequest(`/api/rosters/employee/${empId}`),
+    const [roster, empData, prefData] = await Promise.all([
+      apiRequest(`/api/rosters/employee/${empId}`).catch(() => []),
+      apiRequest(`/api/employees/${empId}`).catch(() => null),
+      apiRequest(`/api/admin/preferences/employee/${empId}`).catch(() => null),
       ensureHolidaysLoaded()
     ]);
 
+    const employee = empData || (state.employees && state.employees.find(e => String(e.id) === String(empId))) || {
+      id: empId,
+      employeeCode: state.inspectedEmployeeCode || `EMP${empId}`,
+      firstName: state.inspectedEmployeeName || "Employee",
+      lastName: "",
+      email: "-",
+      gender: "MALE",
+      active: true
+    };
+
+    const currentPref = (prefData && prefData.preferredShiftTypes) ? prefData.preferredShiftTypes : (employee.shiftPreference || "");
+    const prefName = formatShiftName(currentPref) || "Not Set";
+    const prefBadgeClass = formatShiftBadgeClass(currentPref);
+
     container.innerHTML = `
+      <!-- 1. EMPLOYEE DETAILS & NAVIGATION HEADER -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h2 style="margin:0;">${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}</h2>
+            <code>${escapeHTML(employee.employeeCode)}</code>
+            <span class="status-pill ${employee.active !== false ? 'active' : 'inactive'}">
+              <span class="badge-dot"></span> ${employee.active !== false ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          <span style="font-size:0.82rem; color:var(--text-muted); margin-top:4px; display:block;">
+            Email: ${escapeHTML(employee.email || '-')} &bull; Gender: ${escapeHTML(employee.gender || 'MALE')} (${employee.gender === 'FEMALE' ? 'Day Protection' : 'All Shifts'})
+          </span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-secondary btn-sm" id="detailEditEmployeeBtn">
+            ✏️ Edit Employee
+          </button>
+          <button class="btn btn-ghost btn-sm" id="backToEmployeesBtn">
+            &larr; Back to Employees
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. SHIFT PREFERENCE SECTION (Dedicated Admin Card) -->
+      <div class="card" style="margin-bottom:24px; border-left:4px solid var(--primary, #3b82f6);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">Shift Preference</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Admin-controlled preferred shift assignment for roster balancing</span>
+          </div>
+          <span id="detailPrefStatusBadge" class="badge ${prefBadgeClass}" style="font-size:0.85rem; padding:4px 12px;">
+            ${escapeHTML(prefName)}
+          </span>
+        </div>
+        <div class="card-body" style="padding:20px 24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:0.9rem;">
+                Employee: <strong>${escapeHTML(employee.employeeCode)}</strong> &bull; Name: <strong>${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}</strong>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
+                <label for="detailPrefSelect" style="font-weight:600; font-size:0.9rem; margin:0; white-space:nowrap;">Preferred Shift:</label>
+                <select id="detailPrefSelect" class="form-control" style="min-width:200px; padding:8px 14px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.9rem;">
+                  <option value="">No Preference / Not Set</option>
+                  <option value="MORNING" ${currentPref === 'MORNING' ? 'selected' : ''}>Morning</option>
+                  <option value="GENERAL" ${currentPref === 'GENERAL' ? 'selected' : ''}>General</option>
+                  <option value="EVENING" ${currentPref === 'EVENING' ? 'selected' : ''}>Evening</option>
+                  <option value="NIGHT" ${currentPref === 'NIGHT' ? 'selected' : ''}>Night</option>
+                </select>
+              </div>
+              <small style="color:var(--text-muted); font-size:0.76rem;">
+                Preferred shift guides roster balancing; hard safety rules remain strictly enforced.
+              </small>
+            </div>
+            <div>
+              <button type="button" class="btn btn-primary" id="saveDetailPrefBtn" style="padding:9px 20px;">
+                Save Shift Preference
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. ROSTER DUTY LOG CARD -->
       <div class="card">
         <div class="card-header">
           <div>
-            <h2>${state.inspectedEmployeeName}</h2>
+            <h3>Roster &amp; Shift Schedule</h3>
             <span style="font-size:0.78rem; color:var(--text-muted);">Historical and upcoming shift duty log</span>
           </div>
-          <button class="btn btn-secondary btn-sm" id="backToEmployeesBtn">&larr; Back to Employees</button>
         </div>
         <div class="table-wrap">
           ${renderMyRosterTableHTML(roster)}
@@ -6715,8 +6899,49 @@ async function renderEmployeeRosterDetailView() {
 
     document.getElementById("backToEmployeesBtn").addEventListener("click", () => navigateTo("employees"));
 
+    document.getElementById("detailEditEmployeeBtn").addEventListener("click", () => {
+      openEmployeeModal(employee);
+    });
+
+    const savePrefBtn = document.getElementById("saveDetailPrefBtn");
+    const prefSelect = document.getElementById("detailPrefSelect");
+    savePrefBtn.addEventListener("click", async () => {
+      const selectedVal = prefSelect.value ? prefSelect.value.trim().toUpperCase() : "";
+      if (selectedVal && !["MORNING", "GENERAL", "EVENING", "NIGHT", "NOT_SET"].includes(selectedVal)) {
+        toast("Invalid shift preference selected.", "error");
+        return;
+      }
+      savePrefBtn.disabled = true;
+      savePrefBtn.textContent = "Saving...";
+      try {
+        await apiRequest(`/api/admin/preferences/employee/${empId}`, {
+          method: "PUT",
+          body: { preferredShift: selectedVal || "NOT_SET" }
+        });
+        toast("Shift preference updated successfully.", "success");
+
+        const activeVal = (selectedVal && selectedVal !== "NOT_SET") ? selectedVal : null;
+        employee.shiftPreference = activeVal;
+        const cachedEmp = state.employees ? state.employees.find(e => String(e.id) === String(empId)) : null;
+        if (cachedEmp) {
+          cachedEmp.shiftPreference = activeVal;
+        }
+
+        const badge = document.getElementById("detailPrefStatusBadge");
+        if (badge) {
+          badge.className = `badge ${formatShiftBadgeClass(activeVal)}`;
+          badge.textContent = formatShiftName(activeVal) || "Not Set";
+        }
+      } catch (err) {
+        toast(err.message || "Failed to update shift preference", "error");
+      } finally {
+        savePrefBtn.disabled = false;
+        savePrefBtn.textContent = "Save Shift Preference";
+      }
+    });
+
   } catch (err) {
-    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee schedule: ${err.message}</p></div>`;
+    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee details: ${err.message}</p></div>`;
   }
 }
 
@@ -6750,10 +6975,18 @@ async function openEmployeeModal(emp) {
     document.getElementById("empFormFirstName").value = emp.firstName;
     document.getElementById("empFormLastName").value = emp.lastName || "";
     document.getElementById("empFormEmail").value = emp.email;
+    const prefSelect = document.getElementById("empFormShiftPreference");
+    if (prefSelect) {
+      prefSelect.value = (emp.shiftPreference) ? emp.shiftPreference.toUpperCase() : "";
+    }
     document.getElementById("empAccountFields").style.display = "none";
   } else {
     document.getElementById("employeeModalTitle").textContent = "Add New Employee";
     document.getElementById("empFormId").value = "";
+    const prefSelect = document.getElementById("empFormShiftPreference");
+    if (prefSelect) {
+      prefSelect.value = "";
+    }
     document.getElementById("empAccountFields").style.display = "grid";
     codeInput.value = "Generating ID...";
     codeInput.readOnly = true;
@@ -6790,6 +7023,8 @@ async function handleSaveEmployee(e) {
   const email = document.getElementById("empFormEmail").value.trim();
   const username = document.getElementById("empFormUsername").value.trim();
   const password = document.getElementById("empFormPassword").value;
+  const prefSelect = document.getElementById("empFormShiftPreference");
+  const selectedPref = prefSelect ? prefSelect.value : null;
   const saveBtn = document.getElementById("saveEmployeeBtn");
 
   const payload = { employeeCode, gender, firstName, lastName, email };
@@ -6802,9 +7037,21 @@ async function handleSaveEmployee(e) {
     saveBtn.disabled = true;
     if (id) {
       await apiRequest(`/api/employees/${id}`, { method: "PUT", body: payload });
+      if (selectedPref !== null && selectedPref !== undefined) {
+        await apiRequest(`/api/admin/preferences/employee/${id}`, {
+          method: "PUT",
+          body: { preferredShift: selectedPref }
+        });
+      }
       toast("Employee updated successfully", "success");
     } else {
       const created = await apiRequest("/api/employees", { method: "POST", body: payload });
+      if (created && created.id && selectedPref) {
+        await apiRequest(`/api/admin/preferences/employee/${created.id}`, {
+          method: "PUT",
+          body: { preferredShift: selectedPref }
+        });
+      }
       toast(`✓ Employee ${created && created.employeeCode ? created.employeeCode : ''} created successfully`, "success");
     }
     closeModal("employeeModal");

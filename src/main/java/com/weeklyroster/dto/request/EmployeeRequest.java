@@ -14,9 +14,14 @@ public record EmployeeRequest(
         @NotNull Gender gender,
         String username,
         String password,
-        String contactNumber
+        String contactNumber,
+        String shiftPreference
 ) {
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, null, null);
+    }
+
+    public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber) {
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, null);
     }
 }

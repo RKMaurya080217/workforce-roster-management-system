@@ -650,9 +650,50 @@
           </div>
         </div>
 
+        <div class="form-group" id="empShiftPreferenceGroup">
+          <label for="empFormShiftPreference">Shift Preference <small style="color:var(--text-muted); font-weight:normal;">(Admin Managed)</small></label>
+          <select id="empFormShiftPreference" name="shiftPreference">
+            <option value="">No Preference / Not Set</option>
+            <option value="MORNING">Morning</option>
+            <option value="GENERAL">General</option>
+            <option value="EVENING">Evening</option>
+            <option value="NIGHT">Night</option>
+          </select>
+        </div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="employeeModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="saveEmployeeBtn">Save Employee</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 1b: Admin Set Shift Preference Modal -->
+  <div id="adminShiftPrefModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <h3 id="adminShiftPrefTitle">Set Shift Preference</h3>
+        <button class="modal-close" data-close-modal="adminShiftPrefModal">&times;</button>
+      </div>
+      <form id="adminShiftPrefForm" class="modal-body stack-gap">
+        <input type="hidden" id="adminShiftPrefEmpId">
+        <div id="adminShiftPrefEmpInfo" style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:6px; padding:10px 14px; font-size:0.88rem;">
+        </div>
+        <div class="form-group">
+          <label for="adminShiftPrefSelect">Shift Preference <span class="req">*</span></label>
+          <select id="adminShiftPrefSelect" name="preferredShift" class="form-control" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.9rem;">
+            <option value="">No Preference / Not Set</option>
+            <option value="MORNING">Morning</option>
+            <option value="GENERAL">General</option>
+            <option value="EVENING">Evening</option>
+            <option value="NIGHT">Night</option>
+          </select>
+          <small style="color:var(--text-muted); font-size:0.75rem; margin-top:4px; display:block;">Preferred shift guides roster balancing; hard safety rules remain strictly enforced.</small>
+        </div>
+        <div class="modal-footer" style="margin-top:16px;">
+          <button type="button" class="btn btn-ghost" data-close-modal="adminShiftPrefModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveShiftPrefBtn">Save Preference</button>
         </div>
       </form>
     </div>
@@ -1270,20 +1311,6 @@
           <strong>Soft Optimization Notice:</strong> Preferences guide roster balance but will never override hard safety regulations (12h rest interval, female evening/night restrictions, maximum 2 nights).
         </div>
 
-        <!-- Preferred Shift Types -->
-        <div class="form-group">
-          <label style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Preferred Shift Types</span>
-            <small class="text-muted">Select desired shifts</small>
-          </label>
-          <div class="pref-chip-group" id="prefGroupPreferredShifts">
-            <button type="button" class="pref-chip" data-type="pref-shift" data-value="MORNING">Morning</button>
-            <button type="button" class="pref-chip" data-type="pref-shift" data-value="GENERAL">General</button>
-            <button type="button" class="pref-chip" data-type="pref-shift" data-value="EVENING">Evening</button>
-            <button type="button" class="pref-chip" data-type="pref-shift" data-value="NIGHT">Night</button>
-          </div>
-          <input type="hidden" id="prefPreferredShifts" value="">
-        </div>
 
         <!-- Avoid Shift Types -->
         <div class="form-group">

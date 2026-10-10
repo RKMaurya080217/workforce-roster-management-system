@@ -10,6 +10,30 @@
    8. Advanced Notification Integrations
    ========================================================================== */
 
+// Shift helper functions (safe fallback)
+if (typeof window.formatShiftName !== "function") {
+  window.formatShiftName = function(shift) {
+    if (!shift || shift === "-" || shift === "null") return null;
+    const s = String(shift).trim().toUpperCase();
+    if (s === "MORNING") return "Morning";
+    if (s === "GENERAL") return "General";
+    if (s === "EVENING") return "Evening";
+    if (s === "NIGHT") return "Night";
+    return shift;
+  };
+}
+if (typeof window.formatShiftBadgeClass !== "function") {
+  window.formatShiftBadgeClass = function(shift) {
+    if (!shift) return "general";
+    const s = String(shift).trim().toUpperCase();
+    if (s === "MORNING") return "morning";
+    if (s === "GENERAL") return "general";
+    if (s === "EVENING") return "evening";
+    if (s === "NIGHT") return "night";
+    return "general";
+  };
+}
+
 // --- 1. ROSTER ANALYTICS DASHBOARD ---
 async function renderAnalyticsView() {
   const container = dom.views.analytics;
@@ -1105,29 +1129,53 @@ function openVersionComparisonFromPage() {
 
 // --- 10. EMPLOYEE SELF-SERVICE WORKSPACE ADDON TABS ---
 
-// Render Employee Shift Preferences Tab
+/// Render Employee Shift Preferences Tab (Read-Only for Employee)
 async function renderEmployeePreferencesTabHTML() {
   try {
-    const list = await apiRequest("/api/preferences/my");
+    const [list, myProfile] = await Promise.all([
+      apiRequest("/api/preferences/my").catch(() => []),
+      apiRequest("/api/employees/me").catch(() => null)
+    ]);
+
+    const activePref = (myProfile && myProfile.shiftPreference) ? myProfile.shiftPreference : (list.find(p => p.status === 'APPROVED' && p.preferredShiftTypes)?.preferredShiftTypes || null);
+    const prefDisplay = formatShiftName(activePref) || "Not Set";
+    const badgeClass = formatShiftBadgeClass(activePref);
+
     return `
+      <!-- Read-Only Shift Preference Card -->
+      <div class="card" style="margin-bottom:20px; border-left: 4px solid var(--primary, #3b82f6);">
+        <div class="card-body" style="padding:18px 24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700;">Shift Preference (Admin Managed)</div>
+              <div style="display:flex; align-items:center; gap:10px; margin-top:6px;">
+                <span class="badge ${badgeClass}" style="font-size:1rem; padding:6px 14px;">${escapeHTML(prefDisplay)}</span>
+                <span style="font-size:0.85rem; color:var(--text-muted);">&bull; Controlled and updated exclusively by Administration</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge" style="background:#f1f5f9; color:#475569; font-size:0.8rem; padding:6px 12px; border-radius:16px;">
+                🔒 Read-Only
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:20px;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <h3>My Shift Availability & Preferences</h3>
-            <p class="text-muted" style="margin:0; font-size:0.84rem;">Submit preferred working shifts and avoid days for upcoming roster cycles</p>
+            <h3>My Shift Availability & Preference History</h3>
+            <p class="text-muted" style="margin:0; font-size:0.84rem;">View historical shift preference assignments and availability records</p>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="openPreferenceModal()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span>Submit New Preference</span>
-          </button>
         </div>
         <div class="card-body" style="padding:0;">
           <div class="table-wrap">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Submitted Date</th>
-                  <th>Preferred Shifts</th>
+                  <th>Recorded Date</th>
+                  <th>Shift Preference</th>
                   <th>Avoid Shifts</th>
                   <th>Preferred OFF Days</th>
                   <th>Working Days</th>
@@ -1137,11 +1185,11 @@ async function renderEmployeePreferencesTabHTML() {
                 </tr>
               </thead>
               <tbody>
-                ${list.length === 0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">No shift preferences submitted yet</td></tr>` :
+                ${list.length === 0 ? `<tr><td colspan="8" class="text-center text-muted" style="padding:32px;">No shift preferences recorded yet</td></tr>` :
                   list.map(p => `
                     <tr>
                       <td>${formatDate(p.createdAt)}</td>
-                      <td><strong>${escapeHTML(p.preferredShiftTypes || p.preferredShifts || "-")}</strong></td>
+                      <td><strong>${escapeHTML(formatShiftName(p.preferredShiftTypes || p.preferredShifts || "-") || "-")}</strong></td>
                       <td>${escapeHTML(p.avoidShiftTypes || p.avoidShifts || "-")}</td>
                       <td>${escapeHTML(p.preferredOffDays || "-")}</td>
                       <td>${escapeHTML(p.preferredWorkingDays || "-")}</td>
@@ -1161,7 +1209,7 @@ async function renderEmployeePreferencesTabHTML() {
       </div>
     `;
   } catch (err) {
-    return `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+    return `<div class="card"><div class="empty-state-box text-danger">⚠️ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
   }
 }
 
@@ -1453,19 +1501,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const alertBox = document.getElementById("prefFormAlert");
         if (alertBox) alertBox.classList.add("hidden");
 
-        if (type === "pref-shift") {
-          if (!isSelected) {
-            chip.classList.add("selected");
-            const avoidMatch = document.querySelector(`#prefGroupAvoidShifts .pref-chip[data-value="${val}"]`);
-            if (avoidMatch) avoidMatch.classList.remove("selected-avoid", "selected");
-          } else {
-            chip.classList.remove("selected");
-          }
-        } else if (type === "avoid-shift") {
+        if (type === "avoid-shift") {
           if (!isSelected) {
             chip.classList.add("selected-avoid");
-            const prefMatch = document.querySelector(`#prefGroupPreferredShifts .pref-chip[data-value="${val}"]`);
-            if (prefMatch) prefMatch.classList.remove("selected");
           } else {
             chip.classList.remove("selected-avoid", "selected");
           }
@@ -1504,9 +1542,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // Collect selected arrays from chips
-      const preferredShiftTypes = Array.from(document.querySelectorAll("#prefGroupPreferredShifts .pref-chip.selected"))
-        .map(c => c.getAttribute("data-value"));
-      
       const avoidShiftTypes = Array.from(document.querySelectorAll("#prefGroupAvoidShifts .pref-chip.selected-avoid"))
         .map(c => c.getAttribute("data-value"));
 
@@ -1517,18 +1552,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .map(c => c.getAttribute("data-value"));
 
       const temporaryRestrictions = (document.getElementById("prefRestrictions").value || "").trim();
-
-      // Validate conflicting shifts
-      const shiftConflict = preferredShiftTypes.filter(s => avoidShiftTypes.includes(s));
-      if (shiftConflict.length > 0) {
-        const msg = `${shiftConflict.join(", ")} cannot be both preferred and avoided.`;
-        if (alertBox) {
-          alertBox.textContent = msg;
-          alertBox.classList.remove("hidden");
-        }
-        toast(msg, "warning");
-        return;
-      }
 
       // Validate conflicting days
       const dayConflict = preferredOffDays.filter(d => preferredWorkingDays.includes(d));

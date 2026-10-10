@@ -1,5 +1,6 @@
 package com.weeklyroster.service;
 
+import com.weeklyroster.dto.request.AdminShiftPreferenceRequest;
 import com.weeklyroster.dto.request.PreferenceDecisionRequest;
 import com.weeklyroster.dto.request.PreferenceSubmitRequest;
 import com.weeklyroster.dto.response.PreferenceResponse;
@@ -13,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -363,6 +366,152 @@ public class EmployeePreferenceService {
                 notifMsg, NotificationType.PREFERENCE_DECISION, "preferences", saved.getId());
 
         return toResponse(saved);
+    }
+
+    private String normalizeAndValidateSingleShift(String input) {
+        if (input == null || input.isBlank() || input.equalsIgnoreCase("NOT_SET")
+                || input.equalsIgnoreCase("NONE") || input.equalsIgnoreCase("NO_PREFERENCE")
+                || input.equalsIgnoreCase("NOT SET") || input.equalsIgnoreCase("NO PREFERENCE")) {
+            return null;
+        }
+        String upper = input.trim().toUpperCase();
+        try {
+            ShiftType st = ShiftType.valueOf(upper);
+            if (st == ShiftType.OFF) {
+                throw new BusinessException("Invalid shift type: 'OFF'. Valid shift preferences: MORNING, GENERAL, EVENING, NIGHT, or NOT_SET.");
+            }
+            return st.name();
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("Invalid shift preference '" + input + "'. Supported shifts: MORNING, GENERAL, EVENING, NIGHT, or NOT_SET.");
+        }
+    }
+
+    public PreferenceResponse setEmployeeShiftPreferenceByAdmin(Long employeeId, AdminShiftPreferenceRequest req, String adminUsername) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + employeeId));
+
+        String rawShift = req != null ? req.preferredShift() : null;
+        String normalizedShift = normalizeAndValidateSingleShift(rawShift);
+
+        List<EmployeePreference> existingList = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
+        EmployeePreference pref;
+        if (!existingList.isEmpty()) {
+            pref = existingList.get(0);
+        } else {
+            pref = new EmployeePreference();
+            pref.setEmployee(employee);
+            pref.setCreatedAt(LocalDateTime.now());
+        }
+
+        String oldShift = pref.getPreferredShiftTypes();
+        pref.setPreferredShiftTypes(normalizedShift);
+        pref.setStatus(PreferenceStatus.APPROVED);
+        pref.setReviewedBy(adminUsername);
+        pref.setReviewedAt(LocalDateTime.now());
+        if (req != null && req.adminRemarks() != null && !req.adminRemarks().isBlank()) {
+            pref.setAdminRemarks(req.adminRemarks().trim());
+        } else {
+            pref.setAdminRemarks("Configured by Admin (" + adminUsername + ")");
+        }
+
+        EmployeePreference saved = preferenceRepository.save(pref);
+
+        // Prevent duplicates: clean up any legacy multiple records
+        if (existingList.size() > 1) {
+            for (int i = 1; i < existingList.size(); i++) {
+                preferenceRepository.delete(existingList.get(i));
+            }
+        }
+
+        activityLogService.logActivity(employee.getId(), adminUsername, ActivityCategory.PREFERENCE,
+                "ADMIN_PREFERENCE_UPDATED", ActivityStatus.SUCCESS,
+                "Admin " + adminUsername + " set shift preference to: " + (normalizedShift != null ? normalizedShift : "NOT_SET") + " for " + employee.getEmployeeCode());
+
+        auditService.log(AuditAction.PREFERENCE_APPROVED, "EMPLOYEE_PREFERENCE", saved.getId(), null,
+                employee.getId(), employee.getFirstName() + " " + (employee.getLastName() != null ? employee.getLastName() : ""),
+                oldShift != null ? oldShift : "NONE",
+                normalizedShift != null ? normalizedShift : "NONE",
+                "Admin set shift preference to " + (normalizedShift != null ? normalizedShift : "NOT_SET"),
+                "MANUAL");
+
+        notificationService.createNotification(employee.getEmployeeCode().toLowerCase(), employee.getId(),
+                "Shift Preference Updated",
+                "Your shift preference was updated to: " + (normalizedShift != null ? normalizedShift : "Not Set") + " by administration.",
+                NotificationType.PREFERENCE_DECISION, "preferences", saved.getId());
+
+        return toResponse(saved);
+    }
+
+    public void clearEmployeeShiftPreferenceByAdmin(Long employeeId, String adminUsername) {
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + employeeId));
+
+        List<EmployeePreference> existingList = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
+        if (!existingList.isEmpty()) {
+            EmployeePreference pref = existingList.get(0);
+            String oldShift = pref.getPreferredShiftTypes();
+            pref.setPreferredShiftTypes(null);
+            pref.setStatus(PreferenceStatus.APPROVED);
+            pref.setReviewedBy(adminUsername);
+            pref.setReviewedAt(LocalDateTime.now());
+            pref.setAdminRemarks("Shift preference cleared by Admin (" + adminUsername + ")");
+            preferenceRepository.save(pref);
+
+            if (existingList.size() > 1) {
+                for (int i = 1; i < existingList.size(); i++) {
+                    preferenceRepository.delete(existingList.get(i));
+                }
+            }
+
+            activityLogService.logActivity(employee.getId(), adminUsername, ActivityCategory.PREFERENCE,
+                    "ADMIN_PREFERENCE_CLEARED", ActivityStatus.SUCCESS,
+                    "Admin " + adminUsername + " cleared shift preference for " + employee.getEmployeeCode());
+
+            auditService.log(AuditAction.PREFERENCE_APPROVED, "EMPLOYEE_PREFERENCE", pref.getId(), null,
+                    employee.getId(), employee.getFirstName() + " " + (employee.getLastName() != null ? employee.getLastName() : ""),
+                    oldShift != null ? oldShift : "NONE", "NONE",
+                    "Admin cleared shift preference", "MANUAL");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public String getEmployeeShiftPreference(Long employeeId) {
+        return preferenceRepository.findTopByEmployeeIdAndStatusOrderByCreatedAtDesc(employeeId, PreferenceStatus.APPROVED)
+                .map(EmployeePreference::getPreferredShiftTypes)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, String> getEmployeeShiftPreferenceMap() {
+        List<EmployeePreference> all = preferenceRepository.findAllByOrderByCreatedAtDesc();
+        Map<Long, String> map = new HashMap<>();
+        for (EmployeePreference p : all) {
+            if (p.getEmployee() != null && p.getStatus() == PreferenceStatus.APPROVED) {
+                if (!map.containsKey(p.getEmployee().getId())) {
+                    String s = p.getPreferredShiftTypes();
+                    if (s != null && !s.isBlank()) {
+                        map.put(p.getEmployee().getId(), s);
+                    }
+                }
+            }
+        }
+        return map;
+    }
+
+    @Transactional(readOnly = true)
+    public PreferenceResponse getEmptyPreferenceResponse(Long employeeId) {
+        Employee e = employeeRepository.findById(employeeId).orElse(null);
+        return new PreferenceResponse(
+                null,
+                employeeId,
+                e != null ? e.getEmployeeCode() : null,
+                e != null ? (e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "")).trim() : null,
+                null, null, null, null, null, null,
+                PreferenceStatus.APPROVED,
+                "No preference configured",
+                null, null, null, null, null
+        );
     }
 
     private PreferenceResponse toResponse(EmployeePreference p) {

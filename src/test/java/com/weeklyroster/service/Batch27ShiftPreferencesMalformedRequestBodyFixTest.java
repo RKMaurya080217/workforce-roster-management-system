@@ -43,7 +43,7 @@ public class Batch27ShiftPreferencesMalformedRequestBodyFixTest {
 
     @Test
     @DisplayName("Test 1: Submit single shift and single day preferences with temporary notes")
-    @WithMockUser(username = "emp001", roles = {"EMPLOYEE"})
+    @WithMockUser(username = "emp001", roles = {"ADMIN"})
     void test1_SingleShiftAndDayPreferences() throws Exception {
         Employee emp = employeeRepository.findAll().get(0);
 
@@ -75,7 +75,7 @@ public class Batch27ShiftPreferencesMalformedRequestBodyFixTest {
 
     @Test
     @DisplayName("Test 2: Submit multiple shift types as collection")
-    @WithMockUser(username = "emp001", roles = {"EMPLOYEE"})
+    @WithMockUser(username = "emp001", roles = {"ADMIN"})
     void test2_MultipleShiftTypes() throws Exception {
         String jsonPayload = """
         {
@@ -96,7 +96,7 @@ public class Batch27ShiftPreferencesMalformedRequestBodyFixTest {
 
     @Test
     @DisplayName("Test 3: Submit multiple OFF days as collection")
-    @WithMockUser(username = "emp001", roles = {"EMPLOYEE"})
+    @WithMockUser(username = "emp001", roles = {"ADMIN"})
     void test3_MultipleOffDays() throws Exception {
         String jsonPayload = """
         {
@@ -116,7 +116,7 @@ public class Batch27ShiftPreferencesMalformedRequestBodyFixTest {
 
     @Test
     @DisplayName("Test 4: Leave optional fields empty (null or empty arrays)")
-    @WithMockUser(username = "emp001", roles = {"EMPLOYEE"})
+    @WithMockUser(username = "emp001", roles = {"ADMIN"})
     void test4_EmptyOptionalFields() throws Exception {
         String jsonPayload = """
         {
@@ -163,7 +163,7 @@ public class Batch27ShiftPreferencesMalformedRequestBodyFixTest {
 
     @Test
     @DisplayName("Test 6: Full backward compatibility for string inputs and alternate field aliases")
-    @WithMockUser(username = "emp001", roles = {"EMPLOYEE"})
+    @WithMockUser(username = "emp001", roles = {"ADMIN"})
     void test6_StringAndAliasCompatibility() throws Exception {
         String jsonPayload = """
         {

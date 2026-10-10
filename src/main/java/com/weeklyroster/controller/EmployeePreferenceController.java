@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -54,7 +55,8 @@ public class EmployeePreferenceController {
     }
 
     @PostMapping
-    @Operation(summary = "Submit a shift preference request")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @Operation(summary = "Submit a shift preference request (Admin only)")
     public ResponseEntity<PreferenceResponse> submitPreference(@Valid @RequestBody PreferenceSubmitRequest req, Authentication auth) {
         Employee emp = resolveEmployee(auth);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -62,14 +64,16 @@ public class EmployeePreferenceController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update an existing shift preference request")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @Operation(summary = "Update an existing shift preference request (Admin only)")
     public ResponseEntity<PreferenceResponse> updatePreference(@PathVariable Long id, @Valid @RequestBody PreferenceSubmitRequest req, Authentication auth) {
         Employee emp = resolveEmployee(auth);
         return ResponseEntity.ok(preferenceService.updatePreference(emp.getId(), id, req, auth.getName()));
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Clear/reset a shift preference request")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @Operation(summary = "Clear/reset a shift preference request (Admin only)")
     public ResponseEntity<Void> deletePreference(@PathVariable Long id, Authentication auth) {
         Employee emp = resolveEmployee(auth);
         preferenceService.deletePreference(emp.getId(), id, auth.getName());

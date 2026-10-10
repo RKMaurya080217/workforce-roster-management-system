@@ -86,6 +86,9 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
                 || "prod".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")))
                 || "production".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")));
 
+        boolean isTest = environment.acceptsProfiles(org.springframework.core.env.Profiles.of("test"))
+                && !environment.acceptsProfiles(org.springframework.core.env.Profiles.of("local"));
+
         if (isRailwayOrRemote || isExplicitProd) {
             // PRODUCTION / MYSQL MODE: Preserve 100% of existing Railway MySQL configuration
             if (environment.getActiveProfiles().length == 0) {
@@ -164,6 +167,10 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
                 System.out.println(msg);
                 log.info(msg);
             }
+        } else if (isTest) {
+            String msg = "[WRMS Test Config] Test profile active. Using test datasource configuration.";
+            System.out.println(msg);
+            log.info(msg);
         } else {
             // LOCAL / SQLITE MODE (Batch 73): Default local development uses SQLite (data/wrms.db)
             if (environment.getActiveProfiles().length == 0) {
@@ -182,7 +189,7 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
             overrides.put("spring.jpa.database-platform", "org.hibernate.community.dialect.SQLiteDialect");
             overrides.put("spring.jpa.properties.hibernate.dialect", "org.hibernate.community.dialect.SQLiteDialect");
             overrides.put("spring.jpa.hibernate.ddl-auto", "update");
-            overrides.put("spring.datasource.hikari.maximum-pool-size", 1);
+            overrides.put("spring.datasource.hikari.maximum-pool-size", 5);
             overrides.put("spring.datasource.hikari.minimum-idle", 1);
             overrides.put("spring.datasource.hikari.connection-timeout", 30000);
             overrides.put("spring.datasource.hikari.idle-timeout", 60000);

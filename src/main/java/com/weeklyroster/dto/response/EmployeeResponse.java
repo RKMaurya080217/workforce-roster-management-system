@@ -11,9 +11,14 @@ public record EmployeeResponse(
         Gender gender,
         boolean active,
         String username,
-        String contactNumber
+        String contactNumber,
+        String shiftPreference
 ) {
     public EmployeeResponse(Long id, String employeeCode, String firstName, String lastName, String email, Gender gender, boolean active, String username) {
-        this(id, employeeCode, firstName, lastName, email, gender, active, username, null);
+        this(id, employeeCode, firstName, lastName, email, gender, active, username, null, null);
+    }
+
+    public EmployeeResponse(Long id, String employeeCode, String firstName, String lastName, String email, Gender gender, boolean active, String username, String contactNumber) {
+        this(id, employeeCode, firstName, lastName, email, gender, active, username, contactNumber, null);
     }
 }

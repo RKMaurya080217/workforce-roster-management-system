@@ -7,9 +7,13 @@ import com.weeklyroster.entity.Role;
 import com.weeklyroster.entity.User;
 import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.exception.ResourceNotFoundException;
+import com.weeklyroster.repository.EmployeePreferenceRepository;
 import com.weeklyroster.repository.EmployeeRepository;
 import com.weeklyroster.repository.UserRepository;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,30 +24,64 @@ public class EmployeeService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final DevCredentialMirrorService devCredentialMirrorService;
+	private final EmployeePreferenceRepository preferenceRepository;
 
 	public EmployeeService(EmployeeRepository employeeRepository, UserRepository userRepository,
 			PasswordEncoder passwordEncoder) {
-		this(employeeRepository, userRepository, passwordEncoder, null);
+		this(employeeRepository, userRepository, passwordEncoder, null, null);
 	}
 
 	@org.springframework.beans.factory.annotation.Autowired
 	public EmployeeService(EmployeeRepository employeeRepository, UserRepository userRepository,
 			PasswordEncoder passwordEncoder,
-			@org.springframework.beans.factory.annotation.Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService) {
+			@org.springframework.beans.factory.annotation.Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService,
+			@org.springframework.beans.factory.annotation.Autowired(required = false) EmployeePreferenceRepository preferenceRepository) {
 		this.employeeRepository = employeeRepository;
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.devCredentialMirrorService = devCredentialMirrorService;
+		this.preferenceRepository = preferenceRepository;
+	}
+
+	private Map<Long, String> loadShiftPreferenceMap() {
+		if (preferenceRepository == null) return Collections.emptyMap();
+		List<com.weeklyroster.entity.EmployeePreference> all = preferenceRepository.findAllByOrderByCreatedAtDesc();
+		Map<Long, String> map = new HashMap<>();
+		for (com.weeklyroster.entity.EmployeePreference p : all) {
+			if (p.getEmployee() != null && p.getStatus() == com.weeklyroster.entity.PreferenceStatus.APPROVED) {
+				if (!map.containsKey(p.getEmployee().getId())) {
+					String s = p.getPreferredShiftTypes();
+					if (s != null && !s.isBlank()) {
+						map.put(p.getEmployee().getId(), s);
+					}
+				}
+			}
+		}
+		return map;
+	}
+
+	private String loadShiftPreference(Long employeeId) {
+		if (preferenceRepository == null || employeeId == null) return null;
+		return preferenceRepository.findTopByEmployeeIdAndStatusOrderByCreatedAtDesc(employeeId, com.weeklyroster.entity.PreferenceStatus.APPROVED)
+				.map(com.weeklyroster.entity.EmployeePreference::getPreferredShiftTypes)
+				.filter(s -> s != null && !s.isBlank())
+				.orElse(null);
 	}
 
 	@Transactional(readOnly = true)
 	public List<EmployeeResponse> all() {
-		return employeeRepository.findAllByOrderByIdAsc().stream().map(this::toResponse).toList();
+		Map<Long, String> prefMap = loadShiftPreferenceMap();
+		return employeeRepository.findAllByOrderByIdAsc().stream()
+				.map(e -> toResponse(e, prefMap.get(e.getId())))
+				.toList();
 	}
 
 	@Transactional(readOnly = true)
 	public List<EmployeeResponse> active() {
-		return employeeRepository.findByActiveTrueOrderByIdAsc().stream().map(this::toResponse).toList();
+		Map<Long, String> prefMap = loadShiftPreferenceMap();
+		return employeeRepository.findByActiveTrueOrderByIdAsc().stream()
+				.map(e -> toResponse(e, prefMap.get(e.getId())))
+				.toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -266,9 +304,13 @@ public class EmployeeService {
 	}
 
 	public EmployeeResponse toResponse(Employee employee) {
+		return toResponse(employee, loadShiftPreference(employee.getId()));
+	}
+
+	public EmployeeResponse toResponse(Employee employee, String shiftPreference) {
 		return new EmployeeResponse(employee.getId(), employee.getEmployeeCode(), employee.getFirstName(),
 				employee.getLastName(), employee.getEmail(), employee.getGender(), employee.isActive(),
 				employee.getUser() == null ? null : employee.getUser().getUsername(),
-				employee.getContactNumber());
+				employee.getContactNumber(), shiftPreference);
 	}
 }
