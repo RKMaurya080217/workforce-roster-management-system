@@ -14,10 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+
 
 @Service
 @Transactional
@@ -368,30 +366,60 @@ public class EmployeePreferenceService {
         return toResponse(saved);
     }
 
-    private String normalizeAndValidateSingleShift(String input) {
-        if (input == null || input.isBlank() || input.equalsIgnoreCase("NOT_SET")
-                || input.equalsIgnoreCase("NONE") || input.equalsIgnoreCase("NO_PREFERENCE")
-                || input.equalsIgnoreCase("NOT SET") || input.equalsIgnoreCase("NO PREFERENCE")) {
-            return null;
-        }
-        String upper = input.trim().toUpperCase();
-        try {
-            ShiftType st = ShiftType.valueOf(upper);
-            if (st == ShiftType.OFF) {
-                throw new BusinessException("Invalid shift type: 'OFF'. Valid shift preferences: MORNING, GENERAL, EVENING, NIGHT, or NOT_SET.");
+    private List<String> normalizeAndValidateAdminShifts(AdminShiftPreferenceRequest req) {
+        if (req == null) return Collections.emptyList();
+
+        List<String> rawList = new ArrayList<>();
+        if (req.preferredShifts() != null && !req.preferredShifts().isEmpty()) {
+            rawList.addAll(req.preferredShifts());
+        } else if (req.preferredShift() != null && !req.preferredShift().isBlank()) {
+            String[] parts = req.preferredShift().split("[,;|/\\s]+");
+            for (String p : parts) {
+                if (!p.isBlank()) rawList.add(p);
             }
-            return st.name();
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException("Invalid shift preference '" + input + "'. Supported shifts: MORNING, GENERAL, EVENING, NIGHT, or NOT_SET.");
         }
+
+        if (rawList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> result = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+
+        for (String raw : rawList) {
+            if (raw == null || raw.isBlank()) continue;
+            String upper = raw.trim().toUpperCase();
+            if (upper.equals("NOT_SET") || upper.equals("NONE") || upper.equals("NO_PREFERENCE")
+                    || upper.equals("NOT SET") || upper.equals("NO PREFERENCE")) {
+                continue;
+            }
+            if (upper.equals("OFF")) {
+                throw new BusinessException("Invalid shift type: 'OFF'. Valid shift preferences: MORNING, GENERAL, EVENING, NIGHT.");
+            }
+            try {
+                ShiftType st = ShiftType.valueOf(upper);
+                if (st == ShiftType.OFF) {
+                    throw new BusinessException("Invalid shift type: 'OFF'. Valid shift preferences: MORNING, GENERAL, EVENING, NIGHT.");
+                }
+                String shiftName = st.name();
+                if (seen.contains(shiftName)) {
+                    throw new BusinessException("Duplicate shift preference is not allowed: " + shiftName);
+                }
+                seen.add(shiftName);
+                result.add(shiftName);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException("Invalid shift preference '" + raw + "'. Supported shifts: MORNING, GENERAL, EVENING, NIGHT.");
+            }
+        }
+        return result;
     }
 
     public PreferenceResponse setEmployeeShiftPreferenceByAdmin(Long employeeId, AdminShiftPreferenceRequest req, String adminUsername) {
         Employee employee = employeeRepository.findById(employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + employeeId));
 
-        String rawShift = req != null ? req.preferredShift() : null;
-        String normalizedShift = normalizeAndValidateSingleShift(rawShift);
+        List<String> validShifts = normalizeAndValidateAdminShifts(req);
+        String normalizedShift = validShifts.isEmpty() ? null : String.join(", ", validShifts);
 
         List<EmployeePreference> existingList = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(employeeId);
         EmployeePreference pref;

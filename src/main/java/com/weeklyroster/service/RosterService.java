@@ -13,6 +13,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -549,7 +550,8 @@ public class RosterService {
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p) {
-		Set<ShiftType> preferredShifts = parseShiftTypes(p.getPreferredShiftTypes());
+		List<ShiftType> preferredShiftOrder = parseShiftTypesList(p.getPreferredShiftTypes());
+		Set<ShiftType> preferredShifts = new LinkedHashSet<>(preferredShiftOrder);
 		Set<ShiftType> avoidShifts = parseShiftTypes(p.getAvoidShiftTypes());
 		Set<DayOfWeek> preferredOffDays = parseDaysOfWeek(p.getPreferredOffDays());
 		Set<DayOfWeek> preferredWorkingDays = parseDaysOfWeek(p.getPreferredWorkingDays());
@@ -564,12 +566,39 @@ public class RosterService {
 				p.getId(),
 				p.getEmployee().getId(),
 				preferredShifts,
+				preferredShiftOrder,
 				avoidShifts,
 				preferredOffDays,
 				preferredWorkingDays,
 				p.getTemporaryRestrictions(),
 				true
 		);
+	}
+
+	private List<ShiftType> parseShiftTypesList(String text) {
+		if (text == null || text.isBlank()) return Collections.emptyList();
+		List<ShiftType> list = new ArrayList<>();
+		String[] parts = text.toUpperCase().split("[,;|/\\s]+");
+		for (String p : parts) {
+			String trimmed = p.trim();
+			if (trimmed.isEmpty() || trimmed.equals("AND") || trimmed.equals("&")) continue;
+			try {
+				ShiftType st = ShiftType.valueOf(trimmed);
+				if (!list.contains(st)) {
+					list.add(st);
+				}
+			} catch (IllegalArgumentException ignored) {
+				for (ShiftType st : ShiftType.values()) {
+					if (st.name().startsWith(trimmed) || (trimmed.length() >= 3 && st.name().startsWith(trimmed.substring(0, 3)))) {
+						if (!list.contains(st)) {
+							list.add(st);
+						}
+						break;
+					}
+				}
+			}
+		}
+		return list;
 	}
 
 	private Set<ShiftType> parseShiftTypes(String text) {
@@ -1175,8 +1204,9 @@ public class RosterService {
 		Set<Long> assigned = new HashSet<>();
 
 		int totalActiveMales = (int) employees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive()).count();
+		int[] stepCounter = new int[1];
 		boolean solvedFeasible = solveDay(0, feasibleSlots, available, assigned, dailyMatching, date,
-				shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycle.getStartDate(), cycle.getEndDate(), preferencesMap, randomSeed);
+				shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycle.getStartDate(), cycle.getEndDate(), preferencesMap, randomSeed, stepCounter);
 
 		if (!solvedFeasible) {
 			assigned.clear();
@@ -1588,6 +1618,21 @@ public class RosterService {
 			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
 			int maxNightsAllowed, int totalActiveMales, Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate, LocalDate cycleEndDate,
 			Map<Long, ApplicablePreference> preferencesMap, int randomSeed) {
+		return solveDay(slotIndex, slots, available, assigned, dailyAssignments, date,
+				shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap,
+				maxNightsAllowed, totalActiveMales, weeklyOffs, cycleStartDate, cycleEndDate,
+				preferencesMap, randomSeed, new int[1]);
+	}
+
+	private boolean solveDay(int slotIndex, List<ShiftType> slots, List<Employee> available,
+			Set<Long> assigned, Map<ShiftType, List<Employee>> dailyAssignments, LocalDate date,
+			Map<ShiftType, Shift> shifts, Map<Long, Shift> lastShiftMap, Map<Long, LocalDate> lastShiftDateMap,
+			Map<Long, Integer> cycleNightCounts, Map<Long, Map<ShiftType, Integer>> shiftCountsMap,
+			int maxNightsAllowed, int totalActiveMales, Map<Long, LocalDate> weeklyOffs, LocalDate cycleStartDate, LocalDate cycleEndDate,
+			Map<Long, ApplicablePreference> preferencesMap, int randomSeed, int[] stepCounter) {
+		if (stepCounter != null && ++stepCounter[0] > 1500) {
+			return false; // Time/search budget exceeded, prune exponential exploration safely
+		}
 		if (slotIndex >= slots.size()) {
 			return true;
 		}
@@ -1666,7 +1711,7 @@ public class RosterService {
 			dailyAssignments.computeIfAbsent(shiftType, k -> new ArrayList<>()).add(candidate);
 
 			if (solveDay(slotIndex + 1, slots, available, assigned, dailyAssignments, date,
-					shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycleStartDate, cycleEndDate, preferencesMap, randomSeed)) {
+					shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycleStartDate, cycleEndDate, preferencesMap, randomSeed, stepCounter)) {
 				return true;
 			}
 
@@ -2341,10 +2386,19 @@ private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Lo
 
 	int score = shiftCount * 20;
 
-	// 1. Approved Employee Preferences (High Priority)
+	// 1. Approved Employee Preferences (High Priority with deterministic priority ordering)
 	if (pref != null) {
 		if (pref.isShiftPreferred(shiftType)) {
-			score -= 1200;
+			int rank = pref.getShiftPreferenceRank(shiftType);
+			if (rank == 0) {
+				score -= 1500; // Priority 1: highest preference reward
+			} else if (rank == 1) {
+				score -= 1150; // Priority 2: secondary preference reward
+			} else if (rank == 2) {
+				score -= 800;  // Priority 3: tertiary preference reward
+			} else {
+				score -= 500;  // Priority 4+: fallback preference reward
+			}
 		} else if (pref.hasPreferredShifts()) {
 			score += 800;
 		}

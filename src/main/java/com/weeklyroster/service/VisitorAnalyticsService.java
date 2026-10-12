@@ -129,10 +129,14 @@ public class VisitorAnalyticsService {
     @Scheduled(fixedRate = 600000)
     @Transactional
     public void cleanupExpiredSessions() {
-        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(CLEANUP_THRESHOLD_MINUTES);
-        int deleted = activeVisitorRepository.deleteExpiredVisitorsBefore(cutoff);
-        if (deleted > 0) {
-            log.debug("[VisitorAnalytics] Cleaned up {} inactive visitor sessions older than {} minutes", deleted, CLEANUP_THRESHOLD_MINUTES);
+        try {
+            LocalDateTime cutoff = LocalDateTime.now().minusMinutes(CLEANUP_THRESHOLD_MINUTES);
+            int deleted = activeVisitorRepository.deleteExpiredVisitorsBefore(cutoff);
+            if (deleted > 0) {
+                log.debug("[VisitorAnalytics] Cleaned up {} inactive visitor sessions older than {} minutes", deleted, CLEANUP_THRESHOLD_MINUTES);
+            }
+        } catch (Exception e) {
+            log.warn("[VisitorAnalytics] Session cleanup deferred: {}", e.getMessage());
         }
     }
 

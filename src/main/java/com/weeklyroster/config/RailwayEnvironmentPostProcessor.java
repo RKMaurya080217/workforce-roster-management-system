@@ -193,6 +193,7 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
             overrides.put("spring.datasource.hikari.minimum-idle", 1);
             overrides.put("spring.datasource.hikari.connection-timeout", 30000);
             overrides.put("spring.datasource.hikari.idle-timeout", 60000);
+            overrides.put("spring.datasource.hikari.connection-init-sql", "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=30000;");
             overrides.put("spring.datasource.hikari.pool-name", "WRMSSqlitePool");
 
             String msg = "[WRMS Local Config] Local development detected. Using SQLite database: data/wrms.db (Profile: local)";

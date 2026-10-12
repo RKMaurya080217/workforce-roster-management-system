@@ -14,22 +14,34 @@
 if (typeof window.formatShiftName !== "function") {
   window.formatShiftName = function(shift) {
     if (!shift || shift === "-" || shift === "null") return null;
-    const s = String(shift).trim().toUpperCase();
-    if (s === "MORNING") return "Morning";
-    if (s === "GENERAL") return "General";
-    if (s === "EVENING") return "Evening";
-    if (s === "NIGHT") return "Night";
+    const s = String(shift).trim();
+    if (s.includes(",")) {
+      return s.split(",")
+        .map(part => window.formatShiftName(part.trim()))
+        .filter(Boolean)
+        .join(" → ");
+    }
+    const upper = s.toUpperCase();
+    if (upper === "MORNING") return "Morning";
+    if (upper === "GENERAL") return "General";
+    if (upper === "EVENING") return "Evening";
+    if (upper === "NIGHT") return "Night";
     return shift;
   };
 }
 if (typeof window.formatShiftBadgeClass !== "function") {
   window.formatShiftBadgeClass = function(shift) {
     if (!shift) return "general";
-    const s = String(shift).trim().toUpperCase();
-    if (s === "MORNING") return "morning";
-    if (s === "GENERAL") return "general";
-    if (s === "EVENING") return "evening";
-    if (s === "NIGHT") return "night";
+    const s = String(shift).trim();
+    if (s.includes(",")) {
+      const first = s.split(",")[0].trim().toUpperCase();
+      return window.formatShiftBadgeClass(first);
+    }
+    const upper = s.toUpperCase();
+    if (upper === "MORNING") return "morning";
+    if (upper === "GENERAL") return "general";
+    if (upper === "EVENING") return "evening";
+    if (upper === "NIGHT") return "night";
     return "general";
   };
 }
@@ -1566,7 +1578,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const payload = {
-        preferredShiftTypes,
         avoidShiftTypes,
         preferredOffDays,
         preferredWorkingDays,

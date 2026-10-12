@@ -2787,21 +2787,33 @@ function updateEmployeeTable() {
 
 function formatShiftName(shift) {
   if (!shift || shift === "-" || shift === "null") return null;
-  const s = String(shift).trim().toUpperCase();
-  if (s === "MORNING") return "Morning";
-  if (s === "GENERAL") return "General";
-  if (s === "EVENING") return "Evening";
-  if (s === "NIGHT") return "Night";
+  const s = String(shift).trim();
+  if (s.includes(",")) {
+    return s.split(",")
+      .map(part => formatShiftName(part.trim()))
+      .filter(Boolean)
+      .join(" → ");
+  }
+  const upper = s.toUpperCase();
+  if (upper === "MORNING") return "Morning";
+  if (upper === "GENERAL") return "General";
+  if (upper === "EVENING") return "Evening";
+  if (upper === "NIGHT") return "Night";
   return shift;
 }
 
 function formatShiftBadgeClass(shift) {
   if (!shift) return "general";
-  const s = String(shift).trim().toUpperCase();
-  if (s === "MORNING") return "morning";
-  if (s === "GENERAL") return "general";
-  if (s === "EVENING") return "evening";
-  if (s === "NIGHT") return "night";
+  const s = String(shift).trim();
+  if (s.includes(",")) {
+    const first = s.split(",")[0].trim().toUpperCase();
+    return formatShiftBadgeClass(first);
+  }
+  const upper = s.toUpperCase();
+  if (upper === "MORNING") return "morning";
+  if (upper === "GENERAL") return "general";
+  if (upper === "EVENING") return "evening";
+  if (upper === "NIGHT") return "night";
   return "general";
 }
 
@@ -2959,11 +2971,11 @@ function bindEmployeeRowActions() {
 
   document.querySelectorAll("[data-action='set-preference']").forEach(btn => {
     btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      const name = btn.getAttribute("data-name");
-      const code = btn.getAttribute("data-code");
-      const pref = btn.getAttribute("data-pref");
-      openAdminShiftPreferenceModal(id, code, name, pref);
+      state.inspectedEmployeeId = btn.getAttribute("data-id");
+      state.inspectedEmployeeName = btn.getAttribute("data-name");
+      state.inspectedEmployeeCode = btn.getAttribute("data-code");
+      state.inspectedEmployeePref = btn.getAttribute("data-pref");
+      navigateTo("employeeRosterDetail");
     });
   });
 
@@ -6814,9 +6826,18 @@ async function renderEmployeeRosterDetailView() {
       active: true
     };
 
-    const currentPref = (prefData && prefData.preferredShiftTypes) ? prefData.preferredShiftTypes : (employee.shiftPreference || "");
-    const prefName = formatShiftName(currentPref) || "Not Set";
-    const prefBadgeClass = formatShiftBadgeClass(currentPref);
+    let currentShifts = [];
+    if (prefData && Array.isArray(prefData.preferredShiftList) && prefData.preferredShiftList.length > 0) {
+      currentShifts = [...prefData.preferredShiftList];
+    } else {
+      const rawPref = (prefData && prefData.preferredShiftTypes) ? prefData.preferredShiftTypes : (employee.shiftPreference || "");
+      if (rawPref && rawPref !== "NOT_SET" && rawPref !== "null") {
+        currentShifts = rawPref.split(",").map(s => s.trim().toUpperCase()).filter(s => ["MORNING", "GENERAL", "EVENING", "NIGHT"].includes(s));
+      }
+    }
+
+    const prefName = formatShiftName(currentShifts.join(", ")) || "Not Set";
+    const prefBadgeClass = formatShiftBadgeClass(currentShifts.join(", "));
 
     container.innerHTML = `
       <!-- 1. EMPLOYEE DETAILS & NAVIGATION HEADER -->
@@ -6843,43 +6864,19 @@ async function renderEmployeeRosterDetailView() {
         </div>
       </div>
 
-      <!-- 2. SHIFT PREFERENCE SECTION (Dedicated Admin Card) -->
+      <!-- 2. SHIFT PREFERENCES SECTION (Dedicated Multi-Shift Priority Card) -->
       <div class="card" style="margin-bottom:24px; border-left:4px solid var(--primary, #3b82f6);">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <h3 style="margin:0; font-size:1.05rem;">Shift Preference</h3>
-            <span style="font-size:0.78rem; color:var(--text-muted);">Admin-controlled preferred shift assignment for roster balancing</span>
+            <h3 style="margin:0; font-size:1.05rem;">Shift Preferences</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Admin-controlled multiple preferred shifts in priority order</span>
           </div>
           <span id="detailPrefStatusBadge" class="badge ${prefBadgeClass}" style="font-size:0.85rem; padding:4px 12px;">
             ${escapeHTML(prefName)}
           </span>
         </div>
-        <div class="card-body" style="padding:20px 24px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <div style="font-size:0.9rem;">
-                Employee: <strong>${escapeHTML(employee.employeeCode)}</strong> &bull; Name: <strong>${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}</strong>
-              </div>
-              <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
-                <label for="detailPrefSelect" style="font-weight:600; font-size:0.9rem; margin:0; white-space:nowrap;">Preferred Shift:</label>
-                <select id="detailPrefSelect" class="form-control" style="min-width:200px; padding:8px 14px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.9rem;">
-                  <option value="">No Preference / Not Set</option>
-                  <option value="MORNING" ${currentPref === 'MORNING' ? 'selected' : ''}>Morning</option>
-                  <option value="GENERAL" ${currentPref === 'GENERAL' ? 'selected' : ''}>General</option>
-                  <option value="EVENING" ${currentPref === 'EVENING' ? 'selected' : ''}>Evening</option>
-                  <option value="NIGHT" ${currentPref === 'NIGHT' ? 'selected' : ''}>Night</option>
-                </select>
-              </div>
-              <small style="color:var(--text-muted); font-size:0.76rem;">
-                Preferred shift guides roster balancing; hard safety rules remain strictly enforced.
-              </small>
-            </div>
-            <div>
-              <button type="button" class="btn btn-primary" id="saveDetailPrefBtn" style="padding:9px 20px;">
-                Save Shift Preference
-              </button>
-            </div>
-          </div>
+        <div class="card-body" id="detailPrefCardBody" style="padding:20px 24px;">
+          <!-- Dynamically populated by renderShiftPrefSection() -->
         </div>
       </div>
 
@@ -6903,42 +6900,198 @@ async function renderEmployeeRosterDetailView() {
       openEmployeeModal(employee);
     });
 
-    const savePrefBtn = document.getElementById("saveDetailPrefBtn");
-    const prefSelect = document.getElementById("detailPrefSelect");
-    savePrefBtn.addEventListener("click", async () => {
-      const selectedVal = prefSelect.value ? prefSelect.value.trim().toUpperCase() : "";
-      if (selectedVal && !["MORNING", "GENERAL", "EVENING", "NIGHT", "NOT_SET"].includes(selectedVal)) {
-        toast("Invalid shift preference selected.", "error");
-        return;
-      }
-      savePrefBtn.disabled = true;
-      savePrefBtn.textContent = "Saving...";
-      try {
-        await apiRequest(`/api/admin/preferences/employee/${empId}`, {
-          method: "PUT",
-          body: { preferredShift: selectedVal || "NOT_SET" }
+    const allAvailableShifts = ["GENERAL", "MORNING", "EVENING", "NIGHT"];
+
+    function renderShiftPrefSection() {
+      const cardBody = document.getElementById("detailPrefCardBody");
+      if (!cardBody) return;
+
+      const remainingShifts = allAvailableShifts.filter(s => !currentShifts.includes(s));
+
+      cardBody.innerHTML = `
+        <div style="margin-bottom:14px; font-size:0.9rem;">
+          Employee: <strong>${escapeHTML(employee.employeeCode)}</strong> &bull; Name: <strong>${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}</strong>
+        </div>
+
+        <div style="margin-bottom:10px; font-weight:600; font-size:0.88rem; color:var(--text-main);">
+          Preferred Shifts:
+        </div>
+
+        <div id="detailPrefListContainer" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          ${currentShifts.length === 0 ? `
+            <div style="padding:14px 18px; background:var(--bg-subtle, #f8fafc); border-radius:6px; color:var(--text-muted); font-size:0.88rem; border:1px dashed var(--border-color, #cbd5e1); text-align:center;">
+              No shift preferences configured. Standard workforce balancing will apply.
+            </div>
+          ` : currentShifts.map((sh, idx) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--bg-subtle, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:6px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <span style="font-weight:700; color:var(--text-muted); font-size:0.84rem; min-width:80px;">Priority ${idx + 1}</span>
+                <span class="badge ${formatShiftBadgeClass(sh)}" style="font-size:0.88rem; padding:4px 12px; font-weight:600;">
+                  ${escapeHTML(formatShiftName(sh))}
+                </span>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-secondary btn-sm pref-move-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="Move up in priority" style="padding:4px 10px; font-size:0.85rem;">
+                  &uarr;
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm pref-move-down" data-idx="${idx}" ${idx === currentShifts.length - 1 ? 'disabled' : ''} title="Move down in priority" style="padding:4px 10px; font-size:0.85rem;">
+                  &darr;
+                </button>
+                <button type="button" class="btn btn-ghost btn-sm pref-remove" data-idx="${idx}" title="Remove shift" style="color:var(--danger, #ef4444); padding:4px 10px; font-size:0.85rem;">
+                  &times; Remove
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <!-- Add Shift Control -->
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
+          ${remainingShifts.length > 0 ? `
+            <select id="detailAddShiftSelect" class="form-control" style="min-width:180px; padding:7px 12px; border-radius:6px; font-size:0.88rem; border:1px solid var(--border-color, #cbd5e1);">
+              ${remainingShifts.map(s => `<option value="${s}">${formatShiftName(s)}</option>`).join('')}
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" id="detailAddShiftBtn" style="padding:7px 16px;">
+              + Add Shift
+            </button>
+          ` : `
+            <span style="font-size:0.82rem; color:var(--text-muted); font-style:italic;">All available shifts are included in preference order.</span>
+          `}
+        </div>
+
+        <small style="display:block; color:var(--text-muted); font-size:0.76rem; margin-bottom:16px;">
+          Preferences guide roster balancing in priority order. Hard safety rules (rest breaks, night limits, gender protections) remain strictly enforced.
+        </small>
+
+        <!-- Card Footer Actions -->
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px solid var(--border-color, #e2e8f0); padding-top:16px;">
+          <div>
+            <button type="button" class="btn btn-ghost btn-sm" id="detailClearPrefBtn" style="color:var(--text-muted);" ${currentShifts.length === 0 ? 'disabled' : ''}>
+              Clear Preferences
+            </button>
+          </div>
+          <div>
+            <button type="button" class="btn btn-primary" id="saveDetailPrefBtn" style="padding:9px 24px;">
+              Save Shift Preferences
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Event listener: Add Shift
+      const addBtn = document.getElementById("detailAddShiftBtn");
+      if (addBtn) {
+        addBtn.addEventListener("click", () => {
+          const select = document.getElementById("detailAddShiftSelect");
+          if (select && select.value && !currentShifts.includes(select.value)) {
+            currentShifts.push(select.value);
+            renderShiftPrefSection();
+          }
         });
-        toast("Shift preference updated successfully.", "success");
-
-        const activeVal = (selectedVal && selectedVal !== "NOT_SET") ? selectedVal : null;
-        employee.shiftPreference = activeVal;
-        const cachedEmp = state.employees ? state.employees.find(e => String(e.id) === String(empId)) : null;
-        if (cachedEmp) {
-          cachedEmp.shiftPreference = activeVal;
-        }
-
-        const badge = document.getElementById("detailPrefStatusBadge");
-        if (badge) {
-          badge.className = `badge ${formatShiftBadgeClass(activeVal)}`;
-          badge.textContent = formatShiftName(activeVal) || "Not Set";
-        }
-      } catch (err) {
-        toast(err.message || "Failed to update shift preference", "error");
-      } finally {
-        savePrefBtn.disabled = false;
-        savePrefBtn.textContent = "Save Shift Preference";
       }
-    });
+
+      // Event listeners: Move Up
+      cardBody.querySelectorAll(".pref-move-up").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-idx"), 10);
+          if (idx > 0 && idx < currentShifts.length) {
+            const temp = currentShifts[idx];
+            currentShifts[idx] = currentShifts[idx - 1];
+            currentShifts[idx - 1] = temp;
+            renderShiftPrefSection();
+          }
+        });
+      });
+
+      // Event listeners: Move Down
+      cardBody.querySelectorAll(".pref-move-down").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-idx"), 10);
+          if (idx >= 0 && idx < currentShifts.length - 1) {
+            const temp = currentShifts[idx];
+            currentShifts[idx] = currentShifts[idx + 1];
+            currentShifts[idx + 1] = temp;
+            renderShiftPrefSection();
+          }
+        });
+      });
+
+      // Event listeners: Remove
+      cardBody.querySelectorAll(".pref-remove").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-idx"), 10);
+          if (idx >= 0 && idx < currentShifts.length) {
+            currentShifts.splice(idx, 1);
+            renderShiftPrefSection();
+          }
+        });
+      });
+
+      // Event listener: Clear
+      const clearBtn = document.getElementById("detailClearPrefBtn");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          currentShifts = [];
+          renderShiftPrefSection();
+        });
+      }
+
+      // Event listener: Save Shift Preferences
+      const savePrefBtn = document.getElementById("saveDetailPrefBtn");
+      if (savePrefBtn) {
+        savePrefBtn.addEventListener("click", async () => {
+          // Validate: no duplicates, only valid shifts
+          const uniqueSet = new Set(currentShifts);
+          if (uniqueSet.size !== currentShifts.length) {
+            toast("Duplicate shifts detected in preference list.", "error");
+            return;
+          }
+          for (const s of currentShifts) {
+            if (!["MORNING", "GENERAL", "EVENING", "NIGHT"].includes(s)) {
+              toast("Invalid shift preference: " + s, "error");
+              return;
+            }
+          }
+
+          savePrefBtn.disabled = true;
+          savePrefBtn.textContent = "Saving...";
+
+          try {
+            const payload = {
+              preferredShifts: currentShifts,
+              preferredShift: currentShifts.length > 0 ? currentShifts.join(", ") : "NOT_SET"
+            };
+
+            await apiRequest(`/api/admin/preferences/employee/${empId}`, {
+              method: "PUT",
+              body: payload
+            });
+
+            toast("Shift preferences updated successfully.", "success");
+
+            const activePrefStr = currentShifts.length > 0 ? currentShifts.join(", ") : null;
+            employee.shiftPreference = activePrefStr;
+            const cachedEmp = state.employees ? state.employees.find(e => String(e.id) === String(empId)) : null;
+            if (cachedEmp) {
+              cachedEmp.shiftPreference = activePrefStr;
+            }
+
+            const badge = document.getElementById("detailPrefStatusBadge");
+            if (badge) {
+              badge.className = `badge ${formatShiftBadgeClass(activePrefStr)}`;
+              badge.textContent = formatShiftName(activePrefStr) || "Not Set";
+            }
+          } catch (err) {
+            toast(err.message || "Failed to update shift preferences", "error");
+          } finally {
+            savePrefBtn.disabled = false;
+            savePrefBtn.textContent = "Save Shift Preferences";
+          }
+        });
+      }
+    }
+
+    renderShiftPrefSection();
 
   } catch (err) {
     container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee details: ${err.message}</p></div>`;
