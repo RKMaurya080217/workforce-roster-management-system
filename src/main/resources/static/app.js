@@ -1693,24 +1693,51 @@ function renderNavigation() {
 
   if (isEmployee) {
     const currentTab = state.workspaceTab || "overview";
-    dom.sidebarNav.innerHTML = EMPLOYEE_NAV.map(item => {
-      const isActive = (state.activePage === "employeeWorkspace" && item.tab === currentTab);
-      let badgeHtml = "";
-      if (item.badgeKey && state[item.badgeKey]) {
-        const val = state[item.badgeKey];
-        const count = typeof val === "number" ? val : Array.isArray(val) ? val.length : 0;
-        if (count > 0) {
-          badgeHtml = `<span class="nav-badge">${count}</span>`;
-        }
+    const employeeSections = [
+      {
+        title: "MAIN",
+        items: [
+          { id: "emp_overview", tab: "overview", label: "Home", icon: WRMS_ICONS.dashboard },
+          { id: "emp_roster", tab: "roster", label: "My Roster", icon: WRMS_ICONS.roster }
+        ]
+      },
+      {
+        title: "WORK",
+        items: [
+          { id: "emp_leaves", tab: "leaves", label: "Leave & Requests", badgeKey: "cachedPendingLeavesCount", icon: WRMS_ICONS.leaves },
+          { id: "emp_handovers", tab: "handovers", label: "Shift Handover", icon: WRMS_ICONS.handovers }
+        ]
+      },
+      {
+        title: "ACCOUNT",
+        items: [
+          { id: "emp_notifications", tab: "notifications", label: "Notifications", badgeKey: "unreadNotificationCount", icon: WRMS_ICONS.notifications },
+          { id: "emp_profile", tab: "profile", label: "My Profile", icon: WRMS_ICONS.profile }
+        ]
       }
-      return `
-        <button class="nav-item ${isActive ? "active" : ""}" data-nav-id="${item.id}" data-tab="${item.tab || ""}" title="${item.label || ""}" aria-label="${item.label || ""}">
-          ${item.icon || ""}
-          <span>${item.label || ""}</span>
-          ${badgeHtml}
-        </button>
-      `;
-    }).join("");
+    ];
+
+    dom.sidebarNav.innerHTML = employeeSections.map(sec => `
+      <div class="nav-section-label">${sec.title}</div>
+      ${sec.items.map(item => {
+        const isActive = (state.activePage === "employeeWorkspace" && item.tab === currentTab);
+        let badgeHtml = "";
+        if (item.badgeKey && state[item.badgeKey]) {
+          const val = state[item.badgeKey];
+          const count = typeof val === "number" ? val : Array.isArray(val) ? val.length : 0;
+          if (count > 0) {
+            badgeHtml = `<span class="nav-badge">${count}</span>`;
+          }
+        }
+        return `
+          <button class="nav-item ${isActive ? "active" : ""}" data-nav-id="${item.id}" data-tab="${item.tab || ""}" title="${item.label || ""}" aria-label="${item.label || ""}">
+            ${item.icon || ""}
+            <span>${item.label || ""}</span>
+            ${badgeHtml}
+          </button>
+        `;
+      }).join("")}
+    `).join("");
 
     dom.sidebarNav.querySelectorAll(".nav-item").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -1725,12 +1752,53 @@ function renderNavigation() {
     return;
   }
 
-  // Admin Navigation Rendering (7 Primary Groups with Collapsible Submenus)
-  state.navGroupsExpanded = state.navGroupsExpanded || {};
+  // Admin Navigation Rendering: 5 Logical Sections (Batch 77)
+  const adminSections = [
+    {
+      title: "MAIN",
+      items: [
+        { id: "dashboard", route: "dashboard", label: "Dashboard", icon: WRMS_ICONS.dashboard }
+      ]
+    },
+    {
+      title: "ROSTER",
+      items: [
+        { id: "roster", route: "weekly-roster", label: "Roster Management", icon: WRMS_ICONS.roster },
+        { id: "commandCenter", route: "command-center", label: "Smart Roster", icon: WRMS_ICONS.commandCenter },
+        { id: "adminHandovers", route: "shift-handovers", label: "Shift Handover", icon: WRMS_ICONS.handovers }
+      ]
+    },
+    {
+      title: "PEOPLE",
+      items: [
+        { id: "employees", route: "employees", label: "Employee Management", icon: WRMS_ICONS.employees },
+        { id: "approvals", route: "approvals", label: "Leave Management", badgeKey: "totalPendingApprovalsCount", icon: WRMS_ICONS.approvals },
+        { id: "shiftPreferences", route: "shift-preferences", label: "Shift Preferences", icon: WRMS_ICONS.preferences }
+      ]
+    },
+    {
+      title: "REPORTS",
+      items: [
+        { id: "adminWeeklyWorkSummary", route: "weekly-work-summary", label: "Weekly Work Summary", icon: WRMS_ICONS.workload },
+        { id: "exportCenter", route: "export-center", label: "Export Center", icon: WRMS_ICONS.exports }
+      ]
+    },
+    {
+      title: "SETTINGS",
+      items: [
+        { id: "holidayCalendar", route: "holiday-calendar", label: "Holiday Management", icon: WRMS_ICONS.holidays },
+        { id: "audit", route: "audit-trail", label: "Audit Trail", icon: WRMS_ICONS.audit }
+      ]
+    }
+  ];
 
-  const navHtml = ADMIN_PRIMARY_NAV.map(item => {
-    if (!item.children) {
-      const isActive = state.activePage === item.id || (item.id === "holidayCalendar" && state.activePage === "adminHolidays");
+  dom.sidebarNav.innerHTML = adminSections.map(sec => `
+    <div class="nav-section-label">${sec.title}</div>
+    ${sec.items.map(item => {
+      const isActive = state.activePage === item.id || 
+        (item.id === "holidayCalendar" && state.activePage === "adminHolidays") ||
+        (item.id === "roster" && state.activePage === "weekly-roster") ||
+        (item.id === "shiftPreferences" && state.activePage === "approvals" && state.activeApprovalCategory === "preferences");
       let badgeHtml = "";
       if (item.badgeKey && state[item.badgeKey]) {
         const val = state[item.badgeKey];
@@ -1746,75 +1814,14 @@ function renderNavigation() {
           ${badgeHtml}
         </button>
       `;
-    }
+    }).join("")}
+  `).join("");
 
-    // Collapsible Submenu Group
-    const hasActiveChild = item.children.some(c => c.id === state.activePage || (item.id === "roster" && state.activePage === "roster"));
-    if (hasActiveChild && state.navGroupsExpanded[item.groupId] === undefined) {
-      state.navGroupsExpanded[item.groupId] = true;
-    }
-    const isExpanded = state.navGroupsExpanded[item.groupId] === true;
-
-    const subItemsHtml = item.children.map(child => {
-      const isActive = state.activePage === child.id || (child.route === "weekly-roster" && state.activePage === "roster");
-      return `
-        <button class="nav-sub-item ${isActive ? "active" : ""}" data-nav-id="${child.id}" data-route="${child.route}" title="${child.label || ""}" aria-label="${child.label || ""}">
-          ${child.icon || ""}
-          <span>${child.label || ""}</span>
-        </button>
-      `;
-    }).join("");
-
-    return `
-      <div class="nav-group">
-        <button class="nav-group-toggle ${hasActiveChild ? "has-active-child" : ""} ${isExpanded ? "expanded" : ""}" data-group-id="${item.groupId}" data-route="${item.route}" title="${item.label || ""}" aria-expanded="${isExpanded}" aria-label="Toggle ${item.label || ""} Submenu">
-          ${item.icon || ""}
-          <span>${item.label || ""}</span>
-          <span class="more-chevron">${isExpanded ? (WRMS_ICONS.chevronUp || "") : (WRMS_ICONS.chevronDown || "")}</span>
-        </button>
-        <div class="nav-sub-menu ${isExpanded ? "expanded" : "collapsed"}" role="region" aria-label="${item.label || ""} Submenu">
-          ${subItemsHtml}
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  dom.sidebarNav.innerHTML = navHtml;
-
-  // Bind Primary & Sub-item Clicks
-  dom.sidebarNav.querySelectorAll(".nav-item, .nav-sub-item").forEach(btn => {
+  dom.sidebarNav.querySelectorAll(".nav-item").forEach(btn => {
     btn.addEventListener("click", () => {
       const targetRoute = btn.getAttribute("data-route") || btn.getAttribute("data-nav-id");
       navigateTo(targetRoute);
       closeMobileSidebar();
-    });
-  });
-
-  // Bind Group Toggles
-  dom.sidebarNav.querySelectorAll(".nav-group-toggle").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const groupId = btn.getAttribute("data-group-id");
-      const targetRoute = btn.getAttribute("data-route");
-
-      if (state.isSidebarCollapsed) {
-        toggleSidebarCollapse();
-        state.navGroupsExpanded[groupId] = true;
-        renderNavigation();
-      } else {
-        state.navGroupsExpanded[groupId] = !state.navGroupsExpanded[groupId];
-        if (state.navGroupsExpanded[groupId] && targetRoute) {
-          const group = ADMIN_PRIMARY_NAV.find(g => g.groupId === groupId);
-          const onChild = group && group.children && group.children.some(c => c.id === state.activePage || (group.id === "roster" && state.activePage === "roster"));
-          if (!onChild) {
-            navigateTo(targetRoute);
-          } else {
-            renderNavigation();
-          }
-        } else {
-          renderNavigation();
-        }
-      }
     });
   });
 }
@@ -5122,22 +5129,281 @@ function renderEmployeeRosterCalendarHTML(list) {
   `;
 }
 
+function getKolkataDateString(d = new Date()) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(d);
+  } catch (e) {
+    const now = d;
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+}
+
+function getWeekRangeForDate(isoDateStr) {
+  if (!isoDateStr || typeof isoDateStr !== "string") {
+    isoDateStr = getKolkataDateString();
+  }
+  const parts = isoDateStr.substring(0, 10).split("-").map(Number);
+  const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+  const day = dt.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const diffToMon = day === 0 ? -6 : 1 - day;
+
+  const mon = new Date(dt);
+  mon.setUTCDate(dt.getUTCDate() + diffToMon);
+
+  const sun = new Date(mon);
+  sun.setUTCDate(mon.getUTCDate() + 6);
+
+  const toISO = (date) => {
+    const yr = date.getUTCFullYear();
+    const mo = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(date.getUTCDate()).padStart(2, '0');
+    return `${yr}-${mo}-${da}`;
+  };
+
+  return {
+    startISO: toISO(mon),
+    endISO: toISO(sun)
+  };
+}
+
+function formatWeekLabel(startISO, endISO) {
+  const sParts = startISO.split("-").map(Number);
+  const eParts = endISO.split("-").map(Number);
+  const sObj = new Date(Date.UTC(sParts[0], sParts[1] - 1, sParts[2], 12, 0, 0));
+  const eObj = new Date(Date.UTC(eParts[0], eParts[1] - 1, eParts[2], 12, 0, 0));
+
+  const sDay = String(sObj.getUTCDate()).padStart(2, '0');
+  const sMon = sObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const eDay = String(eObj.getUTCDate()).padStart(2, '0');
+  const eMon = eObj.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const eYr = eObj.getUTCFullYear();
+
+  return `${sDay} ${sMon} – ${eDay} ${eMon} ${eYr}`;
+}
+
+function getDaysOfWeekRange(startISO) {
+  const parts = startISO.split("-").map(Number);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + i, 12, 0, 0));
+    const yr = dt.getUTCFullYear();
+    const mo = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const da = String(dt.getUTCDate()).padStart(2, '0');
+    days.push(`${yr}-${mo}-${da}`);
+  }
+  return days;
+}
+
+function getWeekDailyEntries(startISO, weekAssignments) {
+  const days = getDaysOfWeekRange(startISO);
+  const byDate = new Map();
+  (weekAssignments || []).forEach(a => {
+    if (a.rosterDate) byDate.set(a.rosterDate.substring(0, 10), a);
+  });
+
+  return days.map(dateStr => {
+    if (byDate.has(dateStr)) {
+      return byDate.get(dateStr);
+    }
+    const hol = getHolidayForDate(dateStr);
+    return {
+      rosterDate: dateStr,
+      shiftType: hol ? "HOLIDAY" : "OFF",
+      shiftName: hol ? hol.name : "Scheduled Rest Day",
+      weeklyOff: !hol,
+      onLeave: false,
+      isSynthetic: true
+    };
+  });
+}
+
+function calculateRosterSummary(list) {
+  let working = 0, leave = 0, holiday = 0, off = 0;
+  if (Array.isArray(list)) {
+    list.forEach(a => {
+      const hol = getHolidayForDate(a.rosterDate, a);
+      if (hol || a.shiftType === "HOLIDAY" || a.status === "HOLIDAY") {
+        holiday++;
+      } else if (a.onLeave) {
+        leave++;
+      } else if (a.weeklyOff || a.shiftType === "OFF") {
+        off++;
+      } else if (a.shiftType && a.shiftType !== "UNSCHEDULED") {
+        working++;
+      }
+    });
+  }
+  return { working, leave, holiday, off };
+}
+
+function buildEmployeeRosterWeeks(roster) {
+  const todayISO = getKolkataDateString();
+  const currentRange = getWeekRangeForDate(todayISO);
+  const currentWeekKey = `${currentRange.startISO}_${currentRange.endISO}`;
+  const currentWeekLabel = formatWeekLabel(currentRange.startISO, currentRange.endISO);
+
+  const weekMap = new Map();
+  (roster || []).forEach(a => {
+    if (!a.rosterDate) return;
+    const range = getWeekRangeForDate(a.rosterDate);
+    const key = `${range.startISO}_${range.endISO}`;
+    if (!weekMap.has(key)) {
+      weekMap.set(key, {
+        key,
+        startISO: range.startISO,
+        endISO: range.endISO,
+        label: formatWeekLabel(range.startISO, range.endISO),
+        isCurrent: key === currentWeekKey,
+        assignments: []
+      });
+    }
+    weekMap.get(key).assignments.push(a);
+  });
+
+  const availableWeeks = Array.from(weekMap.values()).sort((a, b) => b.startISO.localeCompare(a.startISO));
+  const chronologicalWeeks = [...availableWeeks].sort((a, b) => a.startISO.localeCompare(b.startISO));
+
+  return {
+    availableWeeks,
+    chronologicalWeeks,
+    currentWeekRange,
+    currentWeekKey,
+    currentWeekLabel
+  };
+}
+
 function renderWorkspaceRosterHTML(roster, empId) {
   state.employeeRosterViewMode = state.employeeRosterViewMode || "calendar";
+  state.empRosterWeekMode = state.empRosterWeekMode || "current";
   const viewMode = state.employeeRosterViewMode;
-  const filtered = filterEmployeeRoster(roster);
+  const weekMode = state.empRosterWeekMode;
+
+  const { availableWeeks, chronologicalWeeks, currentWeekRange, currentWeekKey, currentWeekLabel } = buildEmployeeRosterWeeks(roster);
+
+  // Determine Active Week Key
+  let activeWeekKey = currentWeekKey;
+  if (weekMode === "selected") {
+    activeWeekKey = state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey);
+  } else if (weekMode === "current") {
+    activeWeekKey = currentWeekKey;
+  }
+
+  // Find active week object or build fallback for current week
+  let activeWeek = availableWeeks.find(w => w.key === activeWeekKey);
+  if (!activeWeek && activeWeekKey === currentWeekKey) {
+    activeWeek = {
+      key: currentWeekKey,
+      startISO: currentRange.startISO,
+      endISO: currentRange.endISO,
+      label: currentWeekLabel,
+      isCurrent: true,
+      assignments: []
+    };
+  } else if (!activeWeek && availableWeeks.length > 0) {
+    activeWeek = availableWeeks[0];
+    activeWeekKey = activeWeek.key;
+  }
+
+  const activeWeekLabel = activeWeek ? activeWeek.label : currentWeekLabel;
+  const activeWeekIsCurrent = activeWeekKey === currentWeekKey;
+
+  // Navigation: Previous & Next Week index
+  const activeChronIdx = chronologicalWeeks.findIndex(w => w.key === activeWeekKey);
+  const hasPrev = activeChronIdx > 0;
+  const hasNext = activeChronIdx >= 0 && activeChronIdx < chronologicalWeeks.length - 1;
+
+  // Compute entries and summary
+  let displayEntries = [];
+  let summary = { working: 0, leave: 0, holiday: 0, off: 0 };
+
+  if (weekMode === "all") {
+    const allFiltered = filterEmployeeRoster(roster || []);
+    summary = calculateRosterSummary(allFiltered);
+  } else {
+    const rawWeekDays = activeWeek ? getWeekDailyEntries(activeWeek.startISO, activeWeek.assignments) : [];
+    displayEntries = filterEmployeeRoster(rawWeekDays);
+    summary = calculateRosterSummary(rawWeekDays);
+  }
 
   return `
     <div class="card stack-gap">
-      <div class="card-header" style="border-bottom:1px solid var(--border-light); padding-bottom:14px;">
+      <!-- Top Clean Header Bar (Batch 77) -->
+      <div class="roster-week-bar">
         <div>
-          <h3>My Weekly Roster Schedule</h3>
-          <span style="font-size:0.76rem; color:var(--text-muted);">Official published shift assignments and rotation history</span>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:2px; font-weight:600;">Employee / My Roster</div>
+          <h3 style="margin:0; font-size:1.15rem; font-weight:700;">My Weekly Duty Schedule</h3>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn btn-secondary btn-sm" id="rosterLogViewBtn" title="Refresh Schedule">
-            <span>🔄 Refresh</span>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div class="btn-group" role="group" aria-label="Roster Week View Mode">
+            <button class="btn btn-sm ${weekMode === 'current' ? 'btn-primary' : 'btn-secondary'}" id="empModeCurrentWeekBtn">
+              Current Week
+            </button>
+            <button class="btn btn-sm ${weekMode === 'selected' ? 'btn-primary' : 'btn-secondary'}" id="empModeSelectWeekBtn">
+              Select Week
+            </button>
+            <button class="btn btn-sm ${weekMode === 'all' ? 'btn-primary' : 'btn-secondary'}" id="empModeAllRosterBtn">
+              All Roster
+            </button>
+          </div>
+
+          ${weekMode !== 'all' ? `
+            <div class="roster-nav-controls">
+              <button class="btn btn-secondary btn-sm" id="empPrevWeekBtn" ${!hasPrev ? 'disabled' : ''} title="Previous Available Week" style="padding:4px 10px; font-weight:bold;">
+                ‹
+              </button>
+              ${weekMode === 'selected' ? `
+                <select id="empWeekSelectDropdown" class="form-control" style="font-size:0.85rem; font-weight:600; padding:4px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-main); max-width:230px;">
+                  ${availableWeeks.map(w => `
+                    <option value="${w.key}" ${w.key === activeWeekKey ? 'selected' : ''}>
+                      ${w.label} ${w.isCurrent ? '• Current' : ''}
+                    </option>
+                  `).join('')}
+                </select>
+              ` : `
+                <span style="font-size:0.86rem; font-weight:700; color:var(--text-main); padding:4px 10px; background:var(--bg-app); border-radius:6px; border:1px solid var(--border-color); display:inline-flex; align-items:center; gap:6px;">
+                  <span>📅 ${activeWeekLabel}</span>
+                  ${activeWeekIsCurrent ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem;">Current</span>' : ''}
+                </span>
+              `}
+              <button class="btn btn-secondary btn-sm" id="empNextWeekBtn" ${!hasNext ? 'disabled' : ''} title="Next Available Week" style="padding:4px 10px; font-weight:bold;">
+                ›
+              </button>
+            </div>
+          ` : ''}
+
+          <button class="btn btn-secondary btn-sm" id="rosterLogViewBtn" title="Refresh Schedule" style="padding:4px 8px;">
+            <span>🔄</span>
           </button>
+        </div>
+      </div>
+
+      <!-- Small Compact Summary Bar (Batch 77) -->
+      <div class="roster-summary-strip">
+        <div class="roster-summary-chip">
+          <span class="chip-label" style="color:var(--success, #16a34a);">Working</span>
+          <div class="chip-val">${summary.working}</div>
+        </div>
+        <div class="roster-summary-chip">
+          <span class="chip-label" style="color:var(--warning, #d97706);">Leave</span>
+          <div class="chip-val">${summary.leave}</div>
+        </div>
+        <div class="roster-summary-chip">
+          <span class="chip-label" style="color:#b45309;">Holiday</span>
+          <div class="chip-val">${summary.holiday}</div>
+        </div>
+        <div class="roster-summary-chip">
+          <span class="chip-label" style="color:var(--text-muted, #64748b);">Weekly Off</span>
+          <div class="chip-val">${summary.off}</div>
         </div>
       </div>
 
@@ -5175,24 +5441,155 @@ function renderWorkspaceRosterHTML(roster, empId) {
 
       <!-- Employee Roster Content Wrapper -->
       <div id="empRosterContentWrapper" style="margin-top:12px;">
-        ${viewMode === 'table' ? `<div class="table-wrap">${renderMyRosterTableHTML(filtered)}</div>` : renderEmployeeRosterCalendarHTML(filtered)}
+        ${renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, viewMode, availableWeeks)}
       </div>
     </div>
   `;
 }
 
+function renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, viewMode, availableWeeks) {
+  if (weekMode === "all") {
+    if (!availableWeeks || availableWeeks.length === 0) {
+      return `
+        <div class="empty-state-box" style="padding:40px 20px;">
+          <div class="empty-state-icon" style="font-size:2.5rem;">📅</div>
+          <h3>No published roster records found</h3>
+          <p style="color:var(--text-muted); max-width:400px; margin:8px auto;">You do not have any published shifts in the system yet.</p>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        ${availableWeeks.map(w => {
+          const wDays = getWeekDailyEntries(w.startISO, w.assignments);
+          const wFiltered = filterEmployeeRoster(wDays);
+          return `
+            <div class="roster-week-group-card">
+              <div class="roster-week-group-header">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span>📅 ${w.label}</span>
+                  ${w.isCurrent ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem;">Current Week</span>' : ''}
+                </div>
+                <span style="font-size:0.76rem; color:var(--text-muted); font-weight:600;">7 Days Scheduled</span>
+              </div>
+              <div style="padding:14px;">
+                ${viewMode === 'table' ? `<div class="table-wrap">${renderMyRosterTableHTML(wFiltered)}</div>` : renderEmployeeRosterCalendarHTML(wFiltered)}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  // Current or Selected Week Mode
+  if (!activeWeek || (!activeWeek.assignments.length && !displayEntries.some(e => !e.isSynthetic))) {
+    return `
+      <div class="empty-state-box" style="padding:36px 20px;">
+        <div class="empty-state-icon" style="font-size:2.2rem;">📅</div>
+        <h3 style="margin-top:8px;">No roster available for this week</h3>
+        <p style="color:var(--text-muted); max-width:380px; margin:6px auto 14px;">
+          Assignments for ${activeWeek ? activeWeek.label : 'this period'} have not been published yet.
+        </p>
+        ${availableWeeks && availableWeeks.length > 0 ? `
+          <button class="btn btn-secondary btn-sm" id="empSwitchToAvailableWeekBtn">
+            View Available Week (${availableWeeks[0].label})
+          </button>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  return viewMode === 'table' 
+    ? `<div class="table-wrap">${renderMyRosterTableHTML(displayEntries)}</div>` 
+    : renderEmployeeRosterCalendarHTML(displayEntries);
+}
+
 function bindWorkspaceRosterEvents(empId) {
   const updateEmpRosterContent = () => {
-    const wrapper = document.getElementById("empRosterContentWrapper");
-    if (wrapper) {
+    const container = document.getElementById("workspaceTabContent");
+    if (container) {
       const roster = state.cachedRoster || [];
-      const filtered = filterEmployeeRoster(roster);
-      wrapper.innerHTML = state.employeeRosterViewMode === "table"
-        ? `<div class="table-wrap">${renderMyRosterTableHTML(filtered)}</div>`
-        : renderEmployeeRosterCalendarHTML(filtered);
-      bindEmpRosterCellActions();
+      container.innerHTML = renderWorkspaceRosterHTML(roster, empId);
+      bindWorkspaceRosterEvents(empId);
     }
   };
+
+  // View Mode buttons
+  const curBtn = document.getElementById("empModeCurrentWeekBtn");
+  const selBtn = document.getElementById("empModeSelectWeekBtn");
+  const allBtn = document.getElementById("empModeAllRosterBtn");
+
+  if (curBtn) {
+    curBtn.addEventListener("click", () => {
+      state.empRosterWeekMode = "current";
+      updateEmpRosterContent();
+    });
+  }
+  if (selBtn) {
+    selBtn.addEventListener("click", () => {
+      state.empRosterWeekMode = "selected";
+      updateEmpRosterContent();
+    });
+  }
+  if (allBtn) {
+    allBtn.addEventListener("click", () => {
+      state.empRosterWeekMode = "all";
+      updateEmpRosterContent();
+    });
+  }
+
+  // Week Select Dropdown
+  const weekSelect = document.getElementById("empWeekSelectDropdown");
+  if (weekSelect) {
+    weekSelect.addEventListener("change", (e) => {
+      state.empRosterWeekMode = "selected";
+      state.empRosterSelectedWeek = e.target.value;
+      updateEmpRosterContent();
+    });
+  }
+
+  // Previous & Next Week buttons
+  const prevBtn = document.getElementById("empPrevWeekBtn");
+  const nextBtn = document.getElementById("empNextWeekBtn");
+  const roster = state.cachedRoster || [];
+  const { chronologicalWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
+
+  let activeWeekKey = state.empRosterWeekMode === "selected" 
+    ? (state.empRosterSelectedWeek || (chronologicalWeeks[0] ? chronologicalWeeks[0].key : currentWeekKey))
+    : currentWeekKey;
+
+  const activeChronIdx = chronologicalWeeks.findIndex(w => w.key === activeWeekKey);
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      if (activeChronIdx > 0) {
+        state.empRosterWeekMode = "selected";
+        state.empRosterSelectedWeek = chronologicalWeeks[activeChronIdx - 1].key;
+        updateEmpRosterContent();
+      }
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      if (activeChronIdx >= 0 && activeChronIdx < chronologicalWeeks.length - 1) {
+        state.empRosterWeekMode = "selected";
+        state.empRosterSelectedWeek = chronologicalWeeks[activeChronIdx + 1].key;
+        updateEmpRosterContent();
+      }
+    });
+  }
+
+  const switchAvailBtn = document.getElementById("empSwitchToAvailableWeekBtn");
+  if (switchAvailBtn && chronologicalWeeks.length > 0) {
+    switchAvailBtn.addEventListener("click", () => {
+      state.empRosterWeekMode = "selected";
+      state.empRosterSelectedWeek = chronologicalWeeks[chronologicalWeeks.length - 1].key;
+      updateEmpRosterContent();
+    });
+  }
 
   const tableBtn = document.getElementById("empToggleTableViewBtn");
   const calendarBtn = document.getElementById("empToggleCalendarViewBtn");
@@ -5200,19 +5597,11 @@ function bindWorkspaceRosterEvents(empId) {
   if (tableBtn && calendarBtn) {
     tableBtn.addEventListener("click", () => {
       state.employeeRosterViewMode = "table";
-      tableBtn.classList.add("btn-primary");
-      tableBtn.classList.remove("btn-secondary");
-      calendarBtn.classList.remove("btn-primary");
-      calendarBtn.classList.add("btn-secondary");
       updateEmpRosterContent();
     });
 
     calendarBtn.addEventListener("click", () => {
       state.employeeRosterViewMode = "calendar";
-      calendarBtn.classList.add("btn-primary");
-      calendarBtn.classList.remove("btn-secondary");
-      tableBtn.classList.remove("btn-primary");
-      tableBtn.classList.add("btn-secondary");
       updateEmpRosterContent();
     });
   }
@@ -5221,7 +5610,18 @@ function bindWorkspaceRosterEvents(empId) {
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
       state.empRosterSearchTerm = e.target.value;
-      updateEmpRosterContent();
+      const wrapper = document.getElementById("empRosterContentWrapper");
+      if (wrapper) {
+        const { availableWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
+        let activeWKey = state.empRosterWeekMode === "selected" 
+          ? (state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey))
+          : currentWeekKey;
+        const activeW = availableWeeks.find(w => w.key === activeWKey);
+        const rawWeekDays = activeW ? getWeekDailyEntries(activeW.startISO, activeW.assignments) : [];
+        const displayEntries = filterEmployeeRoster(rawWeekDays);
+        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, activeW, displayEntries, state.employeeRosterViewMode, availableWeeks);
+        bindEmpRosterCellActions();
+      }
     });
   }
 
@@ -5229,7 +5629,18 @@ function bindWorkspaceRosterEvents(empId) {
   if (statusFilter) {
     statusFilter.addEventListener("change", (e) => {
       state.empRosterStatusFilter = e.target.value;
-      updateEmpRosterContent();
+      const wrapper = document.getElementById("empRosterContentWrapper");
+      if (wrapper) {
+        const { availableWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
+        let activeWKey = state.empRosterWeekMode === "selected" 
+          ? (state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey))
+          : currentWeekKey;
+        const activeW = availableWeeks.find(w => w.key === activeWKey);
+        const rawWeekDays = activeW ? getWeekDailyEntries(activeW.startISO, activeW.assignments) : [];
+        const displayEntries = filterEmployeeRoster(rawWeekDays);
+        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, activeW, displayEntries, state.employeeRosterViewMode, availableWeeks);
+        bindEmpRosterCellActions();
+      }
     });
   }
 
