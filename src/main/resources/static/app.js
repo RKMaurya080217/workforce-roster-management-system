@@ -7350,6 +7350,19 @@ async function renderEmployeeRosterDetailView() {
         </div>
       </div>
 
+      <!-- 2b. DATE-SPECIFIC SHIFT PREFERENCES (Batch 80) -->
+      <div class="card" style="margin-bottom:24px; border-left:4px solid var(--accent, #8b5cf6);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">Date-Specific Shift Preferences</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Assign explicit preferred shift on specific calendar dates for this employee</span>
+          </div>
+        </div>
+        <div class="card-body" id="detailDatePrefCardBody" style="padding:20px 24px;">
+          <!-- Dynamically populated by renderEmployeeDatePrefSection() -->
+        </div>
+      </div>
+
       <!-- 3. ROSTER DUTY LOG CARD -->
       <div class="card">
         <div class="card-header">
@@ -7561,7 +7574,131 @@ async function renderEmployeeRosterDetailView() {
       }
     }
 
+    async function renderEmployeeDatePrefSection() {
+      const cardBody = document.getElementById("detailDatePrefCardBody");
+      if (!cardBody) return;
+      cardBody.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;"><span class="spinner"></span> Loading date preferences...</div>`;
+      try {
+        const datePrefs = await apiRequest(`/api/admin/preferences/date-specific?employeeId=${empId}`).catch(() => []);
+        cardBody.innerHTML = `
+          <!-- Quick Add Date Preference -->
+          <form id="empDetailDatePrefForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:14px 16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:16px;">
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Date <span class="req">*</span></label>
+              <input type="date" id="empDetailDateInput" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Shift <span class="req">*</span></label>
+              <select id="empDetailShiftSelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
+                <option value="MORNING">Morning (07:00 – 15:30)</option>
+                <option value="GENERAL">General (09:30 – 18:00)</option>
+                <option value="EVENING">Evening (14:00 – 22:30)</option>
+                <option value="NIGHT">Night (22:00 – 07:00)</option>
+              </select>
+            </div>
+            <div style="flex:1; min-width:180px;">
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+              <input type="text" id="empDetailReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:6px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary btn-sm" id="empDetailSaveDatePrefBtn" style="padding:7px 16px;">
+                + Add Date Preference
+              </button>
+            </div>
+          </form>
+
+          <!-- List of active date preferences for this employee -->
+          <div class="table-wrap">
+            <table class="data-table" style="font-size:0.88rem;">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Reason</th>
+                  <th>Configured By</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${datePrefs.length === 0 ? `
+                  <tr>
+                    <td colspan="5" class="text-center text-muted" style="padding:20px;">No date-specific shift preferences configured for this employee.</td>
+                  </tr>
+                ` : datePrefs.map(dp => `
+                  <tr>
+                    <td style="font-weight:600;">${formatDate(dp.preferenceDate)}</td>
+                    <td><span class="badge ${formatShiftBadgeClass(dp.shiftType)}">${escapeHTML(formatShiftName(dp.shiftType))}</span></td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
+                    <td style="text-align:right;">
+                      <button type="button" class="btn btn-ghost btn-xs" data-delete-emp-date-pref="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
+                        &times; Remove
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        const form = document.getElementById("empDetailDatePrefForm");
+        if (form) {
+          form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const dateVal = document.getElementById("empDetailDateInput").value;
+            const shiftVal = document.getElementById("empDetailShiftSelect").value;
+            const reasonVal = document.getElementById("empDetailReasonInput").value;
+            const saveBtn = document.getElementById("empDetailSaveDatePrefBtn");
+            if (!dateVal || !shiftVal) return;
+            try {
+              if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = "Saving...";
+              }
+              await apiRequest("/api/admin/preferences/date-specific", {
+                method: "POST",
+                body: {
+                  employeeId: empId,
+                  preferenceDate: dateVal,
+                  shiftType: shiftVal,
+                  reason: reasonVal || null
+                }
+              });
+              toast("Date-specific preference saved successfully", "success");
+              await renderEmployeeDatePrefSection();
+            } catch (err) {
+              toast(err.message || "Failed to save date preference", "error");
+            } finally {
+              if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = "+ Add Date Preference";
+              }
+            }
+          });
+        }
+
+        cardBody.querySelectorAll("[data-delete-emp-date-pref]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-delete-emp-date-pref");
+            try {
+              btn.disabled = true;
+              await apiRequest(`/api/admin/preferences/date-specific/${id}`, { method: "DELETE" });
+              toast("Date-specific preference removed", "success");
+              await renderEmployeeDatePrefSection();
+            } catch (err) {
+              toast(err.message || "Failed to delete date preference", "error");
+              btn.disabled = false;
+            }
+          });
+        });
+      } catch (err) {
+        cardBody.innerHTML = `<div style="color:var(--danger)">Error loading date preferences: ${escapeHTML(err.message)}</div>`;
+      }
+    }
+
     renderShiftPrefSection();
+    renderEmployeeDatePrefSection();
 
   } catch (err) {
     container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee details: ${err.message}</p></div>`;

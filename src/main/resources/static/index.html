@@ -699,6 +699,56 @@
     </div>
   </div>
 
+  <!-- Modal 1c: Bulk Date-Specific Shift Preference Modal (Batch 80) -->
+  <div id="bulkDateShiftPrefModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width:540px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.2rem;">📅</span>
+          <h3 id="bulkDateShiftPrefTitle">Bulk Date-Specific Shift Preference</h3>
+        </div>
+        <button class="modal-close" data-close-modal="bulkDateShiftPrefModal">&times;</button>
+      </div>
+      <form id="bulkDateShiftPrefForm" class="modal-body stack-gap">
+        <div class="alert-info-box" style="background:#eff6ff; border-color:#bfdbfe; color:#1e40af; font-size:0.84rem;">
+          Assign the same shift preference to multiple employees for a specific date. Future roster generation will automatically prioritize these preferences while enforcing safety rules.
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group">
+            <label for="bulkPrefDateInput">Preference Date <span class="req">*</span></label>
+            <input type="date" id="bulkPrefDateInput" class="form-control" required style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.9rem;">
+          </div>
+          <div class="form-group">
+            <label for="bulkPrefShiftSelect">Preferred Shift <span class="req">*</span></label>
+            <select id="bulkPrefShiftSelect" class="form-control" required style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.9rem;">
+              <option value="MORNING">Morning (07:00 – 15:30)</option>
+              <option value="GENERAL">General (09:30 – 18:00)</option>
+              <option value="EVENING">Evening (14:00 – 22:30)</option>
+              <option value="NIGHT">Night (22:00 – 07:00)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="bulkPrefReasonInput">Reason / Remarks <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+          <input type="text" id="bulkPrefReasonInput" class="form-control" placeholder="e.g. Operational demand, team scheduling" style="width:100%; padding:8px 12px; border-radius:6px; border:1px solid var(--border-color, #cbd5e1); font-size:0.88rem;">
+        </div>
+        <div class="form-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label style="margin:0;">Select Employees <span class="req">*</span></label>
+            <button type="button" class="btn btn-ghost btn-xs" id="bulkPrefSelectAllBtn" style="padding:2px 8px; font-size:0.78rem;">Select All Active</button>
+          </div>
+          <div id="bulkPrefEmployeeList" style="max-height:180px; overflow-y:auto; border:1px solid var(--border-color, #e2e8f0); border-radius:6px; padding:8px; background:var(--bg-subtle, #f8fafc); display:flex; flex-direction:column; gap:6px;">
+            <!-- Populated dynamically with checkboxes -->
+          </div>
+        </div>
+        <div class="modal-footer" style="margin-top:16px;">
+          <button type="button" class="btn btn-ghost" data-close-modal="bulkDateShiftPrefModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBulkDatePrefBtn">Apply Bulk Preference</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal 2: Generate Roster Modal -->
   <div id="generateRosterModal" class="modal-backdrop hidden">
     <div class="modal-box modal-sm">

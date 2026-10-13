@@ -389,14 +389,24 @@ function triggerValidationAudit() {
 }
 
 
-// --- 3. EMPLOYEE AVAILABILITY & SHIFT PREFERENCES (ADMIN VIEW) ---
+/// --- 3. EMPLOYEE AVAILABILITY & SHIFT PREFERENCES (ADMIN VIEW) ---
 async function renderAdminPreferencesView() {
   const container = dom.views.adminPreferences;
   if (!container) return;
   container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading employee shift availability preferences...</p></div>`;
 
   try {
-    const list = await apiRequest("/api/admin/preferences");
+    const [list, dateList, employees] = await Promise.all([
+      apiRequest("/api/admin/preferences").catch(() => []),
+      apiRequest("/api/admin/preferences/date-specific").catch(() => []),
+      (state.employees && state.employees.length > 0) ? Promise.resolve(state.employees) : apiRequest("/api/employees").catch(() => [])
+    ]);
+
+    if (employees && employees.length > 0) {
+      state.employees = employees;
+    }
+
+    const activeEmployees = (state.employees || []).filter(e => e.active !== false);
 
     container.innerHTML = `
       <div class="view-header-bar">
@@ -409,7 +419,12 @@ async function renderAdminPreferencesView() {
         </div>
       </div>
 
-      <div class="card">
+      <!-- SECTION 1: GENERAL EMPLOYEE SHIFT PREFERENCES -->
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-header">
+          <h3>General Shift Preferences</h3>
+          <span style="font-size:0.78rem; color:var(--text-muted);">Ongoing recurring shift priorities and weekly off preferences</span>
+        </div>
         <div class="card-body" style="padding:0;">
           <div class="table-wrap">
             <table class="data-table">
@@ -457,9 +472,242 @@ async function renderAdminPreferencesView() {
           </div>
         </div>
       </div>
+
+      <!-- SECTION 2: DATE-SPECIFIC SHIFT PREFERENCES (Batch 80) -->
+      <div class="card" style="border-left:4px solid var(--accent, #8b5cf6);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">📅 Date-Specific Shift Preferences</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Configure shift preferences for specific dates. Automatically prioritized during weekly roster generation.</span>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary btn-sm" id="adminBulkDatePrefBtn" style="padding:6px 14px; font-weight:600;">
+              👥 Bulk Date Preference
+            </button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:20px;">
+          <!-- Single Date Preference Form -->
+          <form id="adminSingleDatePrefForm" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)) auto; gap:12px; align-items:end; background:var(--bg-subtle, #f8fafc); padding:16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:20px;">
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Employee <span class="req">*</span></label>
+              <select id="adminSinglePrefEmpSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+                <option value="">Select Employee...</option>
+                ${activeEmployees.map(e => `<option value="${e.id}">${escapeHTML(e.employeeCode)} - ${escapeHTML(e.firstName + ' ' + (e.lastName || ''))}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Date <span class="req">*</span></label>
+              <input type="date" id="adminSinglePrefDateInput" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Preferred Shift <span class="req">*</span></label>
+              <select id="adminSinglePrefShiftSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+                <option value="MORNING">Morning (07:00 – 15:30)</option>
+                <option value="GENERAL">General (09:30 – 18:00)</option>
+                <option value="EVENING">Evening (14:00 – 22:30)</option>
+                <option value="NIGHT">Night (22:00 – 07:00)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+              <input type="text" id="adminSinglePrefReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:7px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary btn-sm" id="adminSingleSaveDatePrefBtn" style="padding:8px 18px; white-space:nowrap;">
+                + Add Date Preference
+              </button>
+            </div>
+          </form>
+
+          <!-- Table of Saved Date Preferences -->
+          <div style="font-weight:600; font-size:0.9rem; margin-bottom:10px; color:var(--text-main);">Configured Date-Specific Preferences</div>
+          <div class="table-wrap">
+            <table class="data-table" style="font-size:0.88rem;">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Reason</th>
+                  <th>Configured By</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminDatePrefTableBody">
+                ${dateList.length === 0 ? `
+                  <tr>
+                    <td colspan="6" class="text-center text-muted" style="padding:24px;">No date-specific shift preferences configured yet.</td>
+                  </tr>
+                ` : dateList.map(dp => `
+                  <tr>
+                    <td><strong>${escapeHTML(dp.employeeName || '')}</strong> <small class="text-muted">(${escapeHTML(dp.employeeCode || '')})</small></td>
+                    <td style="font-weight:600;">${formatDate(dp.preferenceDate)}</td>
+                    <td><span class="badge ${formatShiftBadgeClass(dp.shiftType)}">${escapeHTML(formatShiftName(dp.shiftType))}</span></td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
+                    <td style="text-align:right;">
+                      <button type="button" class="btn btn-ghost btn-xs" data-delete-admin-date-pref="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
+                        &times; Remove
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     `;
+
+    // Event listeners
+    const singleForm = document.getElementById("adminSingleDatePrefForm");
+    if (singleForm) {
+      singleForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const empId = document.getElementById("adminSinglePrefEmpSelect").value;
+        const dateVal = document.getElementById("adminSinglePrefDateInput").value;
+        const shiftVal = document.getElementById("adminSinglePrefShiftSelect").value;
+        const reasonVal = document.getElementById("adminSinglePrefReasonInput").value;
+        const saveBtn = document.getElementById("adminSingleSaveDatePrefBtn");
+        if (!empId || !dateVal || !shiftVal) return;
+
+        try {
+          if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Saving...";
+          }
+          await apiRequest("/api/admin/preferences/date-specific", {
+            method: "POST",
+            body: {
+              employeeId: Number(empId),
+              preferenceDate: dateVal,
+              shiftType: shiftVal,
+              reason: reasonVal || null
+            }
+          });
+          toast("Date-specific preference saved successfully", "success");
+          renderAdminPreferencesView();
+        } catch (err) {
+          toast(err.message || "Failed to save date preference", "error");
+        } finally {
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = "+ Add Date Preference";
+          }
+        }
+      });
+    }
+
+    // Bulk modal trigger
+    const bulkBtn = document.getElementById("adminBulkDatePrefBtn");
+    if (bulkBtn) {
+      bulkBtn.addEventListener("click", () => {
+        openBulkDateShiftPrefModal(activeEmployees, renderAdminPreferencesView);
+      });
+    }
+
+    // Delete buttons
+    container.querySelectorAll("[data-delete-admin-date-pref]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-delete-admin-date-pref");
+        try {
+          btn.disabled = true;
+          await apiRequest(`/api/admin/preferences/date-specific/${id}`, { method: "DELETE" });
+          toast("Date-specific preference removed", "success");
+          renderAdminPreferencesView();
+        } catch (err) {
+          toast(err.message || "Failed to delete date preference", "error");
+          btn.disabled = false;
+        }
+      });
+    });
+
   } catch (err) {
-    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ ️ï¸ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+  }
+}
+
+function openBulkDateShiftPrefModal(activeEmployees, onDoneCallback) {
+  const modal = document.getElementById("bulkDateShiftPrefModal");
+  if (!modal) return;
+
+  const empListContainer = document.getElementById("bulkPrefEmployeeList");
+  if (empListContainer) {
+    const emps = activeEmployees || (state.employees || []).filter(e => e.active !== false);
+    empListContainer.innerHTML = emps.map(e => `
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; padding:4px 6px; cursor:pointer;">
+        <input type="checkbox" class="bulk-emp-checkbox" value="${e.id}" checked>
+        <span><strong>${escapeHTML(e.employeeCode)}</strong> &bull; ${escapeHTML(e.firstName + ' ' + (e.lastName || ''))}</span>
+      </label>
+    `).join('');
+  }
+
+  const selectAllBtn = document.getElementById("bulkPrefSelectAllBtn");
+  if (selectAllBtn) {
+    selectAllBtn.onclick = () => {
+      const boxes = modal.querySelectorAll(".bulk-emp-checkbox");
+      const allChecked = Array.from(boxes).every(b => b.checked);
+      boxes.forEach(b => b.checked = !allChecked);
+      selectAllBtn.textContent = allChecked ? "Select All" : "Deselect All";
+    };
+  }
+
+  const dateInput = document.getElementById("bulkPrefDateInput");
+  if (dateInput && !dateInput.value) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    dateInput.value = tomorrow.toISOString().split('T')[0];
+  }
+
+  modal.classList.remove("hidden");
+
+  const form = document.getElementById("bulkDateShiftPrefForm");
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const dateVal = dateInput.value;
+      const shiftVal = document.getElementById("bulkPrefShiftSelect").value;
+      const reasonVal = document.getElementById("bulkPrefReasonInput").value;
+      const checkedBoxes = Array.from(modal.querySelectorAll(".bulk-emp-checkbox:checked"));
+      const selectedEmpIds = checkedBoxes.map(b => Number(b.value));
+
+      if (selectedEmpIds.length === 0) {
+        toast("Please select at least one employee", "error");
+        return;
+      }
+
+      const saveBtn = document.getElementById("saveBulkDatePrefBtn");
+      try {
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Applying...";
+        }
+
+        await apiRequest("/api/admin/preferences/date-specific/bulk", {
+          method: "POST",
+          body: {
+            employeeIds: selectedEmpIds,
+            preferenceDate: dateVal,
+            shiftType: shiftVal,
+            reason: reasonVal || null
+          }
+        });
+
+        toast(`Date-specific preference applied to ${selectedEmpIds.length} employees`, "success");
+        modal.classList.add("hidden");
+        if (typeof onDoneCallback === "function") {
+          onDoneCallback();
+        }
+      } catch (err) {
+        toast(err.message || "Failed to apply bulk preferences", "error");
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Apply Bulk Preference";
+        }
+      }
+    };
   }
 }
 

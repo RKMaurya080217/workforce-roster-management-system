@@ -98,6 +98,13 @@ public class RosterService {
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private com.weeklyroster.repository.HolidayRepository holidayRepository;
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository;
+
+	public void setDateShiftPreferenceRepository(com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository) {
+		this.dateShiftPreferenceRepository = dateShiftPreferenceRepository;
+	}
+
 	@org.springframework.beans.factory.annotation.Autowired
 	public RosterService(EmployeeRepository employeeRepository, ShiftRepository shiftRepository,
 			RosterCycleRepository cycleRepository, RosterAssignmentRepository assignmentRepository,
@@ -508,6 +515,29 @@ public class RosterService {
 		// 5. Final Invariant Assertion
 		validateGeneratedRoster(cycle, generated, shifts, maxNightsAllowed, preferencesMap);
 
+		// BATCH 80: Verify date-specific preferences fulfillment and log any constraint fallbacks
+		if (preferencesMap != null) {
+			for (RosterAssignment a : generated) {
+				ApplicablePreference pref = preferencesMap.get(a.getEmployee().getId());
+				if (pref != null && pref.hasDateSpecificShift(a.getRosterDate())) {
+					ShiftType targetShift = pref.getDateSpecificShift(a.getRosterDate());
+					ShiftType assignedShift = (a.getShift() != null) ? a.getShift().getShiftType() : ShiftType.OFF;
+					if (assignedShift != targetShift) {
+						String fallbackReason;
+						if (a.isOnLeave()) fallbackReason = "Approved Leave";
+						else if (a.isWeeklyOff()) fallbackReason = "Weekly Off / Mandatory Rest";
+						else if (a.getEmployee().getGender() == Gender.FEMALE && (targetShift == ShiftType.EVENING || targetShift == ShiftType.NIGHT))
+							fallbackReason = "Female Evening/Night Statutory Protection";
+						else fallbackReason = "Operational Staffing / Rest Rule Constraint";
+
+						log.warn("[BATCH 80 PREFERENCE CONFLICT] Employee {} ({}) preferred {} on {}, but was assigned {} due to: {}",
+								a.getEmployee().getEmployeeCode(), a.getEmployee().getFirstName(),
+								targetShift, a.getRosterDate(), assignedShift, fallbackReason);
+					}
+				}
+			}
+		}
+
 		if (rosterVersionService != null) {
 			try {
 				rosterVersionService.recordVersionSnapshot(cycle, mode == GenerationMode.AUTOMATIC ? "AUTOMATIC_GENERATION" : "GENERATED", "Roster cycle generated", "system");
@@ -527,9 +557,25 @@ public class RosterService {
 
 	public Map<Long, ApplicablePreference> loadApprovedPreferences(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
 		Map<Long, ApplicablePreference> map = new HashMap<>();
+		Map<Long, Map<LocalDate, ShiftType>> dateShiftMap = new HashMap<>();
+		if (dateShiftPreferenceRepository != null && startDate != null && endDate != null) {
+			try {
+				List<com.weeklyroster.entity.DateShiftPreference> datePrefs = dateShiftPreferenceRepository.findByPreferenceDateBetween(startDate, endDate);
+				for (com.weeklyroster.entity.DateShiftPreference dp : datePrefs) {
+					if (dp.getEmployee() != null && dp.getPreferenceDate() != null && dp.getShiftType() != null) {
+						dateShiftMap.computeIfAbsent(dp.getEmployee().getId(), k -> new HashMap<>())
+								.put(dp.getPreferenceDate(), dp.getShiftType());
+					}
+				}
+			} catch (Exception e) {
+				log.warn("[BATCH 80] Could not load date-specific preferences: {}", e.getMessage());
+			}
+		}
+
 		for (Employee emp : employees) {
+			Map<LocalDate, ShiftType> empDateShifts = dateShiftMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			if (preferenceRepository == null) {
-				map.put(emp.getId(), ApplicablePreference.none(emp.getId()));
+				map.put(emp.getId(), ApplicablePreference.withDateShifts(emp.getId(), empDateShifts));
 				continue;
 			}
 			List<EmployeePreference> prefs = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(emp.getId());
@@ -541,15 +587,19 @@ public class RosterService {
 					.orElse(null);
 
 			if (active != null) {
-				map.put(emp.getId(), parseApplicablePreference(active));
+				map.put(emp.getId(), parseApplicablePreference(active, empDateShifts));
 			} else {
-				map.put(emp.getId(), ApplicablePreference.none(emp.getId()));
+				map.put(emp.getId(), ApplicablePreference.withDateShifts(emp.getId(), empDateShifts));
 			}
 		}
 		return map;
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p) {
+		return parseApplicablePreference(p, Collections.emptyMap());
+	}
+
+	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts) {
 		List<ShiftType> preferredShiftOrder = parseShiftTypesList(p.getPreferredShiftTypes());
 		Set<ShiftType> preferredShifts = new LinkedHashSet<>(preferredShiftOrder);
 		Set<ShiftType> avoidShifts = parseShiftTypes(p.getAvoidShiftTypes());
@@ -571,7 +621,8 @@ public class RosterService {
 				preferredOffDays,
 				preferredWorkingDays,
 				p.getTemporaryRestrictions(),
-				true
+				true,
+				dateShifts != null ? dateShifts : Collections.emptyMap()
 		);
 	}
 
@@ -688,6 +739,14 @@ public class RosterService {
 		}
 
 		ShiftType st = a.getShift().getShiftType();
+		if (pref != null && pref.hasDateSpecificShift(a.getRosterDate())) {
+			ShiftType datePref = pref.getDateSpecificShift(a.getRosterDate());
+			if (datePref == st) {
+				a.setAssignmentReason("Date-Specific Shift Preference (" + st + ")");
+				return;
+			}
+		}
+
 		if (st == ShiftType.NIGHT) {
 			a.setAssignmentReason("Required Night Rotation");
 		} else if (pref != null && pref.isShiftPreferred(st)) {
@@ -1847,10 +1906,13 @@ public class RosterService {
 			if (result.containsKey(m.getId())) continue;
 
 			LocalDate target = null;
+			ApplicablePreference mPref = preferencesMap != null ? preferencesMap.get(m.getId()) : null;
 			for (int step = 0; step < maleOrderedTargets.size(); step++) {
 				LocalDate cand = maleOrderedTargets.get((targetPointer + step) % maleOrderedTargets.size());
 				int maleOffsOnCand = (int) result.values().stream().filter(cand::equals).count();
+				boolean hasDatePrefOnCand = mPref != null && mPref.hasDateSpecificShift(cand);
 				if (!isApprovedLeave(m.getId(), cand)
+						&& !hasDatePrefOnCand
 						&& offCounts.getOrDefault(cand, 0) < maxOffPerDay
 						&& maleOffsOnCand < maxMaleOffPerDay) {
 					target = cand;
@@ -1859,6 +1921,20 @@ public class RosterService {
 				}
 			}
 			if (target == null) {
+				for (LocalDate candidate : List.of(d6, d5, d4, d2, d3, d1, d0)) {
+					int maleOffsOnCand = (int) result.values().stream().filter(candidate::equals).count();
+					boolean hasDatePrefOnCand = mPref != null && mPref.hasDateSpecificShift(candidate);
+					if (!isApprovedLeave(m.getId(), candidate)
+							&& !hasDatePrefOnCand
+							&& offCounts.getOrDefault(candidate, 0) < maxOffPerDay
+							&& maleOffsOnCand < maxMaleOffPerDay) {
+						target = candidate;
+						break;
+					}
+				}
+			}
+			if (target == null) {
+				// Fallback to any valid candidate day if all days have date preferences
 				for (LocalDate candidate : List.of(d6, d5, d4, d2, d3, d1, d0)) {
 					int maleOffsOnCand = (int) result.values().stream().filter(candidate::equals).count();
 					if (!isApprovedLeave(m.getId(), candidate)
@@ -1919,16 +1995,31 @@ public class RosterService {
 			if (result.containsKey(f.getId())) continue;
 
 			LocalDate chosen = null;
+			ApplicablePreference fPref = preferencesMap != null ? preferencesMap.get(f.getId()) : null;
 			for (LocalDate target : femaleOrderedTargets) {
 				int curFemaleOffs = (int) result.entrySet().stream()
 						.filter(entry -> females.stream().anyMatch(fem -> fem.getId().equals(entry.getKey())) && target.equals(entry.getValue()))
 						.count();
-				if (!isApprovedLeave(f.getId(), target) && offCounts.getOrDefault(target, 0) < maxOffPerDay && curFemaleOffs < maxFemaleOffPerDay) {
+				boolean hasDatePrefOnTarget = fPref != null && fPref.hasDateSpecificShift(target);
+				if (!isApprovedLeave(f.getId(), target) && !hasDatePrefOnTarget && offCounts.getOrDefault(target, 0) < maxOffPerDay && curFemaleOffs < maxFemaleOffPerDay) {
 					chosen = target;
 					break;
 				}
 			}
 			if (chosen == null) {
+				for (LocalDate target : List.of(d6, d5, d4, d3, d2, d1, d0)) {
+					int curFemaleOffs = (int) result.entrySet().stream()
+							.filter(entry -> females.stream().anyMatch(fem -> fem.getId().equals(entry.getKey())) && target.equals(entry.getValue()))
+							.count();
+					boolean hasDatePrefOnTarget = fPref != null && fPref.hasDateSpecificShift(target);
+					if (!isApprovedLeave(f.getId(), target) && !hasDatePrefOnTarget && offCounts.getOrDefault(target, 0) < maxOffPerDay && curFemaleOffs < maxFemaleOffPerDay) {
+						chosen = target;
+						break;
+					}
+				}
+			}
+			if (chosen == null) {
+				// Fallback to any valid candidate day if all days have date preferences
 				for (LocalDate target : List.of(d6, d5, d4, d3, d2, d1, d0)) {
 					int curFemaleOffs = (int) result.entrySet().stream()
 							.filter(entry -> females.stream().anyMatch(fem -> fem.getId().equals(entry.getKey())) && target.equals(entry.getValue()))
@@ -2388,19 +2479,28 @@ private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Lo
 
 	// 1. Approved Employee Preferences (High Priority with deterministic priority ordering)
 	if (pref != null) {
-		if (pref.isShiftPreferred(shiftType)) {
-			int rank = pref.getShiftPreferenceRank(shiftType);
-			if (rank == 0) {
-				score -= 1500; // Priority 1: highest preference reward
-			} else if (rank == 1) {
-				score -= 1150; // Priority 2: secondary preference reward
-			} else if (rank == 2) {
-				score -= 800;  // Priority 3: tertiary preference reward
+		ShiftType dateSpecificShift = (date != null) ? pref.getDateSpecificShift(date) : null;
+		if (dateSpecificShift != null) {
+			if (shiftType == dateSpecificShift) {
+				score -= 5000; // Priority: Exact date-specific shift preference
 			} else {
-				score -= 500;  // Priority 4+: fallback preference reward
+				score += 5000; // Strong penalty to keep candidate available for preferred date-specific shift
 			}
-		} else if (pref.hasPreferredShifts()) {
-			score += 800;
+		} else {
+			if (pref.isShiftPreferred(shiftType)) {
+				int rank = pref.getShiftPreferenceRank(shiftType);
+				if (rank == 0) {
+					score -= 1500; // Priority 1: highest preference reward
+				} else if (rank == 1) {
+					score -= 1150; // Priority 2: secondary preference reward
+				} else if (rank == 2) {
+					score -= 800;  // Priority 3: tertiary preference reward
+				} else {
+					score -= 500;  // Priority 4+: fallback preference reward
+				}
+			} else if (pref.hasPreferredShifts()) {
+				score += 800;
+			}
 		}
 
 		if (pref.isDayPreferredOff(date.getDayOfWeek()) && shiftType != ShiftType.OFF) {
@@ -3305,7 +3405,26 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		// 5. Working Shift Rules
 		else {
 			// A. Preference Check
-			if (pref != null && pref.isShiftPreferred(shiftType)) {
+			if (pref != null && pref.hasDateSpecificShift(date)) {
+				ShiftType dPref = pref.getDateSpecificShift(date);
+				if (dPref == shiftType) {
+					reasons.add(new ShiftExplanationResponse.ExplanationReasonItem(
+							"PREFERENCE",
+							"★ Date-specific shift preference",
+							shiftType.name() + " was specifically preferred for " + date + " by Admin.",
+							"POSITIVE",
+							"★"
+					));
+				} else {
+					reasons.add(new ShiftExplanationResponse.ExplanationReasonItem(
+							"PREFERENCE",
+							"⚠ Date preference fallback",
+							"Assigned " + shiftType.name() + " instead of date-specific preference " + dPref.name() + " due to operational requirements or safety rules.",
+							"WARNING",
+							"⚠"
+					));
+				}
+			} else if (pref != null && pref.isShiftPreferred(shiftType)) {
 				reasons.add(new ShiftExplanationResponse.ExplanationReasonItem(
 						"PREFERENCE",
 						"✓ Preferred shift",

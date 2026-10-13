@@ -2,9 +2,11 @@ package com.weeklyroster.dto;
 
 import com.weeklyroster.entity.ShiftType;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public record ApplicablePreference(
@@ -16,8 +18,33 @@ public record ApplicablePreference(
         Set<DayOfWeek> preferredOffDays,
         Set<DayOfWeek> preferredWorkingDays,
         String temporaryRestrictions,
-        boolean isApproved
+        boolean isApproved,
+        Map<LocalDate, ShiftType> dateSpecificShifts
 ) {
+    public ApplicablePreference(
+            Long preferenceId,
+            Long employeeId,
+            Set<ShiftType> preferredShifts,
+            List<ShiftType> preferredShiftOrder,
+            Set<ShiftType> avoidShifts,
+            Set<DayOfWeek> preferredOffDays,
+            Set<DayOfWeek> preferredWorkingDays,
+            String temporaryRestrictions,
+            boolean isApproved) {
+        this(
+                preferenceId,
+                employeeId,
+                preferredShifts,
+                preferredShiftOrder,
+                avoidShifts,
+                preferredOffDays,
+                preferredWorkingDays,
+                temporaryRestrictions,
+                isApproved,
+                Collections.emptyMap()
+        );
+    }
+
     public ApplicablePreference(
             Long preferenceId,
             Long employeeId,
@@ -36,7 +63,8 @@ public record ApplicablePreference(
                 preferredOffDays,
                 preferredWorkingDays,
                 temporaryRestrictions,
-                isApproved
+                isApproved,
+                Collections.emptyMap()
         );
     }
 
@@ -50,7 +78,23 @@ public record ApplicablePreference(
                 Collections.emptySet(),
                 Collections.emptySet(),
                 null,
-                false
+                false,
+                Collections.emptyMap()
+        );
+    }
+
+    public static ApplicablePreference withDateShifts(Long employeeId, Map<LocalDate, ShiftType> dateShifts) {
+        return new ApplicablePreference(
+                null,
+                employeeId,
+                Collections.emptySet(),
+                Collections.emptyList(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                null,
+                true,
+                dateShifts != null ? dateShifts : Collections.emptyMap()
         );
     }
 
@@ -89,5 +133,14 @@ public record ApplicablePreference(
 
     public boolean isDayPreferredWorking(DayOfWeek dayOfWeek) {
         return preferredWorkingDays != null && preferredWorkingDays.contains(dayOfWeek);
+    }
+
+    public boolean hasDateSpecificShift(LocalDate date) {
+        return dateSpecificShifts != null && date != null && dateSpecificShifts.containsKey(date);
+    }
+
+    public ShiftType getDateSpecificShift(LocalDate date) {
+        if (dateSpecificShifts == null || date == null) return null;
+        return dateSpecificShifts.get(date);
     }
 }
