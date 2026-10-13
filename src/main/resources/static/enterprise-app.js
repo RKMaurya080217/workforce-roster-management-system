@@ -389,17 +389,58 @@ function triggerValidationAudit() {
 }
 
 
-/// --- 3. EMPLOYEE AVAILABILITY & SHIFT PREFERENCES (ADMIN VIEW) ---
+/// --- 3. EMPLOYEE AVAILABILITY & SHIFT PREFERENCES (ADMIN VIEW - BATCH 81 PLANNING CENTER) ---
+let currentPlanningWeekMonday = null;
+let currentPlanningSearchQuery = "";
+let currentPlanningFilterStatus = "ALL";
+
+function shiftDateByDays(dateStr, dayOffset) {
+  const parts = dateStr.split("-");
+  const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  dt.setDate(dt.getDate() + dayOffset);
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, "0");
+  const date = String(dt.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+}
+
+function getShiftLetter(shiftType) {
+  if (!shiftType) return "-";
+  switch (shiftType) {
+    case "MORNING": return "M";
+    case "GENERAL": return "G";
+    case "EVENING": return "E";
+    case "NIGHT": return "N";
+    case "OFF": return "OFF";
+    default: return String(shiftType).substring(0, 1);
+  }
+}
+
 async function renderAdminPreferencesView() {
   const container = dom.views.adminPreferences;
   if (!container) return;
-  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading employee shift availability preferences...</p></div>`;
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift preference planning center...</p></div>`;
 
   try {
-    const [list, dateList, employees] = await Promise.all([
+    if (!currentPlanningWeekMonday) {
+      currentPlanningWeekMonday = getMondayOfWeekDateStr(new Date());
+    }
+
+    const weekDates = [];
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    for (let i = 0; i < 7; i++) {
+      const dStr = shiftDateByDays(currentPlanningWeekMonday, i);
+      weekDates.push({ dateStr: dStr, dayName: dayNames[i] });
+    }
+    const weekStart = weekDates[0].dateStr;
+    const weekEnd = weekDates[6].dateStr;
+
+    const [list, periodDateList, allDateList, employees, weeklySummary] = await Promise.all([
       apiRequest("/api/admin/preferences").catch(() => []),
+      apiRequest(`/api/admin/preferences/date-specific?startDate=${weekStart}&endDate=${weekEnd}`).catch(() => []),
       apiRequest("/api/admin/preferences/date-specific").catch(() => []),
-      (state.employees && state.employees.length > 0) ? Promise.resolve(state.employees) : apiRequest("/api/employees").catch(() => [])
+      (state.employees && state.employees.length > 0) ? Promise.resolve(state.employees) : apiRequest("/api/employees").catch(() => []),
+      apiRequest(`/api/admin/reports/weekly-work-summary?weekStart=${weekStart}`).catch(() => null)
     ]);
 
     if (employees && employees.length > 0) {
@@ -408,18 +449,292 @@ async function renderAdminPreferencesView() {
 
     const activeEmployees = (state.employees || []).filter(e => e.active !== false);
 
+    // Build lookup maps
+    const datePrefMap = {};
+    (periodDateList || []).forEach(dp => {
+      if (dp.employeeId && dp.preferenceDate) {
+        datePrefMap[`${dp.employeeId}_${dp.preferenceDate}`] = dp;
+      }
+    });
+
+    const dailyRecordMap = {};
+    if (weeklySummary && Array.isArray(weeklySummary.employeeSummaries)) {
+      weeklySummary.employeeSummaries.forEach(s => {
+        if (Array.isArray(s.dailyRecords)) {
+          s.dailyRecords.forEach(r => {
+            dailyRecordMap[`${s.employeeId}_${r.date}`] = r;
+          });
+        }
+      });
+    }
+
+    // Filter employees for planning table
+    const q = (currentPlanningSearchQuery || "").trim().toLowerCase();
+    const filteredEmployees = activeEmployees.filter(e => {
+      const fullName = `${e.firstName} ${e.lastName || ''}`.toLowerCase();
+      const code = (e.employeeCode || '').toLowerCase();
+      const matchesSearch = !q || fullName.includes(q) || code.includes(q);
+      if (!matchesSearch) return false;
+
+      if (currentPlanningFilterStatus === "WITH_PREF") {
+        return weekDates.some(w => !!datePrefMap[`${e.id}_${w.dateStr}`]);
+      } else if (currentPlanningFilterStatus === "WITHOUT_PREF") {
+        return !weekDates.some(w => !!datePrefMap[`${e.id}_${w.dateStr}`]);
+      } else if (currentPlanningFilterStatus === "CONFLICT") {
+        return weekDates.some(w => {
+          const p = datePrefMap[`${e.id}_${w.dateStr}`];
+          return p && p.status === "CONFLICT";
+        });
+      }
+      return true;
+    });
+
     container.innerHTML = `
       <div class="view-header-bar">
         <div>
           <h2>Employee Shift Preferences & Availability</h2>
-          <p class="text-muted">Review soft preferences for shift types and weekly off requests (safety constraints remain strictly enforced)</p>
+          <p class="text-muted">Configure workforce shift availability & date preferences. Future automatic roster generation respects these preferences while strictly enforcing safety rules.</p>
         </div>
-        <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" onclick="renderAdminPreferencesView()"><span>🔄 Refresh</span></button>
+        <div class="header-actions" style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="adminBulkDatePrefBtn" style="font-weight:600;">
+            👥 Bulk Date Preference
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="renderAdminPreferencesView()">
+            <span>🔄 Refresh</span>
+          </button>
         </div>
       </div>
 
-      <!-- SECTION 1: GENERAL EMPLOYEE SHIFT PREFERENCES -->
+      <!-- SECTION 1: WEEKLY SHIFT PREFERENCE PLANNING CENTER (BATCH 81) -->
+      <div class="card" style="margin-bottom:24px; border-top:4px solid var(--primary, #2563eb);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">📅 Shift Preference Planning Center</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">
+              Interactive weekly calendar view for employee shift preference planning & conflict visibility. Click any cell to configure.
+            </span>
+          </div>
+          <!-- Week Navigation -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="planningPrevWeekBtn" title="Previous Week" style="padding:5px 10px;">◀ Prev Week</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="planningCurrentWeekBtn" title="Current Week" style="padding:5px 10px;">Current Week</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="planningNextWeekBtn" title="Next Week" style="padding:5px 10px;">Next Week ▶</button>
+            <span style="font-weight:700; font-size:0.86rem; margin-left:6px; color:var(--text-main); white-space:nowrap;">
+              ${formatDate(weekStart)} – ${formatDate(weekEnd)}
+            </span>
+          </div>
+        </div>
+        <div class="card-body" style="padding:16px 20px;">
+          <!-- Search & Filter Controls -->
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:10px; flex:1; max-width:400px;">
+              <input type="text" id="adminPlanningSearchInput" class="form-control" placeholder="Search employee by name or code..." value="${escapeHTML(currentPlanningSearchQuery)}" style="padding:7px 12px; font-size:0.85rem; width:100%;">
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <label style="font-size:0.8rem; font-weight:600; margin:0;">Filter Preferences:</label>
+              <select id="adminPlanningFilterSelect" class="form-control" style="padding:6px 10px; font-size:0.85rem;">
+                <option value="ALL" ${currentPlanningFilterStatus === 'ALL' ? 'selected' : ''}>All Employees (${activeEmployees.length})</option>
+                <option value="WITH_PREF" ${currentPlanningFilterStatus === 'WITH_PREF' ? 'selected' : ''}>With Date Preference</option>
+                <option value="WITHOUT_PREF" ${currentPlanningFilterStatus === 'WITHOUT_PREF' ? 'selected' : ''}>Without Date Preference</option>
+                <option value="CONFLICT" ${currentPlanningFilterStatus === 'CONFLICT' ? 'selected' : ''}>Conflicts</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Legend Bar -->
+          <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:14px; font-size:0.78rem; background:var(--bg-subtle, #f8fafc); padding:8px 14px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0);">
+            <div><span class="badge" style="background:#8b5cf6; color:#fff; font-weight:700;">M★</span> Date Preference</div>
+            <div><span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700; border:1px solid #f87171;">M★ ⚠</span> Conflict</div>
+            <div><span class="badge" style="background:#e0f2fe; color:#0369a1;">G / M / E / N</span> Scheduled Duty</div>
+            <div><span class="badge" style="background:#dcfce7; color:#166534;">OFF</span> Weekly Off</div>
+            <div><span class="badge" style="background:#fee2e2; color:#991b1b;">LEAVE</span> Approved Leave</div>
+            <div><span class="badge" style="background:#fef3c7; color:#92400e;">HOLIDAY</span> Official Holiday</div>
+            <div style="color:var(--text-muted); margin-left:auto;"><em>Tip: Click any cell to view or modify date preference</em></div>
+          </div>
+
+          <!-- Weekly Table with isolated horizontal scroll wrapper -->
+          <div class="table-wrap" style="overflow-x:auto;">
+            <table class="data-table" style="font-size:0.88rem; width:100%; min-width:760px;">
+              <thead>
+                <tr>
+                  <th style="min-width:180px;">Employee</th>
+                  ${weekDates.map(w => `
+                    <th style="text-align:center; min-width:85px;">
+                      ${w.dayName}<br>
+                      <small style="font-weight:normal; color:var(--text-muted); font-size:0.75rem;">${formatDate(w.dateStr)}</small>
+                    </th>
+                  `).join('')}
+                  <th style="text-align:center; min-width:100px;">Week Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredEmployees.length === 0 ? `
+                  <tr>
+                    <td colspan="9" class="text-center text-muted" style="padding:28px;">
+                      No employees match the current search / filter criteria.
+                    </td>
+                  </tr>
+                ` : filteredEmployees.map(e => {
+                  let prefCountInWeek = 0;
+                  let conflictCountInWeek = 0;
+                  weekDates.forEach(w => {
+                    const p = datePrefMap[`${e.id}_${w.dateStr}`];
+                    if (p) {
+                      prefCountInWeek++;
+                      if (p.status === 'CONFLICT') conflictCountInWeek++;
+                    }
+                  });
+
+                  return `
+                    <tr>
+                      <td>
+                        <strong>${escapeHTML(e.firstName + ' ' + (e.lastName || ''))}</strong>
+                        <br><small class="text-muted"><code>${escapeHTML(e.employeeCode)}</code> &bull; ${escapeHTML(e.gender || '')}</small>
+                      </td>
+                      ${weekDates.map(w => {
+                        const dp = datePrefMap[`${e.id}_${w.dateStr}`];
+                        const rec = dailyRecordMap[`${e.id}_${w.dateStr}`];
+
+                        let cellContent = '';
+                        if (dp) {
+                          const letter = getShiftLetter(dp.shiftType);
+                          if (dp.status === 'CONFLICT') {
+                            cellContent = `<span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700; border:1px solid #f87171;" title="Preference: ${dp.shiftType} (⚠ Conflict: ${escapeHTML(dp.conflictReason || 'Constraint detected')})">${letter}★ ⚠</span>`;
+                          } else {
+                            cellContent = `<span class="badge" style="background:#8b5cf6; color:#ffffff; font-weight:700;" title="Date Preference: ${dp.shiftType} (${escapeHTML(dp.reason || 'Configured')})">${letter}★</span>`;
+                          }
+                        } else if (rec) {
+                          if (rec.status === 'LEAVE') {
+                            cellContent = `<span class="badge" style="background:#fee2e2; color:#991b1b; font-size:0.75rem;" title="Approved Leave">LEAVE</span>`;
+                          } else if (rec.status === 'HOLIDAY') {
+                            cellContent = `<span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.75rem;" title="Official Holiday">HOLIDAY</span>`;
+                          } else if (rec.status === 'WEEKLY_OFF') {
+                            cellContent = `<span class="badge" style="background:#dcfce7; color:#166534; font-size:0.75rem;" title="Scheduled Weekly OFF">OFF</span>`;
+                          } else if (rec.status === 'WORKED' && rec.shiftType) {
+                            cellContent = `<span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.78rem;" title="Scheduled Shift: ${rec.shiftType}">${getShiftLetter(rec.shiftType)}</span>`;
+                          } else {
+                            cellContent = `<span class="text-muted" style="font-size:1.1rem; opacity:0.4;">&plus;</span>`;
+                          }
+                        } else {
+                          cellContent = `<span class="text-muted" style="font-size:1.1rem; opacity:0.4;">&plus;</span>`;
+                        }
+
+                        return `
+                          <td class="planning-cell" data-emp-id="${e.id}" data-date="${w.dateStr}" style="text-align:center; padding:10px 4px; cursor:pointer;" title="Click to view/set shift preference">
+                            ${cellContent}
+                          </td>
+                        `;
+                      }).join('')}
+                      <td style="text-align:center;">
+                        ${prefCountInWeek > 0 ? (
+                          conflictCountInWeek > 0 ?
+                            `<span class="badge" style="background:#fef2f2; color:#991b1b; font-weight:700;">${prefCountInWeek} Pref (${conflictCountInWeek} ⚠)</span>` :
+                            `<span class="badge" style="background:#f3e8ff; color:#6b21a8; font-weight:700;">${prefCountInWeek} Set ★</span>`
+                        ) : `<span class="text-muted" style="font-size:0.8rem;">Standard</span>`}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 2: CONFIGURED DATE-SPECIFIC PREFERENCES (BATCH 80 & 81) -->
+      <div class="card" style="border-left:4px solid var(--accent, #8b5cf6); margin-bottom:24px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">📅 Date-Specific Shift Preferences</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Quick-add preferences for specific dates or inspect all active date-specific assignments.</span>
+          </div>
+        </div>
+        <div class="card-body" style="padding:20px;">
+          <!-- Single Date Preference Form (Preserved) -->
+          <form id="adminSingleDatePrefForm" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)) auto; gap:12px; align-items:end; background:var(--bg-subtle, #f8fafc); padding:16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:20px;">
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Employee <span class="req">*</span></label>
+              <select id="adminSinglePrefEmpSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+                <option value="">Select Employee...</option>
+                ${activeEmployees.map(e => `<option value="${e.id}">${escapeHTML(e.employeeCode)} - ${escapeHTML(e.firstName + ' ' + (e.lastName || ''))}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Date <span class="req">*</span></label>
+              <input type="date" id="adminSinglePrefDateInput" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Preferred Shift <span class="req">*</span></label>
+              <select id="adminSinglePrefShiftSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
+                <option value="MORNING">Morning (07:00 – 15:30)</option>
+                <option value="GENERAL">General (09:30 – 18:00)</option>
+                <option value="EVENING">Evening (14:00 – 22:30)</option>
+                <option value="NIGHT">Night (22:00 – 07:00)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+              <input type="text" id="adminSinglePrefReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:7px 10px; font-size:0.88rem;">
+            </div>
+            <div>
+              <button type="submit" class="btn btn-primary btn-sm" id="adminSingleSaveDatePrefBtn" style="padding:8px 18px; white-space:nowrap;">
+                + Add Date Preference
+              </button>
+            </div>
+          </form>
+
+          <!-- Table of Saved Date Preferences with Status column (Batch 81) -->
+          <div style="font-weight:600; font-size:0.9rem; margin-bottom:10px; color:var(--text-main);">Configured Date-Specific Preferences (${(allDateList || []).length})</div>
+          <div class="table-wrap">
+            <table class="data-table" style="font-size:0.88rem;">
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Shift</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th>Configured By</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="adminDatePrefTableBody">
+                ${(!allDateList || allDateList.length === 0) ? `
+                  <tr>
+                    <td colspan="7" class="text-center text-muted" style="padding:24px;">No date-specific shift preferences configured yet.</td>
+                  </tr>
+                ` : allDateList.map(dp => `
+                  <tr>
+                    <td><strong>${escapeHTML(dp.employeeName || '')}</strong> <small class="text-muted">(${escapeHTML(dp.employeeCode || '')})</small></td>
+                    <td style="font-weight:600;">${formatDate(dp.preferenceDate)}</td>
+                    <td><span class="badge ${formatShiftBadgeClass(dp.shiftType)}">${escapeHTML(formatShiftName(dp.shiftType))}</span></td>
+                    <td>
+                      ${dp.status === 'CONFLICT' ? `
+                        <span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700; border:1px solid #f87171;" title="${escapeHTML(dp.conflictReason || 'Rule conflict')}">
+                          ⚠ Conflict
+                        </span>
+                      ` : `
+                        <span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">
+                          ✓ Valid
+                        </span>
+                      `}
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
+                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
+                    <td style="text-align:right;">
+                      <button type="button" class="btn btn-ghost btn-xs" data-delete-admin-date-pref="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
+                        &times; Remove
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 3: GENERAL EMPLOYEE SHIFT PREFERENCES (Preserved BATCH 76) -->
       <div class="card" style="margin-bottom:24px;">
         <div class="card-header">
           <h3>General Shift Preferences</h3>
@@ -472,95 +787,51 @@ async function renderAdminPreferencesView() {
           </div>
         </div>
       </div>
-
-      <!-- SECTION 2: DATE-SPECIFIC SHIFT PREFERENCES (Batch 80) -->
-      <div class="card" style="border-left:4px solid var(--accent, #8b5cf6);">
-        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-          <div>
-            <h3 style="margin:0; font-size:1.05rem;">📅 Date-Specific Shift Preferences</h3>
-            <span style="font-size:0.78rem; color:var(--text-muted);">Configure shift preferences for specific dates. Automatically prioritized during weekly roster generation.</span>
-          </div>
-          <div>
-            <button type="button" class="btn btn-secondary btn-sm" id="adminBulkDatePrefBtn" style="padding:6px 14px; font-weight:600;">
-              👥 Bulk Date Preference
-            </button>
-          </div>
-        </div>
-        <div class="card-body" style="padding:20px;">
-          <!-- Single Date Preference Form -->
-          <form id="adminSingleDatePrefForm" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)) auto; gap:12px; align-items:end; background:var(--bg-subtle, #f8fafc); padding:16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:20px;">
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Employee <span class="req">*</span></label>
-              <select id="adminSinglePrefEmpSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
-                <option value="">Select Employee...</option>
-                ${activeEmployees.map(e => `<option value="${e.id}">${escapeHTML(e.employeeCode)} - ${escapeHTML(e.firstName + ' ' + (e.lastName || ''))}</option>`).join('')}
-              </select>
-            </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Date <span class="req">*</span></label>
-              <input type="date" id="adminSinglePrefDateInput" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
-            </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Preferred Shift <span class="req">*</span></label>
-              <select id="adminSinglePrefShiftSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem;">
-                <option value="MORNING">Morning (07:00 – 15:30)</option>
-                <option value="GENERAL">General (09:30 – 18:00)</option>
-                <option value="EVENING">Evening (14:00 – 22:30)</option>
-                <option value="NIGHT">Night (22:00 – 07:00)</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
-              <input type="text" id="adminSinglePrefReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:7px 10px; font-size:0.88rem;">
-            </div>
-            <div>
-              <button type="submit" class="btn btn-primary btn-sm" id="adminSingleSaveDatePrefBtn" style="padding:8px 18px; white-space:nowrap;">
-                + Add Date Preference
-              </button>
-            </div>
-          </form>
-
-          <!-- Table of Saved Date Preferences -->
-          <div style="font-weight:600; font-size:0.9rem; margin-bottom:10px; color:var(--text-main);">Configured Date-Specific Preferences</div>
-          <div class="table-wrap">
-            <table class="data-table" style="font-size:0.88rem;">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Date</th>
-                  <th>Shift</th>
-                  <th>Reason</th>
-                  <th>Configured By</th>
-                  <th style="text-align:right;">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="adminDatePrefTableBody">
-                ${dateList.length === 0 ? `
-                  <tr>
-                    <td colspan="6" class="text-center text-muted" style="padding:24px;">No date-specific shift preferences configured yet.</td>
-                  </tr>
-                ` : dateList.map(dp => `
-                  <tr>
-                    <td><strong>${escapeHTML(dp.employeeName || '')}</strong> <small class="text-muted">(${escapeHTML(dp.employeeCode || '')})</small></td>
-                    <td style="font-weight:600;">${formatDate(dp.preferenceDate)}</td>
-                    <td><span class="badge ${formatShiftBadgeClass(dp.shiftType)}">${escapeHTML(formatShiftName(dp.shiftType))}</span></td>
-                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
-                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
-                    <td style="text-align:right;">
-                      <button type="button" class="btn btn-ghost btn-xs" data-delete-admin-date-pref="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
-                        &times; Remove
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
     `;
 
-    // Event listeners
+    // 1. Week Navigation Listeners
+    document.getElementById("planningPrevWeekBtn")?.addEventListener("click", () => {
+      currentPlanningWeekMonday = shiftMondayByWeeks(currentPlanningWeekMonday, -1);
+      renderAdminPreferencesView();
+    });
+
+    document.getElementById("planningCurrentWeekBtn")?.addEventListener("click", () => {
+      currentPlanningWeekMonday = getMondayOfWeekDateStr(new Date());
+      renderAdminPreferencesView();
+    });
+
+    document.getElementById("planningNextWeekBtn")?.addEventListener("click", () => {
+      currentPlanningWeekMonday = shiftMondayByWeeks(currentPlanningWeekMonday, 1);
+      renderAdminPreferencesView();
+    });
+
+    // 2. Search & Filter Listeners
+    const searchInput = document.getElementById("adminPlanningSearchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        currentPlanningSearchQuery = e.target.value;
+        renderAdminPreferencesView();
+      });
+    }
+
+    const filterSelect = document.getElementById("adminPlanningFilterSelect");
+    if (filterSelect) {
+      filterSelect.addEventListener("change", (e) => {
+        currentPlanningFilterStatus = e.target.value;
+        renderAdminPreferencesView();
+      });
+    }
+
+    // 3. Cell click listener
+    container.querySelectorAll(".planning-cell").forEach(cell => {
+      cell.addEventListener("click", () => {
+        const empId = cell.getAttribute("data-emp-id");
+        const dateStr = cell.getAttribute("data-date");
+        openCellDatePrefModal(empId, dateStr, activeEmployees, datePrefMap, dailyRecordMap);
+      });
+    });
+
+    // 4. Single form listener
     const singleForm = document.getElementById("adminSingleDatePrefForm");
     if (singleForm) {
       singleForm.addEventListener("submit", async (e) => {
@@ -599,7 +870,7 @@ async function renderAdminPreferencesView() {
       });
     }
 
-    // Bulk modal trigger
+    // 5. Bulk modal trigger
     const bulkBtn = document.getElementById("adminBulkDatePrefBtn");
     if (bulkBtn) {
       bulkBtn.addEventListener("click", () => {
@@ -607,7 +878,7 @@ async function renderAdminPreferencesView() {
       });
     }
 
-    // Delete buttons
+    // 6. Delete buttons
     container.querySelectorAll("[data-delete-admin-date-pref]").forEach(btn => {
       btn.addEventListener("click", async () => {
         const id = btn.getAttribute("data-delete-admin-date-pref");
@@ -625,6 +896,169 @@ async function renderAdminPreferencesView() {
 
   } catch (err) {
     container.innerHTML = `<div class="card"><div class="empty-state-box text-danger">⚠️ Error loading preferences: ${escapeHTML(err.message)}</div></div>`;
+  }
+}
+
+function openCellDatePrefModal(empId, dateStr, activeEmployees, datePrefMap, dailyRecordMap) {
+  const modal = document.getElementById("cellDatePrefModal");
+  if (!modal) return;
+
+  const emp = (activeEmployees || []).find(e => String(e.id) === String(empId));
+  if (!emp) return;
+
+  const existingPref = datePrefMap ? datePrefMap[`${empId}_${dateStr}`] : null;
+  const rec = dailyRecordMap ? dailyRecordMap[`${empId}_${dateStr}`] : null;
+
+  document.getElementById("cellPrefEmpName").textContent = `${emp.firstName} ${emp.lastName || ''} (${emp.employeeCode})`;
+  document.getElementById("cellPrefDateDisplay").textContent = `${formatDate(dateStr)} (${formatDayOfWeekName(dateStr)})`;
+  
+  const dutyBadge = document.getElementById("cellPrefCurrentDuty");
+  if (dutyBadge) {
+    if (rec && rec.status === 'LEAVE') {
+      dutyBadge.className = "badge";
+      dutyBadge.style.cssText = "background:#fee2e2; color:#991b1b;";
+      dutyBadge.textContent = "APPROVED LEAVE";
+    } else if (rec && rec.status === 'HOLIDAY') {
+      dutyBadge.className = "badge";
+      dutyBadge.style.cssText = "background:#fef3c7; color:#92400e;";
+      dutyBadge.textContent = "OFFICIAL HOLIDAY";
+    } else if (rec && rec.status === 'WEEKLY_OFF') {
+      dutyBadge.className = "badge";
+      dutyBadge.style.cssText = "background:#dcfce7; color:#166534;";
+      dutyBadge.textContent = "WEEKLY OFF";
+    } else if (rec && rec.shiftName) {
+      dutyBadge.className = "badge";
+      dutyBadge.style.cssText = "background:#e0f2fe; color:#0369a1;";
+      dutyBadge.textContent = rec.shiftName;
+    } else {
+      dutyBadge.className = "badge";
+      dutyBadge.style.cssText = "background:#f1f5f9; color:#475569;";
+      dutyBadge.textContent = "Not Yet Scheduled";
+    }
+  }
+
+  document.getElementById("cellPrefEmpId").value = empId;
+  document.getElementById("cellPrefDateInput").value = dateStr;
+  document.getElementById("cellPrefExistingId").value = existingPref ? existingPref.id : "";
+
+  const shiftSelect = document.getElementById("cellPrefShiftSelect");
+  if (shiftSelect) {
+    shiftSelect.value = existingPref ? existingPref.shiftType : "MORNING";
+  }
+
+  const reasonInput = document.getElementById("cellPrefReasonInput");
+  if (reasonInput) {
+    reasonInput.value = existingPref ? (existingPref.reason || "") : "";
+  }
+
+  const removeBtn = document.getElementById("cellPrefRemoveBtn");
+  if (removeBtn) {
+    removeBtn.style.display = existingPref ? "inline-block" : "none";
+    removeBtn.onclick = async () => {
+      if (!existingPref) return;
+      try {
+        removeBtn.disabled = true;
+        await apiRequest(`/api/admin/preferences/date-specific/${existingPref.id}`, { method: "DELETE" });
+        toast("Date-specific preference removed", "success");
+        modal.classList.add("hidden");
+        renderAdminPreferencesView();
+      } catch (err) {
+        toast(err.message || "Failed to remove preference", "error");
+        removeBtn.disabled = false;
+      }
+    };
+  }
+
+  // Live rule preview updater
+  async function updatePreview() {
+    const shiftVal = shiftSelect ? shiftSelect.value : "MORNING";
+    const statusBadge = document.getElementById("cellPrefPreviewStatusBadge");
+    const previewBody = document.getElementById("cellPrefPreviewBody");
+    const previewCard = document.getElementById("cellPrefPreviewCard");
+    if (!statusBadge || !previewBody || !previewCard) return;
+
+    try {
+      const p = await apiRequest(`/api/admin/preferences/date-specific/preview?employeeId=${empId}&date=${dateStr}&shiftType=${shiftVal}`);
+      if (p.status === "VALID") {
+        statusBadge.className = "badge";
+        statusBadge.style.cssText = "background:#dcfce7; color:#166534; font-weight:700;";
+        statusBadge.textContent = "✓ Valid";
+        previewCard.style.cssText = "border-radius:6px; padding:12px 14px; background:#f0fdf4; border:1px solid #bbf7d0; font-size:0.84rem;";
+        previewBody.innerHTML = `
+          <div><strong>Requested Preference:</strong> ${escapeHTML(p.requestedShift)}</div>
+          <div><strong>Expected Final Shift:</strong> ${escapeHTML(p.expectedFinalShift)}</div>
+          <div style="margin-top:4px; color:var(--text-secondary);">${escapeHTML(p.reason)}</div>
+        `;
+      } else {
+        statusBadge.className = "badge";
+        statusBadge.style.cssText = "background:#fee2e2; color:#991b1b; font-weight:700;";
+        statusBadge.textContent = "⚠ Conflict detected";
+        previewCard.style.cssText = "border-radius:6px; padding:12px 14px; background:#fef2f2; border:1px solid #fecaca; font-size:0.84rem;";
+        previewBody.innerHTML = `
+          <div><strong>Requested Preference:</strong> ${escapeHTML(p.requestedShift)}</div>
+          <div><strong>Expected Final Roster:</strong> ${escapeHTML(p.expectedFinalShift)}</div>
+          <div style="margin-top:4px; color:#b91c1c; font-weight:500;">${escapeHTML(p.reason)}</div>
+          <small style="display:block; margin-top:4px; color:var(--text-muted);">Final roster will continue following authoritative business rules.</small>
+        `;
+      }
+    } catch (e) {
+      statusBadge.textContent = "Preview Offline";
+      previewBody.textContent = "Rule preview could not be evaluated.";
+    }
+  }
+
+  if (shiftSelect) {
+    shiftSelect.onchange = updatePreview;
+  }
+  updatePreview();
+
+  modal.classList.remove("hidden");
+
+  const form = document.getElementById("cellDatePrefForm");
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const saveBtn = document.getElementById("saveCellDatePrefBtn");
+      const shiftVal = shiftSelect.value;
+      const reasonVal = reasonInput.value;
+
+      try {
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Saving...";
+        }
+        await apiRequest("/api/admin/preferences/date-specific", {
+          method: "POST",
+          body: {
+            employeeId: Number(empId),
+            preferenceDate: dateStr,
+            shiftType: shiftVal,
+            reason: reasonVal || null
+          }
+        });
+        toast("Date-specific preference saved successfully", "success");
+        modal.classList.add("hidden");
+        renderAdminPreferencesView();
+      } catch (err) {
+        toast(err.message || "Failed to save preference", "error");
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Save Preference";
+        }
+      }
+    };
+  }
+}
+
+function formatDayOfWeekName(dateStr) {
+  try {
+    const parts = dateStr.split("-");
+    const dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    return days[dt.getDay()];
+  } catch (e) {
+    return "";
   }
 }
 

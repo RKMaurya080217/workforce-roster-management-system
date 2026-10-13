@@ -4,8 +4,10 @@ import com.weeklyroster.dto.request.AdminShiftPreferenceRequest;
 import com.weeklyroster.dto.request.BulkDateShiftPreferenceRequest;
 import com.weeklyroster.dto.request.DateShiftPreferenceRequest;
 import com.weeklyroster.dto.request.PreferenceDecisionRequest;
+import com.weeklyroster.dto.response.DatePreferencePreviewResponse;
 import com.weeklyroster.dto.response.DateShiftPreferenceResponse;
 import com.weeklyroster.dto.response.PreferenceResponse;
+import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.service.DateShiftPreferenceService;
 import com.weeklyroster.service.EmployeePreferenceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -130,5 +132,14 @@ public class AdminPreferenceController {
             Authentication auth) {
         dateShiftPreferenceService.deleteDatePreference(id, auth.getName());
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/date-specific/preview")
+    @Operation(summary = "Preview and validate a date-specific shift preference against business rules")
+    public ResponseEntity<DatePreferencePreviewResponse> previewPreference(
+            @RequestParam Long employeeId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam ShiftType shiftType) {
+        return ResponseEntity.ok(dateShiftPreferenceService.previewPreference(employeeId, date, shiftType));
     }
 }

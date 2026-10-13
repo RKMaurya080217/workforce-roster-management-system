@@ -370,7 +370,7 @@ public class RosterService {
 				}
 			}
 
-			balanceMaleEveningAssignments(candidateAssignments, employees, shifts);
+			balanceMaleEveningAssignments(candidateAssignments, employees, shifts, preferencesMap);
 
 			int totalConfiguredShortage = Math.max(0, totalConfiguredDemand - totalAssigned);
 			if (totalConfiguredShortage > 0 && totalOperationalShortage == 0) {
@@ -2083,6 +2083,7 @@ public class RosterService {
 					for (RosterAssignment a : donors) {
 						Employee emp = a.getEmployee();
 						ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(emp.getId()) : null;
+						if (pref != null && pref.hasDateSpecificShift(date)) continue;
 						if (!isEligible(emp, ShiftType.GENERAL, pref)) continue;
 
 						List<RosterAssignment> empList = empAssignments.getOrDefault(emp.getId(), Collections.emptyList());
@@ -2127,6 +2128,7 @@ public class RosterService {
 					for (RosterAssignment a : donors) {
 						Employee emp = a.getEmployee();
 						ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(emp.getId()) : null;
+						if (pref != null && pref.hasDateSpecificShift(date)) continue;
 						if (!isEligible(emp, ShiftType.MORNING, pref)) continue;
 
 						List<RosterAssignment> empList = empAssignments.getOrDefault(emp.getId(), Collections.emptyList());
@@ -3038,11 +3040,12 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		return true;
 	}
 
-	private void balanceMaleEveningAssignments(List<RosterAssignment> assignments, List<Employee> employees, Map<ShiftType, Shift> shifts) {
+	private void balanceMaleEveningAssignments(List<RosterAssignment> assignments, List<Employee> employees, Map<ShiftType, Shift> shifts, Map<Long, ApplicablePreference> preferencesMap) {
 		Map<Long, List<RosterAssignment>> empAssignments = assignments.stream()
 				.collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
 		List<Employee> males = employees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive()).toList();
 		for (Employee male : males) {
+			ApplicablePreference malePref = preferencesMap != null ? preferencesMap.get(male.getId()) : null;
 			List<RosterAssignment> maleList = empAssignments.getOrDefault(male.getId(), Collections.emptyList());
 			List<RosterAssignment> evenings = maleList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING).toList();
 			if (evenings.size() > 3) {
@@ -3050,8 +3053,11 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 					long currentEve = maleList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING).count();
 					if (currentEve <= 3) break;
 					LocalDate d = eveningToMove.getRosterDate();
+					if (malePref != null && malePref.hasDateSpecificShift(d)) continue;
 					for (Employee otherMale : males) {
 						if (otherMale.getId().equals(male.getId())) continue;
+						ApplicablePreference otherPref = preferencesMap != null ? preferencesMap.get(otherMale.getId()) : null;
+						if (otherPref != null && otherPref.hasDateSpecificShift(d)) continue;
 						List<RosterAssignment> otherList = empAssignments.getOrDefault(otherMale.getId(), Collections.emptyList());
 						long otherEveCount = otherList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING).count();
 						if (otherEveCount <= 2) {

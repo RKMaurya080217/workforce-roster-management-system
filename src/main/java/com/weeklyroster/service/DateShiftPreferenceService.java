@@ -2,12 +2,15 @@ package com.weeklyroster.service;
 
 import com.weeklyroster.dto.request.BulkDateShiftPreferenceRequest;
 import com.weeklyroster.dto.request.DateShiftPreferenceRequest;
+import com.weeklyroster.dto.response.DatePreferencePreviewResponse;
 import com.weeklyroster.dto.response.DateShiftPreferenceResponse;
 import com.weeklyroster.entity.*;
 import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.DateShiftPreferenceRepository;
 import com.weeklyroster.repository.EmployeeRepository;
+import com.weeklyroster.repository.LeaveRequestRepository;
+import com.weeklyroster.repository.RosterAssignmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,15 +30,21 @@ public class DateShiftPreferenceService {
     private final EmployeeRepository employeeRepository;
     private final EmployeeActivityLogService activityLogService;
     private final AuditService auditService;
+    private final LeaveRequestRepository leaveRequestRepository;
+    private final RosterAssignmentRepository rosterAssignmentRepository;
 
     public DateShiftPreferenceService(DateShiftPreferenceRepository dateShiftPreferenceRepository,
                                       EmployeeRepository employeeRepository,
                                       EmployeeActivityLogService activityLogService,
-                                      AuditService auditService) {
+                                      AuditService auditService,
+                                      LeaveRequestRepository leaveRequestRepository,
+                                      RosterAssignmentRepository rosterAssignmentRepository) {
         this.dateShiftPreferenceRepository = dateShiftPreferenceRepository;
         this.employeeRepository = employeeRepository;
         this.activityLogService = activityLogService;
         this.auditService = auditService;
+        this.leaveRequestRepository = leaveRequestRepository;
+        this.rosterAssignmentRepository = rosterAssignmentRepository;
     }
 
     public DateShiftPreferenceResponse createOrUpdate(DateShiftPreferenceRequest req, String adminUsername) {
@@ -194,8 +203,147 @@ public class DateShiftPreferenceService {
         return map;
     }
 
+    @Transactional(readOnly = true)
+    public DatePreferencePreviewResponse previewPreference(Long employeeId, LocalDate date, ShiftType requestedShift) {
+        if (employeeId == null || date == null) {
+            throw new BusinessException("Employee ID and Date are required for preview");
+        }
+        Employee employee = employeeRepository.findById(employeeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + employeeId));
+
+        String fullName = (employee.getFirstName() + " " + (employee.getLastName() != null ? employee.getLastName() : "")).trim();
+
+        // 1. Current planned duty in active roster (if generated)
+        List<RosterAssignment> currentAssignments = rosterAssignmentRepository.findByEmployeeIdAndRosterDate(employeeId, date);
+        String currentPlanned = "Not Yet Scheduled";
+        if (!currentAssignments.isEmpty()) {
+            RosterAssignment a = currentAssignments.get(0);
+            if (a.isOnLeave()) {
+                currentPlanned = "LEAVE";
+            } else if (a.isWeeklyOff()) {
+                currentPlanned = "OFF";
+            } else if (a.getShift() != null) {
+                currentPlanned = a.getShift().getShiftType().name();
+            }
+        }
+
+        // 2. Check for approved leave conflict
+        boolean hasLeave = leaveRequestRepository.existsByEmployeeIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                employeeId, LeaveStatus.APPROVED, date, date);
+        if (hasLeave) {
+            return new DatePreferencePreviewResponse(
+                    employeeId,
+                    employee.getEmployeeCode(),
+                    fullName,
+                    date,
+                    requestedShift,
+                    currentPlanned,
+                    "LEAVE / OFF",
+                    "CONFLICT",
+                    "Existing approved leave prevents this preference from being safely applied. Final roster will preserve employee leave.",
+                    false
+            );
+        }
+
+        // 3. Check for female employee night shift safety restriction
+        if (requestedShift == ShiftType.NIGHT && employee.getGender() == Gender.FEMALE) {
+            return new DatePreferencePreviewResponse(
+                    employeeId,
+                    employee.getEmployeeCode(),
+                    fullName,
+                    date,
+                    requestedShift,
+                    currentPlanned,
+                    currentPlanned.equals("Not Yet Scheduled") ? "GENERAL" : currentPlanned,
+                    "CONFLICT",
+                    "Female employees cannot be assigned to night shifts under workplace safety rules.",
+                    false
+            );
+        }
+
+        // 4. Check for rest interval conflict with previous day (< 12 hours rest)
+        List<RosterAssignment> prevDayAssignments = rosterAssignmentRepository.findByEmployeeIdAndRosterDate(employeeId, date.minusDays(1));
+        if (!prevDayAssignments.isEmpty()) {
+            RosterAssignment prev = prevDayAssignments.get(0);
+            if (!prev.isWeeklyOff() && !prev.isOnLeave() && prev.getShift() != null && prev.getShift().getShiftType() == ShiftType.NIGHT) {
+                if (requestedShift == ShiftType.MORNING) {
+                    return new DatePreferencePreviewResponse(
+                            employeeId,
+                            employee.getEmployeeCode(),
+                            fullName,
+                            date,
+                            requestedShift,
+                            currentPlanned,
+                            "GENERAL",
+                            "CONFLICT",
+                            "Insufficient rest interval (<12 hours) after previous night shift.",
+                            false
+                    );
+                }
+            }
+        }
+
+        // 5. Check for rest interval conflict with next day (< 12 hours rest)
+        List<RosterAssignment> nextDayAssignments = rosterAssignmentRepository.findByEmployeeIdAndRosterDate(employeeId, date.plusDays(1));
+        if (!nextDayAssignments.isEmpty()) {
+            RosterAssignment next = nextDayAssignments.get(0);
+            if (!next.isWeeklyOff() && !next.isOnLeave() && next.getShift() != null && next.getShift().getShiftType() == ShiftType.MORNING) {
+                if (requestedShift == ShiftType.NIGHT) {
+                    return new DatePreferencePreviewResponse(
+                            employeeId,
+                            employee.getEmployeeCode(),
+                            fullName,
+                            date,
+                            requestedShift,
+                            currentPlanned,
+                            "EVENING",
+                            "CONFLICT",
+                            "Insufficient rest interval (<12 hours) before next morning duty.",
+                            false
+                    );
+                }
+            }
+        }
+
+        // 6. Clean and valid preference
+        return new DatePreferencePreviewResponse(
+                employeeId,
+                employee.getEmployeeCode(),
+                fullName,
+                date,
+                requestedShift,
+                currentPlanned,
+                requestedShift.name(),
+                "VALID",
+                "Preference can be applied cleanly. Roster generator will automatically prioritize this shift.",
+                true
+        );
+    }
+
     private DateShiftPreferenceResponse toResponse(DateShiftPreference p) {
         Employee e = p.getEmployee();
+        String status = "VALID";
+        String conflictReason = null;
+
+        if (e != null && p.getPreferenceDate() != null) {
+            boolean hasLeave = leaveRequestRepository.existsByEmployeeIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                    e.getId(), LeaveStatus.APPROVED, p.getPreferenceDate(), p.getPreferenceDate());
+            if (hasLeave) {
+                status = "CONFLICT";
+                conflictReason = "Approved leave on this date";
+            } else if (p.getShiftType() == ShiftType.NIGHT && e.getGender() == Gender.FEMALE) {
+                status = "CONFLICT";
+                conflictReason = "Female night shift restriction";
+            } else {
+                List<RosterAssignment> prev = rosterAssignmentRepository.findByEmployeeIdAndRosterDate(e.getId(), p.getPreferenceDate().minusDays(1));
+                if (!prev.isEmpty() && !prev.get(0).isWeeklyOff() && !prev.get(0).isOnLeave() && prev.get(0).getShift() != null
+                        && prev.get(0).getShift().getShiftType() == ShiftType.NIGHT && p.getShiftType() == ShiftType.MORNING) {
+                    status = "CONFLICT";
+                    conflictReason = "Insufficient rest interval (<12h) after night shift";
+                }
+            }
+        }
+
         return new DateShiftPreferenceResponse(
                 p.getId(),
                 e != null ? e.getId() : null,
@@ -206,7 +354,9 @@ public class DateShiftPreferenceService {
                 p.getReason(),
                 p.getCreatedBy(),
                 p.getCreatedAt(),
-                p.getUpdatedAt()
+                p.getUpdatedAt(),
+                status,
+                conflictReason
         );
     }
 }
