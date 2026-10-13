@@ -1297,7 +1297,7 @@
         </div>
         <button class="modal-close" data-close-modal="profileChangeModal">&times;</button>
       </div>
-      <form id="profileChangeForm" class="modal-body stack-gap">
+      <form id="profileChangeForm" class="modal-body stack-gap" onsubmit="handleConfirmProfileChange(event); return false;">
         <input type="hidden" id="pcrFormFieldName">
 
         <div class="alert-info-box" style="background-color:#eff6ff; border-color:#bfdbfe; color:#1e40af;">
@@ -1323,7 +1323,7 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="profileChangeModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="submitProfileChangeBtn">
-            <span>Submit Change Request</span>
+            <span id="submitProfileChangeBtnText">Request Change</span>
             <div class="spinner hidden"></div>
           </button>
         </div>
@@ -1594,7 +1594,7 @@
         <div>
           <h3 style="display:flex; align-items:center; gap:8px;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-            Roster Version Comparison
+            <span id="compareVersionsModalTitleText">Roster Version Details</span>
           </h3>
           <span id="compareVersionsSubtitle" style="font-size:0.8rem; color:var(--text-muted);">Comparing Revisions</span>
         </div>

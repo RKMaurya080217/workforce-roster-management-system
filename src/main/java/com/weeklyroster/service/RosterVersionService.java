@@ -138,6 +138,13 @@ public class RosterVersionService {
     }
 
     @Transactional(readOnly = true)
+    public RosterVersionResponse getVersionById(Long id) {
+        RosterVersion v = versionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Roster version not found with id: " + id));
+        return toResponse(v);
+    }
+
+    @Transactional(readOnly = true)
     public VersionComparisonResponse compareVersions(Long cycleId, int v1Num, int v2Num) {
         RosterVersion v1 = versionRepository.findByCycleIdAndVersionNumber(cycleId, v1Num)
                 .orElseThrow(() -> new ResourceNotFoundException("Version " + v1Num + " not found for cycle " + cycleId));

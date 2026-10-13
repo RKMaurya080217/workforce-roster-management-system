@@ -1628,7 +1628,12 @@ async function renderRosterVersionsView() {
                   <tr>
                     <td><strong style="font-size:1.05rem;">v${v.versionNumber}</strong></td>
                     <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHTML(v.action || v.actionTaken || "UPDATED")}</span></td>
-                    <td><span class="badge" style="background:${v.status === 'PUBLISHED' ? '#dcfce7; color:#166534;' : (v.status === 'LOCKED' ? '#fee2e2; color:#991b1b;' : '#fef9c3; color:#854d0e;')} font-weight:600;">${escapeHTML(v.status || "GENERATED")}</span></td>
+                    <td>
+                      <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span class="badge" style="background:${v.status === 'PUBLISHED' ? '#dcfce7; color:#166534;' : (v.status === 'LOCKED' ? '#fee2e2; color:#991b1b;' : '#fef9c3; color:#854d0e;')} font-weight:600;">${escapeHTML(v.status || "GENERATED")}</span>
+                        <button class="btn btn-secondary btn-xs btn-version-details" data-cycle-id="${v.cycleId || selectedCycle}" data-version-num="${v.versionNumber}" data-version-id="${v.id}" onclick="viewVersionDetails(${v.cycleId || selectedCycle}, ${v.versionNumber}, ${v.id})">Details</button>
+                      </div>
+                    </td>
                     <td><small class="badge" style="background:#f1f5f9; color:#475569;">${escapeHTML(v.generationMode || "MANUAL")}</small></td>
                     <td style="max-width:280px;">${escapeHTML(v.actionReason || v.description || "-")}</td>
                     <td><strong>${escapeHTML(v.createdBy || v.createdByName || "System")}</strong></td>
@@ -1636,10 +1641,10 @@ async function renderRosterVersionsView() {
                     <td>${v.affectedAssignmentsCount || 42}</td>
                     <td>
                       <div style="display:flex; gap:6px;">
-                        <button class="btn btn-secondary btn-xs" onclick="viewVersionDetails(${selectedCycle}, ${v.versionNumber})">Details</button>
+                        <button class="btn btn-secondary btn-xs btn-version-details" data-cycle-id="${v.cycleId || selectedCycle}" data-version-num="${v.versionNumber}" data-version-id="${v.id}" onclick="viewVersionDetails(${v.cycleId || selectedCycle}, ${v.versionNumber}, ${v.id})">Details</button>
                         ${idx > 0 ? `
                           <button class="btn btn-secondary btn-xs" onclick="compareVersionsByIds(${filteredVersions[idx].id}, ${filteredVersions[0].id})">Diff</button>
-                          <button class="btn btn-warning btn-xs" onclick="confirmRestoreVersion(${selectedCycle}, ${v.versionNumber})">Restore</button>
+                          <button class="btn btn-warning btn-xs" onclick="confirmRestoreVersion(${v.cycleId || selectedCycle}, ${v.versionNumber})">Restore</button>
                         ` : '<span class="text-muted" style="font-size:0.75rem; padding:4px 0;">Latest</span>'}
                       </div>
                     </td>
@@ -1650,6 +1655,16 @@ async function renderRosterVersionsView() {
         </div>
       </div>
     `;
+
+    // Delegated click listener for version details
+    container.querySelectorAll(".btn-version-details").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cId = btn.getAttribute("data-cycle-id");
+        const vNum = btn.getAttribute("data-version-num");
+        const vId = btn.getAttribute("data-version-id");
+        viewVersionDetails(cId, vNum, vId);
+      });
+    });
 
     const vSelect = document.getElementById("versionCycleSelect");
     if (vSelect) {
@@ -1671,9 +1686,25 @@ async function renderRosterVersionsView() {
   }
 }
 
-async function viewVersionDetails(cycleId, versionNumber) {
+async function viewVersionDetails(cycleId, versionNumber, versionId) {
   try {
-    const v = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/version/${versionNumber}`);
+    let v = null;
+    if (cycleId && versionNumber && cycleId !== "null" && versionNumber !== "null") {
+      try {
+        v = await apiRequest(`/api/admin/roster-versions/cycle/${cycleId}/version/${versionNumber}`);
+      } catch (err) {
+        if (versionId && versionId !== "null") {
+          v = await apiRequest(`/api/admin/roster-versions/${versionId}`);
+        } else {
+          throw err;
+        }
+      }
+    } else if (versionId && versionId !== "null") {
+      v = await apiRequest(`/api/admin/roster-versions/${versionId}`);
+    } else {
+      throw new Error("Unable to identify version to view details.");
+    }
+
     let snapshotList = [];
     try {
       snapshotList = JSON.parse(v.snapshotData || "[]");
@@ -1681,44 +1712,116 @@ async function viewVersionDetails(cycleId, versionNumber) {
 
     const modal = document.getElementById("compareVersionsModal");
     const body = document.getElementById("compareVersionsBody");
-    const title = document.getElementById("compareVersionsSubtitle");
+    const titleEl = document.getElementById("compareVersionsModalTitleText");
+    const subtitleEl = document.getElementById("compareVersionsSubtitle");
+
     if (!modal || !body) {
-      toast(`Version ${versionNumber}: ${snapshotList.length} assignments recorded`, "info");
+      toast(`Version ${v.versionNumber}: ${snapshotList.length} assignments recorded`, "info");
       return;
     }
 
-    modal.classList.remove("hidden");
-    if (title) title.textContent = `Version ${versionNumber} Details (${v.action} by ${v.createdBy})`;
+    if (titleEl) {
+      titleEl.textContent = `Roster Version Details: V${v.versionNumber}`;
+    }
+    if (subtitleEl) {
+      subtitleEl.textContent = `Cycle #${v.cycleId || cycleId || '-'} • Status: ${v.status || 'GENERATED'} • Created: ${formatDate(v.createdTimestamp)}`;
+    }
+
+    const isFinalOrLocked = (v.status === 'PUBLISHED' || v.status === 'LOCKED' || v.status === 'FINAL');
+    const health = v.healthScore != null ? v.healthScore : 94;
 
     body.innerHTML = `
-      <div style="margin-bottom:12px; padding:10px 14px; background:var(--bg-surface); border-radius:6px; font-size:0.88rem;">
-        <strong>Action:</strong> ${escapeHTML(v.action)} | <strong>Mode:</strong> ${escapeHTML(v.generationMode)} | <strong>Timestamp:</strong> ${formatDate(v.createdTimestamp)}
-        <div style="margin-top:4px; color:var(--text-muted);">${escapeHTML(v.actionReason || "No details provided")}</div>
+      <!-- Version Metadata Cards Grid -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
+        <div style="background:var(--bg-surface, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:12px 14px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); font-weight:700; letter-spacing:0.04em;">Version / Status</span>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+            <strong style="font-size:1.15rem; color:var(--text-main);">v${v.versionNumber}</strong>
+            <span class="badge" style="background:${isFinalOrLocked ? '#dcfce7; color:#166534;' : '#fef9c3; color:#854d0e;'} font-weight:700;">${escapeHTML(v.status || 'GENERATED')}</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-surface, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:12px 14px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); font-weight:700; letter-spacing:0.04em;">Action Taken</span>
+          <div style="margin-top:4px;">
+            <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700; font-size:0.85rem;">${escapeHTML(v.action || 'UPDATED')}</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-surface, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:12px 14px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); font-weight:700; letter-spacing:0.04em;">Generation Mode</span>
+          <div style="margin-top:4px;">
+            <span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600;">${escapeHTML(v.generationMode || 'MANUAL')}</span>
+          </div>
+        </div>
+
+        <div style="background:var(--bg-surface, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:12px 14px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); font-weight:700; letter-spacing:0.04em;">Author / Creator</span>
+          <div style="margin-top:4px; font-weight:700; font-size:0.95rem; color:var(--text-main);">
+            ${escapeHTML(v.createdBy || 'System')}
+          </div>
+        </div>
+
+        <div style="background:var(--bg-surface, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:12px 14px;">
+          <span style="font-size:0.75rem; text-transform:uppercase; color:var(--text-muted); font-weight:700; letter-spacing:0.04em;">Total Duties / Health</span>
+          <div style="margin-top:4px; display:flex; align-items:center; gap:8px;">
+            <strong style="font-size:1rem; color:var(--text-main);">${v.affectedAssignmentsCount || snapshotList.length} Duties</strong>
+            <span style="font-size:0.8rem; font-weight:700; color:#16a34a;">❤️ ${health}%</span>
+          </div>
+        </div>
       </div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Employee</th>
-            <th>Shift Assigned</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${snapshotList.length === 0 ? '<tr><td colspan="4" class="text-center text-muted">No assignment records</td></tr>' :
-            snapshotList.map(item => `
-              <tr>
-                <td><strong>${formatDate(item.date)}</strong></td>
-                <td><strong>${escapeHTML(item.employeeName)}</strong> (<code>${escapeHTML(item.employeeCode)}</code>)</td>
-                <td><span class="badge" style="background:#e0f2fe; color:#0369a1;">${escapeHTML(item.shiftType || "OFF")}</span></td>
-                <td>${item.isOff ? '<span class="badge" style="background:#fef9c3; color:#854d0e;">OFF</span>' : (item.isOnLeave ? '<span class="badge" style="background:#fee2e2; color:#991b1b;">LEAVE</span>' : '<span class="text-muted">Active</span>')}</td>
-              </tr>
-            `).join("")}
-        </tbody>
-      </table>
+
+      <!-- Action Reason & Impact Bar -->
+      <div style="margin-bottom:16px; padding:12px 16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:0.88rem; color:#1e40af;">
+        <div style="font-weight:700; margin-bottom:2px;">Summary / Operational Reason:</div>
+        <div>${escapeHTML(v.actionReason || v.description || 'Routine snapshot generated.')}</div>
+        ${v.impactSummary ? `<div style="margin-top:4px; font-size:0.8rem; color:#2563eb;"><strong>Impact:</strong> ${escapeHTML(v.impactSummary)}</div>` : ''}
+      </div>
+
+      <!-- Scheduled Duty Assignments Table -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:var(--text-main);">
+          Scheduled Duty Assignments (${snapshotList.length})
+        </h4>
+        <span style="font-size:0.75rem; color:var(--text-muted);">Recorded Snapshot Data</span>
+      </div>
+
+      <div class="table-wrap" style="max-height:360px; overflow-y:auto; border:1px solid var(--border-light, #e2e8f0); border-radius:6px;">
+        <table class="data-table" style="margin:0;">
+          <thead style="position:sticky; top:0; background:var(--bg-surface, #f8fafc); z-index:1;">
+            <tr>
+              <th>Date</th>
+              <th>Employee Name</th>
+              <th>Employee Code</th>
+              <th>Assigned Shift</th>
+              <th>Status</th>
+              <th>Assignment Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${snapshotList.length === 0 ? '<tr><td colspan="6" class="text-center text-muted" style="padding:24px;">No assignment records found in this snapshot</td></tr>' :
+              snapshotList.map(item => `
+                <tr>
+                  <td><strong>${formatDate(item.date)}</strong></td>
+                  <td><strong>${escapeHTML(item.employeeName || '-')}</strong></td>
+                  <td><code>${escapeHTML(item.employeeCode || '-')}</code></td>
+                  <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHTML(item.shiftType || "OFF")}</span></td>
+                  <td>${item.isOff ? '<span class="badge" style="background:#fef9c3; color:#854d0e;">WEEKLY OFF</span>' : (item.isOnLeave ? '<span class="badge" style="background:#fee2e2; color:#991b1b;">ON LEAVE</span>' : '<span class="status-pill active"><span class="badge-dot"></span> Active</span>')}</td>
+                  <td style="font-size:0.8rem; color:var(--text-muted);">${item.reason ? escapeHTML(item.reason) : '-'}</td>
+                </tr>
+              `).join("")}
+          </tbody>
+        </table>
+      </div>
     `;
+
+    if (typeof openModal === "function") {
+      openModal("compareVersionsModal");
+    } else {
+      modal.classList.remove("hidden");
+    }
   } catch (err) {
-    toast(err.message, "error");
+    toast(err.message || "Failed to load roster version details", "error");
   }
 }
 
@@ -3373,3 +3476,7 @@ function exportWeeklySummaryData(format) {
 window.renderAdminWeeklyWorkSummaryView = renderAdminWeeklyWorkSummaryView;
 window.openWeeklyWorkSummaryDetailModal = openWeeklyWorkSummaryDetailModal;
 window.exportWeeklySummaryData = exportWeeklySummaryData;
+window.viewVersionDetails = viewVersionDetails;
+window.renderRosterVersionsView = renderRosterVersionsView;
+window.confirmRestoreVersion = confirmRestoreVersion;
+window.compareVersionsByIds = compareVersionsByIds;

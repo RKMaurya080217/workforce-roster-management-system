@@ -42,18 +42,34 @@ public class ProfileChangeRequestService {
     public static final Map<String, String> FIELD_CANONICAL_MAP = Map.ofEntries(
             Map.entry("FIRSTNAME", "firstName"),
             Map.entry("FIRST_NAME", "firstName"),
+            Map.entry("NAME", "firstName"),
+            Map.entry("FULLNAME", "firstName"),
+            Map.entry("FULL_NAME", "firstName"),
             Map.entry("LASTNAME", "lastName"),
             Map.entry("LAST_NAME", "lastName"),
             Map.entry("EMAIL", "email"),
+            Map.entry("EMAILADDRESS", "email"),
+            Map.entry("EMAIL_ADDRESS", "email"),
             Map.entry("GENDER", "gender"),
             Map.entry("EMPLOYEECODE", "employeeCode"),
             Map.entry("EMPLOYEE_CODE", "employeeCode"),
             Map.entry("PHONE", "contactNumber"),
             Map.entry("PHONENUMBER", "contactNumber"),
             Map.entry("PHONE_NUMBER", "contactNumber"),
+            Map.entry("PHONE_NO", "contactNumber"),
+            Map.entry("PHONENO", "contactNumber"),
             Map.entry("CONTACT", "contactNumber"),
             Map.entry("CONTACTNUMBER", "contactNumber"),
-            Map.entry("CONTACT_NUMBER", "contactNumber")
+            Map.entry("CONTACT_NUMBER", "contactNumber"),
+            Map.entry("CONTACT_NO", "contactNumber"),
+            Map.entry("MOBILE", "contactNumber"),
+            Map.entry("MOBILENUMBER", "contactNumber"),
+            Map.entry("MOBILE_NUMBER", "contactNumber"),
+            Map.entry("MOBILE_NO", "contactNumber"),
+            Map.entry("MOBILENO", "contactNumber"),
+            Map.entry("CELL", "contactNumber"),
+            Map.entry("CELLPHONE", "contactNumber"),
+            Map.entry("CELL_PHONE", "contactNumber")
     );
 
     public static final Set<String> ALLOWED_FIELDS = Set.of(
@@ -418,6 +434,10 @@ public class ProfileChangeRequestService {
                 if (value.length() > 30) {
                     throw new BusinessException("Contact number must not exceed 30 characters");
                 }
+                String digitsOnly = value.replaceAll("[^0-9]", "");
+                if (digitsOnly.length() < 7 || !value.matches("^[+]?[0-9\\s\\-()]{7,30}$")) {
+                    throw new BusinessException("Please enter a valid mobile number (at least 7 digits)");
+                }
             }
             default -> throw new BusinessException("Unsupported field: " + field);
         }
@@ -468,13 +488,16 @@ public class ProfileChangeRequestService {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
             throw new AccessDeniedException("Authentication required");
         }
-        return userRepository.findByUsername(auth.getName())
+        return userRepository.findByUsernameIgnoreCase(auth.getName())
+                .or(() -> userRepository.findByUsername(auth.getName()))
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + auth.getName()));
     }
 
     private Employee getCurrentEmployee() {
         User user = getCurrentUser();
-        return employeeRepository.findByUserUsername(user.getUsername())
+        return employeeRepository.findByUserUsernameIgnoreCase(user.getUsername())
+                .or(() -> employeeRepository.findByUserUsername(user.getUsername()))
+                .or(() -> employeeRepository.findByEmployeeCodeIgnoreCase(user.getUsername()))
                 .orElseThrow(() -> new ResourceNotFoundException("Employee profile not found for user: " + user.getUsername()));
     }
 

@@ -56,6 +56,12 @@ public class RosterVersionController {
         return ResponseEntity.ok(versionService.getVersionDetails(cycleId, versionNumber));
     }
 
+    @GetMapping("/{id}")
+    @Operation(summary = "Get detailed snapshot data of a specific roster version by ID")
+    public ResponseEntity<RosterVersionResponse> getVersionById(@PathVariable Long id) {
+        return ResponseEntity.ok(versionService.getVersionById(id));
+    }
+
     @GetMapping("/cycle/{cycleId}/rollback-preview/{targetVersionNumber}")
     @Operation(summary = "Preview safety checks and health impact before executing a rollback")
     public ResponseEntity<RollbackPreviewResponse> previewRollback(

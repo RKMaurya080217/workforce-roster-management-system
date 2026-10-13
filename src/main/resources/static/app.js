@@ -6055,6 +6055,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
   const pendingByField = {};
   changeRequests.filter(r => r.status === "PENDING").forEach(r => {
     pendingByField[r.fieldName] = r;
+    const norm = (r.fieldName || "").toLowerCase();
+    if (norm.includes("contact") || norm.includes("mobile") || norm.includes("phone")) {
+      pendingByField["contactNumber"] = r;
+      pendingByField["mobileNumber"] = r;
+      pendingByField["mobile"] = r;
+    }
+    if (norm.includes("first") || norm === "name") {
+      pendingByField["firstName"] = r;
+    }
+    if (norm.includes("last")) {
+      pendingByField["lastName"] = r;
+    }
+    if (norm.includes("email")) {
+      pendingByField["email"] = r;
+    }
   });
 
   return `
@@ -6108,7 +6123,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['firstName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}" onclick="openProfileChangeModal({ fieldName: 'firstName', label: 'First Name', currentValue: '${escapeHTML(firstName)}', type: 'text' })">
                     Request Change
                   </button>
                 `}
@@ -6125,7 +6140,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['lastName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}" onclick="openProfileChangeModal({ fieldName: 'lastName', label: 'Last Name', currentValue: '${escapeHTML(lastName)}', type: 'text' })">
                     Request Change
                   </button>
                 `}
@@ -6142,24 +6157,24 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['email'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-type="email">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-type="email" onclick="openProfileChangeModal({ fieldName: 'email', label: 'Email Address', currentValue: '${escapeHTML(email)}', type: 'email' })">
                     Request Change
                   </button>
                 `}
               </div>
             </div>
 
-            <!-- Contact Number -->
+            <!-- Mobile Number -->
             <div class="profile-field-item">
               <div class="profile-field-meta">
-                <span class="profile-field-label">Contact Number</span>
+                <span class="profile-field-label">Mobile Number</span>
                 <strong class="profile-field-val">${escapeHTML(contactNumber || '-')}</strong>
               </div>
               <div class="profile-field-action">
-                ${pendingByField['contactNumber'] ? `
+                ${(pendingByField['contactNumber'] || pendingByField['mobileNumber'] || pendingByField['mobile']) ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="contactNumber" data-label="Contact Number" data-current="${escapeHTML(contactNumber)}" data-type="phone">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="contactNumber" data-label="Mobile Number" data-current="${escapeHTML(contactNumber)}" data-type="phone" onclick="openProfileChangeModal({ fieldName: 'contactNumber', label: 'Mobile Number', currentValue: '${escapeHTML(contactNumber)}', type: 'phone' })">
                     Request Change
                   </button>
                 `}
@@ -6181,7 +6196,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['gender'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="gender" data-label="Gender" data-current="${escapeHTML(gender)}" data-type="gender">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="gender" data-label="Gender" data-current="${escapeHTML(gender)}" data-type="gender" onclick="openProfileChangeModal({ fieldName: 'gender', label: 'Gender', currentValue: '${escapeHTML(gender)}', type: 'gender' })">
                     Request Change
                   </button>
                 `}
@@ -6212,7 +6227,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['employeeCode'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="employeeCode" data-label="Employee Code" data-current="${escapeHTML(empCode)}">
+                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="employeeCode" data-label="Employee Code" data-current="${escapeHTML(empCode)}" onclick="openProfileChangeModal({ fieldName: 'employeeCode', label: 'Employee Code', currentValue: '${escapeHTML(empCode)}', type: 'text' })">
                     Request Change
                   </button>
                 `}
@@ -10176,46 +10191,93 @@ function openProfileChangeModal({ fieldName, label, currentValue, type }) {
   }, 100);
 }
 
+let isSubmittingProfileChange = false;
+
 async function handleConfirmProfileChange(e) {
-  e.preventDefault();
-  const fieldName = document.getElementById("pcrFormFieldName").value;
+  if (e && typeof e.preventDefault === "function") e.preventDefault();
+  if (isSubmittingProfileChange) return;
+
+  const fieldName = document.getElementById("pcrFormFieldName")?.value || "";
   const reqInput = document.getElementById("pcrFormRequestedValue");
   const requestedValue = reqInput ? reqInput.value.trim() : "";
   const alertBox = document.getElementById("pcrFormAlertBox");
   const submitBtn = document.getElementById("submitProfileChangeBtn");
-  const spinner = submitBtn.querySelector(".spinner");
+  const spinner = submitBtn?.querySelector(".spinner");
+  const submitText = document.getElementById("submitProfileChangeBtnText");
 
-  alertBox.classList.add("hidden");
-  alertBox.textContent = "";
+  if (alertBox) {
+    alertBox.classList.add("hidden");
+    alertBox.textContent = "";
+  }
 
   if (!requestedValue) {
-    alertBox.textContent = "Please enter a requested value.";
-    alertBox.classList.remove("hidden");
+    const msg = "Please enter a requested value.";
+    if (alertBox) {
+      alertBox.textContent = msg;
+      alertBox.classList.remove("hidden");
+    }
+    toast(msg, "error");
+    return;
+  }
+
+  // Pre-validate mobile / phone numbers
+  const lowerField = fieldName.toLowerCase();
+  if (lowerField.includes("phone") || lowerField.includes("contact") || lowerField.includes("mobile")) {
+    const digitsOnly = requestedValue.replace(/[^0-9]/g, "");
+    if (digitsOnly.length < 7 || !/^[+]?[0-9\s\-()]{7,30}$/.test(requestedValue)) {
+      const msg = "Please enter a valid mobile number (at least 7 digits).";
+      if (alertBox) {
+        alertBox.textContent = msg;
+        alertBox.classList.remove("hidden");
+      }
+      toast(msg, "error");
+      return;
+    }
+  }
+
+  // Pre-validate email
+  if (lowerField.includes("email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestedValue)) {
+    const msg = "Please enter a valid email address.";
+    if (alertBox) {
+      alertBox.textContent = msg;
+      alertBox.classList.remove("hidden");
+    }
+    toast(msg, "error");
     return;
   }
 
   try {
-    submitBtn.disabled = true;
+    isSubmittingProfileChange = true;
+    if (submitBtn) submitBtn.disabled = true;
     if (spinner) spinner.classList.remove("hidden");
+    if (submitText) submitText.textContent = "Submitting...";
 
     await apiRequest("/api/profile-change-requests", {
       method: "POST",
       body: { fieldName, requestedValue }
     });
 
-    toast("Profile change request submitted successfully!", "success");
+    toast("Profile change request submitted successfully.", "success");
     broadcastDataMutation("PROFILE_CHANGE_REQUESTED");
     closeModal("profileChangeModal");
     await renderEmployeeWorkspaceView();
   } catch (err) {
-    alertBox.textContent = err.message || "Unable to submit the change request. Please try again.";
-    alertBox.classList.remove("hidden");
-    toast(err.message || "Unable to submit the change request.", "error");
+    const errMsg = err.message || "Unable to submit the change request. Please try again.";
+    if (alertBox) {
+      alertBox.textContent = errMsg;
+      alertBox.classList.remove("hidden");
+    }
+    toast(errMsg, "error");
   } finally {
-    submitBtn.disabled = false;
+    isSubmittingProfileChange = false;
+    if (submitBtn) submitBtn.disabled = false;
     if (spinner) spinner.classList.add("hidden");
+    if (submitText) submitText.textContent = "Request Change";
   }
 }
+
+window.openProfileChangeModal = openProfileChangeModal;
+window.handleConfirmProfileChange = handleConfirmProfileChange;
 
 function openAdminProfileDecisionModal({ id, approve, employeeName, fieldName, oldValue, newValue }) {
   document.getElementById("adminPcrId").value = id;
