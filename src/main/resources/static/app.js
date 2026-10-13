@@ -5240,11 +5240,22 @@ function calculateRosterSummary(list) {
 
 function buildEmployeeRosterWeeks(roster) {
   const todayISO = getKolkataDateString();
-  const currentRange = getWeekRangeForDate(todayISO);
-  const currentWeekKey = `${currentRange.startISO}_${currentRange.endISO}`;
-  const currentWeekLabel = formatWeekLabel(currentRange.startISO, currentRange.endISO);
+  const currentWeekRange = getWeekRangeForDate(todayISO);
+  const currentWeekKey = `${currentWeekRange.startISO}_${currentWeekRange.endISO}`;
+  const currentWeekLabel = formatWeekLabel(currentWeekRange.startISO, currentWeekRange.endISO);
 
   const weekMap = new Map();
+
+  // Always seed with the current calendar week
+  weekMap.set(currentWeekKey, {
+    key: currentWeekKey,
+    startISO: currentWeekRange.startISO,
+    endISO: currentWeekRange.endISO,
+    label: currentWeekLabel,
+    isCurrent: true,
+    assignments: []
+  });
+
   (roster || []).forEach(a => {
     if (!a.rosterDate) return;
     const range = getWeekRangeForDate(a.rosterDate);
@@ -5262,6 +5273,21 @@ function buildEmployeeRosterWeeks(roster) {
     weekMap.get(key).assignments.push(a);
   });
 
+  // Preserve user-selected week if previously navigated
+  if (state.empRosterSelectedWeek && !weekMap.has(state.empRosterSelectedWeek)) {
+    const sParts = state.empRosterSelectedWeek.split("_");
+    if (sParts.length === 2) {
+      weekMap.set(state.empRosterSelectedWeek, {
+        key: state.empRosterSelectedWeek,
+        startISO: sParts[0],
+        endISO: sParts[1],
+        label: formatWeekLabel(sParts[0], sParts[1]),
+        isCurrent: state.empRosterSelectedWeek === currentWeekKey,
+        assignments: []
+      });
+    }
+  }
+
   const availableWeeks = Array.from(weekMap.values()).sort((a, b) => b.startISO.localeCompare(a.startISO));
   const chronologicalWeeks = [...availableWeeks].sort((a, b) => a.startISO.localeCompare(b.startISO));
 
@@ -5274,45 +5300,50 @@ function buildEmployeeRosterWeeks(roster) {
   };
 }
 
+function shiftWeekDate(isoDateStr, offsetDays) {
+  if (!isoDateStr || typeof isoDateStr !== "string") {
+    isoDateStr = getKolkataDateString();
+  }
+  const parts = isoDateStr.substring(0, 10).split("-").map(Number);
+  const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + offsetDays);
+  const yr = dt.getUTCFullYear();
+  const mo = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const da = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yr}-${mo}-${da}`;
+}
+
 function renderWorkspaceRosterHTML(roster, empId) {
   state.employeeRosterViewMode = state.employeeRosterViewMode || "table";
   state.empRosterWeekMode = state.empRosterWeekMode || "current";
   const viewMode = state.employeeRosterViewMode;
   const weekMode = state.empRosterWeekMode;
 
-  const { availableWeeks, chronologicalWeeks, currentWeekRange, currentWeekKey, currentWeekLabel } = buildEmployeeRosterWeeks(roster);
+  const { availableWeeks, currentWeekRange, currentWeekKey, currentWeekLabel } = buildEmployeeRosterWeeks(roster);
 
   // Determine Active Week Key
   let activeWeekKey = currentWeekKey;
   if (weekMode === "selected") {
-    activeWeekKey = state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey);
+    activeWeekKey = state.empRosterSelectedWeek || currentWeekKey;
   } else if (weekMode === "current") {
     activeWeekKey = currentWeekKey;
   }
 
-  // Find active week object or build fallback for current week
+  // Find active week object or fallback safely
   let activeWeek = availableWeeks.find(w => w.key === activeWeekKey);
-  if (!activeWeek && activeWeekKey === currentWeekKey) {
+  if (!activeWeek) {
     activeWeek = {
-      key: currentWeekKey,
+      key: activeWeekKey,
       startISO: currentWeekRange.startISO,
       endISO: currentWeekRange.endISO,
       label: currentWeekLabel,
-      isCurrent: true,
+      isCurrent: activeWeekKey === currentWeekKey,
       assignments: []
     };
-  } else if (!activeWeek && availableWeeks.length > 0) {
-    activeWeek = availableWeeks[0];
-    activeWeekKey = activeWeek.key;
   }
 
   const activeWeekLabel = activeWeek ? activeWeek.label : currentWeekLabel;
   const activeWeekIsCurrent = activeWeekKey === currentWeekKey;
-
-  // Navigation: Previous & Next Week index
-  const activeChronIdx = chronologicalWeeks.findIndex(w => w.key === activeWeekKey);
-  const hasPrev = activeChronIdx > 0;
-  const hasNext = activeChronIdx >= 0 && activeChronIdx < chronologicalWeeks.length - 1;
 
   // Compute entries and summary
   let displayEntries = [];
@@ -5326,6 +5357,8 @@ function renderWorkspaceRosterHTML(roster, empId) {
     displayEntries = filterEmployeeRoster(rawWeekDays);
     summary = calculateRosterSummary(rawWeekDays);
   }
+
+  const dropdownWeeks = availableWeeks.filter(w => (w.assignments && w.assignments.length > 0) || w.isCurrent || w.key === activeWeekKey);
 
   return `
     <div class="card stack-gap">
@@ -5342,7 +5375,7 @@ function renderWorkspaceRosterHTML(roster, empId) {
         </div>
       </div>
 
-      <!-- Compact Week Controls Bar & Inline Summary Strip (Batch 78) -->
+      <!-- Compact Week Controls Bar & Inline Summary Strip (Batch 78/79) -->
       <div class="roster-controls-bar">
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <div class="btn-group" role="group" aria-label="Roster Week View Mode">
@@ -5359,12 +5392,12 @@ function renderWorkspaceRosterHTML(roster, empId) {
 
           ${weekMode !== 'all' ? `
             <div class="roster-nav-controls">
-              <button class="btn btn-secondary btn-sm" id="empPrevWeekBtn" ${!hasPrev ? 'disabled' : ''} title="Previous Week" style="padding:4px 9px; font-weight:bold;">
+              <button class="btn btn-secondary btn-sm" id="empPrevWeekBtn" title="Previous 7 Days" style="padding:4px 9px; font-weight:bold;">
                 ‹
               </button>
               ${weekMode === 'selected' ? `
                 <select id="empWeekSelectDropdown" class="form-control" style="font-size:0.84rem; font-weight:600; padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-main); max-width:240px;">
-                  ${availableWeeks.map(w => `
+                  ${dropdownWeeks.map(w => `
                     <option value="${w.key}" ${w.key === activeWeekKey ? 'selected' : ''}>
                       ${w.label} ${w.isCurrent ? '• Current' : ''}
                     </option>
@@ -5376,7 +5409,7 @@ function renderWorkspaceRosterHTML(roster, empId) {
                   ${activeWeekIsCurrent ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem; font-weight:700;">Current</span>' : ''}
                 </span>
               `}
-              <button class="btn btn-secondary btn-sm" id="empNextWeekBtn" ${!hasNext ? 'disabled' : ''} title="Next Week" style="padding:4px 9px; font-weight:bold;">
+              <button class="btn btn-secondary btn-sm" id="empNextWeekBtn" title="Next 7 Days" style="padding:4px 9px; font-weight:bold;">
                 ›
               </button>
             </div>
@@ -5437,7 +5470,8 @@ function renderWorkspaceRosterHTML(roster, empId) {
 
 function renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, viewMode, availableWeeks) {
   if (weekMode === "all") {
-    if (!availableWeeks || availableWeeks.length === 0) {
+    const publishedWeeks = (availableWeeks || []).filter(w => w.assignments && w.assignments.length > 0);
+    if (!publishedWeeks.length) {
       return `
         <div class="empty-state-box" style="padding:40px 20px;">
           <div class="empty-state-icon" style="font-size:2.5rem;">📅</div>
@@ -5449,7 +5483,7 @@ function renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, v
 
     return `
       <div style="display:flex; flex-direction:column; gap:20px;">
-        ${availableWeeks.map(w => {
+        ${publishedWeeks.map(w => {
           const wDays = getWeekDailyEntries(w.startISO, w.assignments);
           const wFiltered = filterEmployeeRoster(wDays);
           return `
@@ -5473,6 +5507,7 @@ function renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, v
 
   // Current or Selected Week Mode
   if (!activeWeek || (!activeWeek.assignments.length && !displayEntries.some(e => !e.isSynthetic))) {
+    const firstPublishedWeek = (availableWeeks || []).find(w => w.assignments && w.assignments.length > 0);
     return `
       <div class="empty-state-box" style="padding:36px 20px;">
         <div class="empty-state-icon" style="font-size:2.2rem;">📅</div>
@@ -5480,9 +5515,9 @@ function renderEmpRosterBodyHTML(roster, weekMode, activeWeek, displayEntries, v
         <p style="color:var(--text-muted); max-width:380px; margin:6px auto 14px;">
           Assignments for ${activeWeek ? activeWeek.label : 'this period'} have not been published yet.
         </p>
-        ${availableWeeks && availableWeeks.length > 0 ? `
+        ${firstPublishedWeek ? `
           <button class="btn btn-secondary btn-sm" id="empSwitchToAvailableWeekBtn">
-            View Available Week (${availableWeeks[0].label})
+            View Published Week (${firstPublishedWeek.label})
           </button>
         ` : ''}
       </div>
@@ -5538,43 +5573,44 @@ function bindWorkspaceRosterEvents(empId) {
     });
   }
 
-  // Previous & Next Week buttons
+  // Previous & Next Week buttons (exact 7 calendar days shift)
   const prevBtn = document.getElementById("empPrevWeekBtn");
   const nextBtn = document.getElementById("empNextWeekBtn");
   const roster = state.cachedRoster || [];
-  const { chronologicalWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
+  const { currentWeekKey, currentWeekRange, availableWeeks } = buildEmployeeRosterWeeks(roster);
 
   let activeWeekKey = state.empRosterWeekMode === "selected" 
-    ? (state.empRosterSelectedWeek || (chronologicalWeeks[0] ? chronologicalWeeks[0].key : currentWeekKey))
+    ? (state.empRosterSelectedWeek || currentWeekKey)
     : currentWeekKey;
 
-  const activeChronIdx = chronologicalWeeks.findIndex(w => w.key === activeWeekKey);
+  const activeStartISO = activeWeekKey.includes("_") ? activeWeekKey.split("_")[0] : currentWeekRange.startISO;
 
   if (prevBtn) {
     prevBtn.addEventListener("click", () => {
-      if (activeChronIdx > 0) {
-        state.empRosterWeekMode = "selected";
-        state.empRosterSelectedWeek = chronologicalWeeks[activeChronIdx - 1].key;
-        updateEmpRosterContent();
-      }
+      const prevDate = shiftWeekDate(activeStartISO, -7);
+      const prevRange = getWeekRangeForDate(prevDate);
+      state.empRosterWeekMode = "selected";
+      state.empRosterSelectedWeek = `${prevRange.startISO}_${prevRange.endISO}`;
+      updateEmpRosterContent();
     });
   }
 
   if (nextBtn) {
     nextBtn.addEventListener("click", () => {
-      if (activeChronIdx >= 0 && activeChronIdx < chronologicalWeeks.length - 1) {
-        state.empRosterWeekMode = "selected";
-        state.empRosterSelectedWeek = chronologicalWeeks[activeChronIdx + 1].key;
-        updateEmpRosterContent();
-      }
+      const nextDate = shiftWeekDate(activeStartISO, 7);
+      const nextRange = getWeekRangeForDate(nextDate);
+      state.empRosterWeekMode = "selected";
+      state.empRosterSelectedWeek = `${nextRange.startISO}_${nextRange.endISO}`;
+      updateEmpRosterContent();
     });
   }
 
+  const firstPublishedWeek = availableWeeks.find(w => w.assignments && w.assignments.length > 0);
   const switchAvailBtn = document.getElementById("empSwitchToAvailableWeekBtn");
-  if (switchAvailBtn && chronologicalWeeks.length > 0) {
+  if (switchAvailBtn && firstPublishedWeek) {
     switchAvailBtn.addEventListener("click", () => {
       state.empRosterWeekMode = "selected";
-      state.empRosterSelectedWeek = chronologicalWeeks[chronologicalWeeks.length - 1].key;
+      state.empRosterSelectedWeek = firstPublishedWeek.key;
       updateEmpRosterContent();
     });
   }
@@ -5600,14 +5636,24 @@ function bindWorkspaceRosterEvents(empId) {
       state.empRosterSearchTerm = e.target.value;
       const wrapper = document.getElementById("empRosterContentWrapper");
       if (wrapper) {
-        const { availableWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
-        let activeWKey = state.empRosterWeekMode === "selected" 
-          ? (state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey))
-          : currentWeekKey;
-        const activeW = availableWeeks.find(w => w.key === activeWKey);
-        const rawWeekDays = activeW ? getWeekDailyEntries(activeW.startISO, activeW.assignments) : [];
+        const { availableWeeks: aWeeks, currentWeekKey: cKey, currentWeekRange: cRange } = buildEmployeeRosterWeeks(roster);
+        let aKey = state.empRosterWeekMode === "selected" 
+          ? (state.empRosterSelectedWeek || cKey)
+          : cKey;
+        let actW = aWeeks.find(w => w.key === aKey);
+        if (!actW) {
+          actW = {
+            key: aKey,
+            startISO: cRange.startISO,
+            endISO: cRange.endISO,
+            label: formatWeekLabel(cRange.startISO, cRange.endISO),
+            isCurrent: aKey === cKey,
+            assignments: []
+          };
+        }
+        const rawWeekDays = getWeekDailyEntries(actW.startISO, actW.assignments);
         const displayEntries = filterEmployeeRoster(rawWeekDays);
-        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, activeW, displayEntries, state.employeeRosterViewMode, availableWeeks);
+        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, actW, displayEntries, state.employeeRosterViewMode, aWeeks);
         bindEmpRosterCellActions();
       }
     });
@@ -5619,14 +5665,24 @@ function bindWorkspaceRosterEvents(empId) {
       state.empRosterStatusFilter = e.target.value;
       const wrapper = document.getElementById("empRosterContentWrapper");
       if (wrapper) {
-        const { availableWeeks, currentWeekKey } = buildEmployeeRosterWeeks(roster);
-        let activeWKey = state.empRosterWeekMode === "selected" 
-          ? (state.empRosterSelectedWeek || (availableWeeks[0] ? availableWeeks[0].key : currentWeekKey))
-          : currentWeekKey;
-        const activeW = availableWeeks.find(w => w.key === activeWKey);
-        const rawWeekDays = activeW ? getWeekDailyEntries(activeW.startISO, activeW.assignments) : [];
+        const { availableWeeks: aWeeks, currentWeekKey: cKey, currentWeekRange: cRange } = buildEmployeeRosterWeeks(roster);
+        let aKey = state.empRosterWeekMode === "selected" 
+          ? (state.empRosterSelectedWeek || cKey)
+          : cKey;
+        let actW = aWeeks.find(w => w.key === aKey);
+        if (!actW) {
+          actW = {
+            key: aKey,
+            startISO: cRange.startISO,
+            endISO: cRange.endISO,
+            label: formatWeekLabel(cRange.startISO, cRange.endISO),
+            isCurrent: aKey === cKey,
+            assignments: []
+          };
+        }
+        const rawWeekDays = getWeekDailyEntries(actW.startISO, actW.assignments);
         const displayEntries = filterEmployeeRoster(rawWeekDays);
-        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, activeW, displayEntries, state.employeeRosterViewMode, availableWeeks);
+        wrapper.innerHTML = renderEmpRosterBodyHTML(roster, state.empRosterWeekMode, actW, displayEntries, state.employeeRosterViewMode, aWeeks);
         bindEmpRosterCellActions();
       }
     });
