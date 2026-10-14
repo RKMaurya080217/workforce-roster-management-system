@@ -6121,7 +6121,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                   <strong class="profile-field-val">${escapeHTML(firstName || '-')}</strong>
                 ` : `
                   <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-                    <input type="text" id="profileInput_firstName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(firstName)}" placeholder="Enter first name">
+                    <input type="text" id="profileInput_firstName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(firstName)}" placeholder="Enter first name" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btnReqChange_firstName')?.click();}">
                   </div>
                 `}
               </div>
@@ -6129,7 +6129,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['firstName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}" data-input-id="profileInput_firstName" data-type="text">
+                  <button type="button" id="btnReqChange_firstName" class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}" data-input-id="profileInput_firstName" data-type="text" onclick="handleProfileChangeClick(this)">
                     Request Change
                   </button>
                 `}
@@ -6144,7 +6144,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                   <strong class="profile-field-val">${escapeHTML(lastName || '-')}</strong>
                 ` : `
                   <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-                    <input type="text" id="profileInput_lastName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(lastName)}" placeholder="Enter last name">
+                    <input type="text" id="profileInput_lastName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(lastName)}" placeholder="Enter last name" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btnReqChange_lastName')?.click();}">
                   </div>
                 `}
               </div>
@@ -6152,7 +6152,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['lastName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}" data-input-id="profileInput_lastName" data-type="text">
+                  <button type="button" id="btnReqChange_lastName" class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}" data-input-id="profileInput_lastName" data-type="text" onclick="handleProfileChangeClick(this)">
                     Request Change
                   </button>
                 `}
@@ -6167,7 +6167,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                   <strong class="profile-field-val" style="word-break:break-all;">${escapeHTML(email)}</strong>
                 ` : `
                   <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-                    <input type="email" id="profileInput_email" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:240px;" value="${escapeHTML(email)}" placeholder="name@company.com">
+                    <input type="email" id="profileInput_email" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:240px;" value="${escapeHTML(email)}" placeholder="name@company.com" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btnReqChange_email')?.click();}">
                   </div>
                 `}
               </div>
@@ -6175,7 +6175,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['email'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-input-id="profileInput_email" data-type="email">
+                  <button type="button" id="btnReqChange_email" class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-input-id="profileInput_email" data-type="email" onclick="handleProfileChangeClick(this)">
                     Request Change
                   </button>
                 `}
@@ -6190,7 +6190,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                   <strong class="profile-field-val">${escapeHTML(contactNumber || '-')}</strong>
                 ` : `
                   <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-                    <input type="tel" id="profileInput_contactNumber" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(contactNumber)}" placeholder="e.g. +91 9876543210">
+                    <input type="tel" id="profileInput_contactNumber" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(contactNumber)}" placeholder="e.g. +91 9876543210" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('btnReqChange_contactNumber')?.click();}">
                   </div>
                 `}
               </div>
@@ -6198,7 +6198,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${(pendingByField['contactNumber'] || pendingByField['mobileNumber'] || pendingByField['mobile']) ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button type="button" class="btn btn-primary btn-sm btn-req-change" data-field="contactNumber" data-label="Mobile Number" data-current="${escapeHTML(contactNumber)}" data-input-id="profileInput_contactNumber" data-type="phone">
+                  <button type="button" id="btnReqChange_contactNumber" class="btn btn-primary btn-sm btn-req-change" data-field="contactNumber" data-label="Mobile Number" data-current="${escapeHTML(contactNumber)}" data-input-id="profileInput_contactNumber" data-type="phone" onclick="handleProfileChangeClick(this)">
                     Request Change
                   </button>
                 `}
@@ -6220,7 +6220,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 ${pendingByField['gender'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="gender" data-label="Gender" data-current="${escapeHTML(gender)}" data-type="gender" onclick="openProfileChangeModal({ fieldName: 'gender', label: 'Gender', currentValue: '${escapeHTML(gender)}', type: 'gender' })">
+                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="gender" data-label="Gender" data-current="${escapeHTML(gender)}" data-type="gender" onclick="handleProfileChangeClick(this)">
                     Request Change
                   </button>
                 `}
@@ -6241,20 +6241,14 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
           </div>
           <div class="card-body stack-gap">
             
-            <!-- Employee Code -->
+            <!-- Employee Code (Protected: Managed by HR) -->
             <div class="profile-field-item">
               <div class="profile-field-meta">
                 <span class="profile-field-label">Employee Code</span>
                 <strong class="profile-field-val"><code>${escapeHTML(empCode)}</code></strong>
               </div>
               <div class="profile-field-action">
-                ${pendingByField['employeeCode'] ? `
-                  <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
-                ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="employeeCode" data-label="Employee Code" data-current="${escapeHTML(empCode)}" onclick="openProfileChangeModal({ fieldName: 'employeeCode', label: 'Employee Code', currentValue: '${escapeHTML(empCode)}', type: 'text' })">
-                    Request Change
-                  </button>
-                `}
+                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Managed by HR</span>
               </div>
             </div>
 
@@ -6575,31 +6569,10 @@ function bindWorkspaceProfileEvents() {
 
   // Bind Request Change Buttons
   document.querySelectorAll(".btn-req-change").forEach(btn => {
-    btn.addEventListener("click", (e) => {
+    btn.onclick = (e) => {
       if (e) e.preventDefault();
-      const fieldName = btn.getAttribute("data-field");
-      const label = btn.getAttribute("data-label");
-      const currentValue = btn.getAttribute("data-current") || "";
-      const type = btn.getAttribute("data-type") || "text";
-      const inputId = btn.getAttribute("data-input-id");
-      const inlineInput = inputId ? document.getElementById(inputId) : null;
-      const inlineValue = inlineInput ? inlineInput.value.trim() : null;
-
-      // If user typed a new value into the inline input that differs from current value:
-      if (inlineValue !== null && inlineValue !== "" && inlineValue !== currentValue) {
-        submitDirectProfileChange(fieldName, inlineValue, btn);
-        return;
-      }
-
-      // If user didn't change it or left it empty or identical, open the modal with prefill
-      openProfileChangeModal({
-        fieldName,
-        label,
-        currentValue,
-        type,
-        prefillValue: (inlineValue && inlineValue !== currentValue) ? inlineValue : ""
-      });
-    });
+      handleProfileChangeClick(btn);
+    };
   });
 
 
@@ -10194,7 +10167,36 @@ async function handleConfirmUnlockRoster(e) {
 
 let isSubmittingProfileChange = false;
 
-async function submitDirectProfileChange(fieldName, requestedValue, btnElement) {
+async function handleProfileChangeClick(btn) {
+  if (!btn) return;
+  if (isSubmittingProfileChange) return;
+
+  const fieldName = btn.getAttribute("data-field");
+  const label = btn.getAttribute("data-label") || fieldName;
+  const currentValue = (btn.getAttribute("data-current") || "").trim();
+  const type = btn.getAttribute("data-type") || "text";
+  const inputId = btn.getAttribute("data-input-id");
+  const inlineInput = inputId ? document.getElementById(inputId) : null;
+  const inlineValue = inlineInput ? inlineInput.value.trim() : "";
+
+  // If user changed the value inline and it differs from currentValue:
+  if (inlineValue && inlineValue !== currentValue && currentValue !== "-") {
+    await submitDirectProfileChange(fieldName, inlineValue, btn, currentValue);
+    return;
+  }
+
+  // If user clicked without modifying inline or left it identical, open the modal:
+  openProfileChangeModal({
+    fieldName,
+    label,
+    currentValue,
+    type,
+    prefillValue: inlineValue || (currentValue !== "-" ? currentValue : "")
+  });
+}
+window.handleProfileChangeClick = handleProfileChangeClick;
+
+async function submitDirectProfileChange(fieldName, requestedValue, btnElement, currentValRef) {
   if (isSubmittingProfileChange) return;
 
   const lowerField = (fieldName || "").toLowerCase();
@@ -10202,6 +10204,12 @@ async function submitDirectProfileChange(fieldName, requestedValue, btnElement) 
 
   if (!trimmed) {
     toast("Please enter a requested value.", "warning");
+    return;
+  }
+
+  const currentVal = currentValRef !== undefined ? currentValRef : (btnElement ? btnElement.getAttribute("data-current") || "" : "");
+  if (currentVal && trimmed.toLowerCase() === currentVal.trim().toLowerCase() && currentVal !== "-") {
+    toast("Please enter a new value different from your current value.", "warning");
     return;
   }
 
@@ -10217,6 +10225,12 @@ async function submitDirectProfileChange(fieldName, requestedValue, btnElement) 
   // Pre-validate email
   if (lowerField.includes("email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     toast("Please enter a valid email address.", "error");
+    return;
+  }
+
+  // Pre-validate first/last name
+  if ((lowerField.includes("first") || lowerField.includes("last")) && trimmed.length < 2) {
+    toast("Please enter a valid name (at least 2 characters).", "error");
     return;
   }
 
@@ -10237,7 +10251,7 @@ async function submitDirectProfileChange(fieldName, requestedValue, btnElement) 
     broadcastDataMutation("PROFILE_CHANGE_REQUESTED");
     await renderEmployeeWorkspaceView();
   } catch (err) {
-    const errMsg = err.message || "Unable to submit the change request. Please try again.";
+    const errMsg = err.message || "Unable to submit profile change. Please try again.";
     toast(errMsg, "error");
     if (btnElement) {
       btnElement.disabled = false;
