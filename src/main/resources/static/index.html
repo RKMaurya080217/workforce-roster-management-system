@@ -1297,7 +1297,7 @@
         </div>
         <button class="modal-close" data-close-modal="profileChangeModal">&times;</button>
       </div>
-      <form id="profileChangeForm" class="modal-body stack-gap" onsubmit="handleConfirmProfileChange(event); return false;">
+      <form id="profileChangeForm" class="modal-body stack-gap" onsubmit="event.preventDefault(); handleConfirmProfileChange(event);">
         <input type="hidden" id="pcrFormFieldName">
 
         <div class="alert-info-box" style="background-color:#eff6ff; border-color:#bfdbfe; color:#1e40af;">

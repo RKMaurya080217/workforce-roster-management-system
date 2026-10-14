@@ -6115,15 +6115,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
             
             <!-- First Name -->
             <div class="profile-field-item">
-              <div class="profile-field-meta">
+              <div class="profile-field-meta" style="flex:1;">
                 <span class="profile-field-label">First Name</span>
-                <strong class="profile-field-val">${escapeHTML(firstName || '-')}</strong>
+                ${pendingByField['firstName'] ? `
+                  <strong class="profile-field-val">${escapeHTML(firstName || '-')}</strong>
+                ` : `
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                    <input type="text" id="profileInput_firstName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(firstName)}" placeholder="Enter first name">
+                  </div>
+                `}
               </div>
               <div class="profile-field-action">
                 ${pendingByField['firstName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}" onclick="openProfileChangeModal({ fieldName: 'firstName', label: 'First Name', currentValue: '${escapeHTML(firstName)}', type: 'text' })">
+                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="firstName" data-label="First Name" data-current="${escapeHTML(firstName)}" data-input-id="profileInput_firstName" data-type="text">
                     Request Change
                   </button>
                 `}
@@ -6132,15 +6138,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
 
             <!-- Last Name -->
             <div class="profile-field-item">
-              <div class="profile-field-meta">
+              <div class="profile-field-meta" style="flex:1;">
                 <span class="profile-field-label">Last Name</span>
-                <strong class="profile-field-val">${escapeHTML(lastName || '-')}</strong>
+                ${pendingByField['lastName'] ? `
+                  <strong class="profile-field-val">${escapeHTML(lastName || '-')}</strong>
+                ` : `
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                    <input type="text" id="profileInput_lastName" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(lastName)}" placeholder="Enter last name">
+                  </div>
+                `}
               </div>
               <div class="profile-field-action">
                 ${pendingByField['lastName'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}" onclick="openProfileChangeModal({ fieldName: 'lastName', label: 'Last Name', currentValue: '${escapeHTML(lastName)}', type: 'text' })">
+                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="lastName" data-label="Last Name" data-current="${escapeHTML(lastName)}" data-input-id="profileInput_lastName" data-type="text">
                     Request Change
                   </button>
                 `}
@@ -6149,15 +6161,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
 
             <!-- Email Address -->
             <div class="profile-field-item">
-              <div class="profile-field-meta">
+              <div class="profile-field-meta" style="flex:1;">
                 <span class="profile-field-label">Email Address</span>
-                <strong class="profile-field-val" style="word-break:break-all;">${escapeHTML(email)}</strong>
+                ${pendingByField['email'] ? `
+                  <strong class="profile-field-val" style="word-break:break-all;">${escapeHTML(email)}</strong>
+                ` : `
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                    <input type="email" id="profileInput_email" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:240px;" value="${escapeHTML(email)}" placeholder="name@company.com">
+                  </div>
+                `}
               </div>
               <div class="profile-field-action">
                 ${pendingByField['email'] ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-type="email" onclick="openProfileChangeModal({ fieldName: 'email', label: 'Email Address', currentValue: '${escapeHTML(email)}', type: 'email' })">
+                  <button type="button" class="btn btn-secondary btn-sm btn-req-change" data-field="email" data-label="Email Address" data-current="${escapeHTML(email)}" data-input-id="profileInput_email" data-type="email">
                     Request Change
                   </button>
                 `}
@@ -6166,15 +6184,21 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
 
             <!-- Mobile Number -->
             <div class="profile-field-item">
-              <div class="profile-field-meta">
+              <div class="profile-field-meta" style="flex:1;">
                 <span class="profile-field-label">Mobile Number</span>
-                <strong class="profile-field-val">${escapeHTML(contactNumber || '-')}</strong>
+                ${(pendingByField['contactNumber'] || pendingByField['mobileNumber'] || pendingByField['mobile']) ? `
+                  <strong class="profile-field-val">${escapeHTML(contactNumber || '-')}</strong>
+                ` : `
+                  <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
+                    <input type="tel" id="profileInput_contactNumber" class="form-control" style="padding:4px 8px; font-size:0.88rem; font-weight:600; border:1px solid var(--border-light); border-radius:6px; max-width:200px;" value="${escapeHTML(contactNumber)}" placeholder="e.g. +91 9876543210">
+                  </div>
+                `}
               </div>
               <div class="profile-field-action">
                 ${(pendingByField['contactNumber'] || pendingByField['mobileNumber'] || pendingByField['mobile']) ? `
                   <span class="status-pill pending" title="Change request pending admin review">Pending Review</span>
                 ` : `
-                  <button class="btn btn-secondary btn-sm btn-req-change" data-field="contactNumber" data-label="Mobile Number" data-current="${escapeHTML(contactNumber)}" data-type="phone" onclick="openProfileChangeModal({ fieldName: 'contactNumber', label: 'Mobile Number', currentValue: '${escapeHTML(contactNumber)}', type: 'phone' })">
+                  <button type="button" class="btn btn-primary btn-sm btn-req-change" data-field="contactNumber" data-label="Mobile Number" data-current="${escapeHTML(contactNumber)}" data-input-id="profileInput_contactNumber" data-type="phone">
                     Request Change
                   </button>
                 `}
@@ -6551,14 +6575,33 @@ function bindWorkspaceProfileEvents() {
 
   // Bind Request Change Buttons
   document.querySelectorAll(".btn-req-change").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      if (e) e.preventDefault();
       const fieldName = btn.getAttribute("data-field");
       const label = btn.getAttribute("data-label");
-      const currentValue = btn.getAttribute("data-current");
+      const currentValue = btn.getAttribute("data-current") || "";
       const type = btn.getAttribute("data-type") || "text";
-      openProfileChangeModal({ fieldName, label, currentValue, type });
+      const inputId = btn.getAttribute("data-input-id");
+      const inlineInput = inputId ? document.getElementById(inputId) : null;
+      const inlineValue = inlineInput ? inlineInput.value.trim() : null;
+
+      // If user typed a new value into the inline input that differs from current value:
+      if (inlineValue !== null && inlineValue !== "" && inlineValue !== currentValue) {
+        submitDirectProfileChange(fieldName, inlineValue, btn);
+        return;
+      }
+
+      // If user didn't change it or left it empty or identical, open the modal with prefill
+      openProfileChangeModal({
+        fieldName,
+        label,
+        currentValue,
+        type,
+        prefillValue: (inlineValue && inlineValue !== currentValue) ? inlineValue : ""
+      });
     });
   });
+
 
   // Batch 62: Bind profile Web Push controls
   bindProfilePushControls();
@@ -9353,17 +9396,12 @@ function renderProfileApprovalsCategoryBody(requests) {
         </thead>
         <tbody>
           ${requests.map(r => {
-            const empName = `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.employeeCode || `Employee #${r.employeeId}`;
-            const diffs = r.fieldDifferences || {};
-            const keys = Object.keys(diffs);
-            const diffHtml = keys.length ? keys.map(k => `
-              <div style="font-size:0.8rem; margin-bottom:4px;">
-                <strong>${fieldLabels[k] || k}:</strong> 
-                <span class="badge" style="background:#fee2e2; color:#991b1b; text-decoration:line-through;">${escapeHTML(String(diffs[k].oldValue ?? 'Empty'))}</span>
-                ➜ 
-                <span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">${escapeHTML(String(diffs[k].newValue ?? 'Empty'))}</span>
-              </div>
-            `).join("") : `<span class="text-muted">No explicit diffs</span>`;
+            const empName = r.employeeName || `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.employeeCode || `Employee #${r.employeeId || ''}`;
+            const fieldLabel = fieldLabels[r.fieldName] || r.fieldName;
+            const oldVal = r.currentValue ?? (r.fieldDifferences ? r.fieldDifferences[r.fieldName]?.oldValue : '-');
+            const newVal = r.requestedValue ?? (r.fieldDifferences ? r.fieldDifferences[r.fieldName]?.newValue : '-');
+            const reqTime = r.requestedAt || r.createdAt;
+            const timeDisplay = reqTime ? formatDate(reqTime) : '-';
 
             return `
               <tr>
@@ -9371,9 +9409,16 @@ function renderProfileApprovalsCategoryBody(requests) {
                   <strong>${escapeHTML(empName)}</strong>
                   <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHTML(r.employeeCode || '')}</div>
                 </td>
-                <td style="max-width:320px;">${diffHtml}</td>
-                <td style="max-width:220px; font-size:0.82rem;">${escapeHTML(r.reason || '-')}</td>
-                <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${r.createdAt ? r.createdAt.replace('T', ' ').substring(0, 16) : '-'}</td>
+                <td style="max-width:320px;">
+                  <div style="font-size:0.82rem; margin-bottom:2px;">
+                    <strong>${escapeHTML(fieldLabel)}:</strong> 
+                    <span class="badge" style="background:#fee2e2; color:#991b1b; text-decoration:line-through;">${escapeHTML(String(oldVal || '-'))}</span>
+                    ➜ 
+                    <span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">${escapeHTML(String(newVal || '-'))}</span>
+                  </div>
+                </td>
+                <td style="max-width:220px; font-size:0.82rem;">${escapeHTML(r.adminRemarks || r.reason || 'Pending admin review')}</td>
+                <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${timeDisplay}</td>
                 <td><span class="status-pill pending">PENDING</span></td>
                 <td style="text-align:right; white-space:nowrap;">
                   <button class="btn btn-primary btn-xs" data-approve-profile="${r.id}" data-emp="${escapeHTML(empName)}">
@@ -10144,10 +10189,67 @@ async function handleConfirmUnlockRoster(e) {
 
 
 /* ==========================================================================
-   PROFILE CHANGE REQUEST MODAL HANDLERS
+   PROFILE CHANGE REQUEST MODAL HANDLERS & DIRECT SUBMISSION
    ========================================================================== */
 
-function openProfileChangeModal({ fieldName, label, currentValue, type }) {
+let isSubmittingProfileChange = false;
+
+async function submitDirectProfileChange(fieldName, requestedValue, btnElement) {
+  if (isSubmittingProfileChange) return;
+
+  const lowerField = (fieldName || "").toLowerCase();
+  const trimmed = (requestedValue || "").trim();
+
+  if (!trimmed) {
+    toast("Please enter a requested value.", "warning");
+    return;
+  }
+
+  // Pre-validate mobile / phone numbers
+  if (lowerField.includes("phone") || lowerField.includes("contact") || lowerField.includes("mobile")) {
+    const digitsOnly = trimmed.replace(/[^0-9]/g, "");
+    if (digitsOnly.length < 7 || !/^[+]?[0-9\s\-()]{7,30}$/.test(trimmed)) {
+      toast("Please enter a valid mobile number (at least 7 digits).", "error");
+      return;
+    }
+  }
+
+  // Pre-validate email
+  if (lowerField.includes("email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    toast("Please enter a valid email address.", "error");
+    return;
+  }
+
+  const originalContent = btnElement ? btnElement.innerHTML : "";
+  try {
+    isSubmittingProfileChange = true;
+    if (btnElement) {
+      btnElement.disabled = true;
+      btnElement.innerHTML = `<span>Submitting...</span>`;
+    }
+
+    await apiRequest("/api/profile-change-requests", {
+      method: "POST",
+      body: { fieldName, requestedValue: trimmed }
+    });
+
+    toast("Profile change request submitted successfully.", "success");
+    broadcastDataMutation("PROFILE_CHANGE_REQUESTED");
+    await renderEmployeeWorkspaceView();
+  } catch (err) {
+    const errMsg = err.message || "Unable to submit the change request. Please try again.";
+    toast(errMsg, "error");
+    if (btnElement) {
+      btnElement.disabled = false;
+      btnElement.innerHTML = originalContent;
+    }
+  } finally {
+    isSubmittingProfileChange = false;
+  }
+}
+window.submitDirectProfileChange = submitDirectProfileChange;
+
+function openProfileChangeModal({ fieldName, label, currentValue, type, prefillValue }) {
   document.getElementById("pcrFormFieldName").value = fieldName;
   document.getElementById("profileChangeModalTitle").textContent = `Request Change: ${label}`;
   document.getElementById("pcrFormCurrentLabel").textContent = `Current ${label}`;
@@ -10157,8 +10259,12 @@ function openProfileChangeModal({ fieldName, label, currentValue, type }) {
   const container = document.getElementById("pcrFormInputContainer");
   const helper = document.getElementById("pcrFormHelperText");
   const alertBox = document.getElementById("pcrFormAlertBox");
-  alertBox.classList.add("hidden");
-  alertBox.textContent = "";
+  if (alertBox) {
+    alertBox.classList.add("hidden");
+    alertBox.textContent = "";
+  }
+
+  const initialVal = prefillValue !== undefined ? prefillValue : "";
 
   if (type === "gender") {
     container.innerHTML = `
@@ -10170,28 +10276,30 @@ function openProfileChangeModal({ fieldName, label, currentValue, type }) {
     helper.textContent = "Female staff are scheduled for Morning and General shifts only.";
   } else if (type === "email") {
     container.innerHTML = `
-      <input type="email" id="pcrFormRequestedValue" placeholder="e.g. name@company.com" required value="">
+      <input type="email" id="pcrFormRequestedValue" placeholder="e.g. name@company.com" required value="${escapeHTML(initialVal)}">
     `;
     helper.textContent = "Must be a valid email address.";
   } else if (type === "phone") {
     container.innerHTML = `
-      <input type="tel" id="pcrFormRequestedValue" placeholder="e.g. +91 9876543210" required value="">
+      <input type="tel" id="pcrFormRequestedValue" placeholder="e.g. +91 9876543210" required value="${escapeHTML(initialVal)}">
     `;
-    helper.textContent = "Enter valid contact/phone number.";
+    helper.textContent = "Enter valid contact/phone number (at least 7 digits).";
   } else {
     container.innerHTML = `
-      <input type="text" id="pcrFormRequestedValue" placeholder="Enter new ${label}" required value="">
+      <input type="text" id="pcrFormRequestedValue" placeholder="Enter new ${label}" required value="${escapeHTML(initialVal)}">
     `;
     helper.textContent = "";
   }
 
   openModal("profileChangeModal");
   setTimeout(() => {
-    document.getElementById("pcrFormRequestedValue")?.focus();
+    const input = document.getElementById("pcrFormRequestedValue");
+    if (input) {
+      input.focus();
+      if (input.select) input.select();
+    }
   }, 100);
 }
-
-let isSubmittingProfileChange = false;
 
 async function handleConfirmProfileChange(e) {
   if (e && typeof e.preventDefault === "function") e.preventDefault();
@@ -10200,6 +10308,7 @@ async function handleConfirmProfileChange(e) {
   const fieldName = document.getElementById("pcrFormFieldName")?.value || "";
   const reqInput = document.getElementById("pcrFormRequestedValue");
   const requestedValue = reqInput ? reqInput.value.trim() : "";
+  const currentVal = (document.getElementById("pcrFormCurrentValue")?.value || "").trim();
   const alertBox = document.getElementById("pcrFormAlertBox");
   const submitBtn = document.getElementById("submitProfileChangeBtn");
   const spinner = submitBtn?.querySelector(".spinner");
@@ -10216,7 +10325,17 @@ async function handleConfirmProfileChange(e) {
       alertBox.textContent = msg;
       alertBox.classList.remove("hidden");
     }
-    toast(msg, "error");
+    toast(msg, "warning");
+    return;
+  }
+
+  if (currentVal && requestedValue.toLowerCase() === currentVal.toLowerCase() && currentVal !== "-") {
+    const msg = "Please enter a new value different from your current value.";
+    if (alertBox) {
+      alertBox.textContent = msg;
+      alertBox.classList.remove("hidden");
+    }
+    toast(msg, "warning");
     return;
   }
 
@@ -10278,6 +10397,7 @@ async function handleConfirmProfileChange(e) {
 
 window.openProfileChangeModal = openProfileChangeModal;
 window.handleConfirmProfileChange = handleConfirmProfileChange;
+
 
 function openAdminProfileDecisionModal({ id, approve, employeeName, fieldName, oldValue, newValue }) {
   document.getElementById("adminPcrId").value = id;

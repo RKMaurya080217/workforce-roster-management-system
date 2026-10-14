@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -488,16 +489,34 @@ public class ProfileChangeRequestService {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
             throw new AccessDeniedException("Authentication required");
         }
-        return userRepository.findByUsernameIgnoreCase(auth.getName())
-                .or(() -> userRepository.findByUsername(auth.getName()))
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + auth.getName()));
+        String principal = auth.getName();
+        return userRepository.findByUsernameIgnoreCase(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .or(() -> employeeRepository.findByEmployeeCodeIgnoreCase(principal).map(Employee::getUser).filter(java.util.Objects::nonNull))
+                .or(() -> employeeRepository.findByEmailIgnoreCase(principal).map(Employee::getUser).filter(java.util.Objects::nonNull))
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal));
     }
 
     private Employee getCurrentEmployee() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String principal = (auth != null && auth.isAuthenticated()) ? auth.getName() : null;
+
         User user = getCurrentUser();
+        if (user.getEmployee() != null) {
+            return user.getEmployee();
+        }
+        if (user.getId() != null) {
+            Optional<Employee> byUserId = employeeRepository.findByUserId(user.getId());
+            if (byUserId.isPresent()) {
+                return byUserId.get();
+            }
+        }
         return employeeRepository.findByUserUsernameIgnoreCase(user.getUsername())
                 .or(() -> employeeRepository.findByUserUsername(user.getUsername()))
                 .or(() -> employeeRepository.findByEmployeeCodeIgnoreCase(user.getUsername()))
+                .or(() -> employeeRepository.findByEmailIgnoreCase(user.getUsername()))
+                .or(() -> (principal != null) ? employeeRepository.findByEmployeeCodeIgnoreCase(principal) : Optional.empty())
+                .or(() -> (principal != null) ? employeeRepository.findByEmailIgnoreCase(principal) : Optional.empty())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee profile not found for user: " + user.getUsername()));
     }
 
@@ -508,11 +527,18 @@ public class ProfileChangeRequestService {
 
     public ProfileChangeRequestResponse toResponse(ProfileChangeRequest r) {
         Employee e = r.getEmployee();
+        String name = null;
+        if (e != null) {
+            String first = e.getFirstName() != null ? e.getFirstName() : "";
+            String last = e.getLastName() != null ? e.getLastName() : "";
+            name = (first + " " + last).trim();
+            if (name.isEmpty()) name = e.getEmployeeCode();
+        }
         return new ProfileChangeRequestResponse(
                 r.getId(),
                 e != null ? e.getId() : null,
                 e != null ? e.getEmployeeCode() : null,
-                e != null ? (e.getFirstName() + " " + e.getLastName()) : null,
+                name,
                 r.getFieldName(),
                 r.getCurrentValue(),
                 r.getRequestedValue(),
@@ -523,3 +549,4 @@ public class ProfileChangeRequestService {
         );
     }
 }
+
