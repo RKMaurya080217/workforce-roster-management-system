@@ -10180,7 +10180,7 @@ async function handleProfileChangeClick(btn) {
   const inlineValue = inlineInput ? inlineInput.value.trim() : "";
 
   // If user changed the value inline and it differs from currentValue:
-  if (inlineValue && inlineValue !== currentValue && currentValue !== "-") {
+  if (inlineValue && inlineValue.toLowerCase() !== currentValue.toLowerCase()) {
     await submitDirectProfileChange(fieldName, inlineValue, btn, currentValue);
     return;
   }
