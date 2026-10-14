@@ -5,15 +5,17 @@ import com.weeklyroster.dto.response.SystemHealthResponse;
 import com.weeklyroster.repository.EmployeeRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
 import com.weeklyroster.repository.ShiftRepository;
+import com.weeklyroster.service.email.EmailService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -24,9 +26,8 @@ public class SystemHealthService {
     private final ShiftRepository shiftRepository;
     private final RosterCycleRepository cycleRepository;
     private final SseEmitterService sseEmitterService;
-
-    @Value("${spring.mail.password:${MAIL_APP_PASSWORD:}}")
-    private String mailPassword;
+    private final EmailService emailService;
+    private final Environment environment;
 
     @Value("${roster.auto-generation.timezone:Asia/Kolkata}")
     private String timezone;
@@ -36,12 +37,16 @@ public class SystemHealthService {
                                EmployeeRepository employeeRepository,
                                ShiftRepository shiftRepository,
                                RosterCycleRepository cycleRepository,
-                               @Autowired(required = false) SseEmitterService sseEmitterService) {
+                               @Autowired(required = false) SseEmitterService sseEmitterService,
+                               @Autowired(required = false) EmailService emailService,
+                               Environment environment) {
         this.dataSource = dataSource;
         this.employeeRepository = employeeRepository;
         this.shiftRepository = shiftRepository;
         this.cycleRepository = cycleRepository;
         this.sseEmitterService = sseEmitterService;
+        this.emailService = emailService;
+        this.environment = environment;
     }
 
     public SystemHealthResponse getSystemHealth() {
@@ -54,10 +59,19 @@ public class SystemHealthService {
         long freeMem = Runtime.getRuntime().freeMemory() / (1024 * 1024);
         components.add(new ComponentHealth("Backend Runtime", "HEALTHY", "JVM 17+ active in timezone " + timezone, "Max Memory: " + maxMem + " MB, Free: " + freeMem + " MB"));
 
-        // 2. Database Connectivity
+        // 2. Database Connectivity & Dynamic Engine Identification
+        String dbType = "UNKNOWN";
         try (Connection conn = dataSource.getConnection()) {
             if (conn.isValid(2)) {
-                components.add(new ComponentHealth("Database Connection", "HEALTHY", "MySQL 8.0+ Connection Active", "Catalog: " + conn.getCatalog()));
+                String productName = conn.getMetaData().getDatabaseProductName();
+                String productVersion = conn.getMetaData().getDatabaseProductVersion();
+                if (productName != null && productName.toLowerCase().contains("sqlite")) {
+                    dbType = "SQLite (Local File)";
+                    components.add(new ComponentHealth("Database Connection", "HEALTHY", "SQLite 3 Local Database Active", "Engine: " + productName + " " + productVersion));
+                } else {
+                    dbType = "MySQL (Production)";
+                    components.add(new ComponentHealth("Database Connection", "HEALTHY", "MySQL Production Database Active", "Catalog: " + conn.getCatalog() + " (" + productVersion + ")"));
+                }
             } else {
                 hasFailure = true;
                 components.add(new ComponentHealth("Database Connection", "FAILED", "Connection validation failed", "Timeout"));
@@ -89,12 +103,19 @@ public class SystemHealthService {
         int sseConnections = sseEmitterService != null ? sseEmitterService.getActiveConnectionCount() : 0;
         components.add(new ComponentHealth("Real-Time Notification SSE", "HEALTHY", "Server-Sent Events emitter active", "Active browser streams: " + sseConnections));
 
-        // 5. Email Distribution Engine
-        if (mailPassword != null && !mailPassword.isBlank()) {
-            components.add(new ComponentHealth("Email Distribution Engine", "HEALTHY", "Gmail SMTP configured for automated dispatch", "Production Mode"));
+        // 5. Transactional Email Distribution Engine
+        String emailProviderStatus = "Unconfigured";
+        if (emailService != null) {
+            String activeProvider = emailService.getActiveProviderName();
+            boolean isConfigured = emailService.isConfigured();
+            emailProviderStatus = activeProvider + (isConfigured ? " (Configured)" : " (Standby)");
+            if (isConfigured) {
+                components.add(new ComponentHealth("Email Distribution Engine", "HEALTHY", activeProvider + " Transactional Email Provider Active", "Status: Ready for dispatch"));
+            } else {
+                components.add(new ComponentHealth("Email Distribution Engine", "HEALTHY", activeProvider + " Standby (Simulation/Logging active)", "Status: Simulation Active"));
+            }
         } else {
-            hasWarning = true;
-            components.add(new ComponentHealth("Email Distribution Engine", "WARNING", "MAIL_APP_PASSWORD unset (Simulation & Logging Mode active)", "Simulation Active"));
+            components.add(new ComponentHealth("Email Distribution Engine", "WARNING", "Email service uninitialized", "Inactive"));
         }
 
         // 6. Roster Scheduling Engine & Active Cycles
@@ -108,7 +129,22 @@ public class SystemHealthService {
         }
         components.add(new ComponentHealth("Roster Scheduling Engine", "HEALTHY", "Automated Constraint Solver ready", "Total historical cycles: " + cycleCount));
 
+        // Active Profile resolution
+        String[] activeProfiles = environment.getActiveProfiles();
+        String currentProfile = (activeProfiles != null && activeProfiles.length > 0)
+                ? String.join(", ", activeProfiles)
+                : "local";
+
         String overall = hasFailure ? "FAILED" : (hasWarning ? "WARNING" : "HEALTHY");
-        return new SystemHealthResponse(overall, LocalDateTime.now(), "1.0.0", components);
+        return new SystemHealthResponse(
+                overall,
+                LocalDateTime.now(),
+                "2.8.5",
+                currentProfile,
+                dbType,
+                emailProviderStatus,
+                timezone,
+                components
+        );
     }
 }

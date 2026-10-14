@@ -101,7 +101,7 @@ public class AuthService {
 		}
 
 		String username = authentication.getName();
-		User user = userRepository.findByUsername(username)
+		User user = userRepository.findByUsernameIgnoreCase(username)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
 
 		if (!request.newPassword().equals(request.confirmPassword())) {

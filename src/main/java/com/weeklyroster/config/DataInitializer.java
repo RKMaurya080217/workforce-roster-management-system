@@ -23,8 +23,10 @@ public class DataInitializer {
 	@Bean
 	CommandLineRunner seedData(UserRepository userRepository, EmployeeRepository employeeRepository,
 			ShiftRepository shiftRepository, PasswordEncoder passwordEncoder,
-			ShiftCapacityProperties capacityProperties, CsvEmployeeLoader csvEmployeeLoader) {
+			ShiftCapacityProperties capacityProperties, CsvEmployeeLoader csvEmployeeLoader,
+			org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
 		return args -> {
+			fixSqliteAuditActionCheckConstraint(jdbcTemplate);
 			System.out.println(">>> SEED DATA EXECUTING <<<");
 			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
 				var existingOpt = shiftRepository.findByShiftType(type);
@@ -56,20 +58,24 @@ public class DataInitializer {
 				return shiftRepository.save(shift);
 			});
 
-			String adminUsername = System.getenv().getOrDefault("ADMIN_USERNAME", "Admin");
+			List<User> existingAdmins = userRepository.findByRole(Role.ROLE_ADMIN);
+			String adminUsername = System.getenv().getOrDefault("ADMIN_USERNAME", "admin").toLowerCase();
 			String adminPassword = System.getenv().getOrDefault("ADMIN_PASSWORD", "Admin@123");
-
-			userRepository.findByUsername(adminUsername).ifPresentOrElse(admin -> {
-				admin.setPassword(passwordEncoder.encode(adminPassword));
-				userRepository.save(admin);
-			}, () -> {
+			if (existingAdmins.isEmpty()) {
 				User admin = new User();
 				admin.setUsername(adminUsername);
 				admin.setPassword(passwordEncoder.encode(adminPassword));
 				admin.setRole(Role.ROLE_ADMIN);
 				admin.setEnabled(true);
 				userRepository.save(admin);
-			});
+			} else {
+				User primaryAdmin = existingAdmins.get(0);
+				if (!adminUsername.equalsIgnoreCase(primaryAdmin.getUsername())) {
+					System.out.println(">>> Normalizing existing admin username from '" + primaryAdmin.getUsername() + "' to '" + adminUsername + "' <<<");
+					primaryAdmin.setUsername(adminUsername);
+					userRepository.save(primaryAdmin);
+				}
+			}
 
 			List<SeedEmployee> employees = csvEmployeeLoader.loadEmployees();
 			for (SeedEmployee seed : employees) {
@@ -132,6 +138,52 @@ public class DataInitializer {
 			shift.setStartTime(java.time.LocalTime.of(22, 0));
 			shift.setEndTime(java.time.LocalTime.of(7, 0));
 			shift.setOvernight(true);
+		}
+	}
+
+	private void fixSqliteAuditActionCheckConstraint(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+		try {
+			String driverName = jdbcTemplate.execute((java.sql.Connection conn) -> conn.getMetaData().getDriverName());
+			if (driverName == null || !driverName.toLowerCase().contains("sqlite")) {
+				return;
+			}
+			List<String> ddlList = jdbcTemplate.query(
+					"SELECT sql FROM sqlite_master WHERE type='table' AND name='system_audit_logs'",
+					(rs, rowNum) -> rs.getString("sql"));
+			if (ddlList.isEmpty()) {
+				return;
+			}
+			String ddl = ddlList.get(0);
+			if (ddl == null) {
+				return;
+			}
+			if (ddl.contains("audit_action") && ddl.toLowerCase().contains("check") && !ddl.contains("ADMIN_RECOVERY_REQUESTED")) {
+				System.out.println(">>> Migrating SQLite system_audit_logs to remove restrictive CHECK constraint <<<");
+				List<String> indexSqls = jdbcTemplate.query(
+						"SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='system_audit_logs' AND sql IS NOT NULL",
+						(rs, rowNum) -> rs.getString("sql"));
+
+				jdbcTemplate.execute("PRAGMA foreign_keys = OFF;");
+				jdbcTemplate.execute("DROP TABLE IF EXISTS system_audit_logs_backup;");
+				jdbcTemplate.execute("CREATE TABLE system_audit_logs_backup AS SELECT * FROM system_audit_logs;");
+				jdbcTemplate.execute("DROP TABLE system_audit_logs;");
+
+				String cleanDdl = ddl.replaceAll("(?is)\\s*check\\s*\\(\\s*audit_action\\s+in\\s*\\([^)]*\\)\\s*\\)", "");
+				jdbcTemplate.execute(cleanDdl);
+				jdbcTemplate.execute("INSERT INTO system_audit_logs SELECT * FROM system_audit_logs_backup;");
+				jdbcTemplate.execute("DROP TABLE system_audit_logs_backup;");
+
+				for (String idxSql : indexSqls) {
+					try {
+						jdbcTemplate.execute(idxSql);
+					} catch (Exception ignored) {
+					}
+				}
+				jdbcTemplate.execute("PRAGMA foreign_keys = ON;");
+				System.out.println(">>> SQLite system_audit_logs constraint migration completed successfully! <<<");
+			}
+		} catch (Exception e) {
+			System.err.println("Notice: SQLite check constraint migration skipped or encountered: " + e.getMessage());
 		}
 	}
 }

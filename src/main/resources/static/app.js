@@ -600,6 +600,10 @@ function bindGlobalEvents() {
         btnText.textContent = isAdmin ? "Sign In as Admin" : "Sign In as Employee";
       }
     }
+    const forgotPassLink = document.getElementById("adminForgotPasswordLink");
+    if (forgotPassLink) {
+      forgotPassLink.style.display = isAdmin ? "inline" : "none";
+    }
   }
 
   if (dom.roleAdmin) {
@@ -1381,6 +1385,10 @@ function showWorkspace() {
   }
 }
 
+/* ==========================================================================
+   ADMIN PROFILE & SETTINGS (BATCH 87)
+   ========================================================================== */
+
 function openAdminProfileModal() {
   const username = (state.profile && state.profile.username) || "admin";
   const name = (state.profile && state.profile.employeeName) || "System Administrator";
@@ -1396,9 +1404,471 @@ function openAdminProfileModal() {
   const avatarEl = document.getElementById("adminProfileModalAvatar");
   if (avatarEl) avatarEl.textContent = initials;
 
+  switchAdminProfileTab("overview");
   openModal("adminProfileModal");
 }
 window.openAdminProfileModal = openAdminProfileModal;
+
+function switchAdminProfileTab(tab) {
+  const tabs = {
+    overview: { btn: "tabAdminOverviewBtn", pane: "adminProfileOverviewTab" },
+    password: { btn: "tabAdminPassBtn", pane: "adminProfilePasswordTab" },
+    username: { btn: "tabAdminUsernameBtn", pane: "adminProfileUsernameTab" },
+    health: { btn: "tabAdminHealthBtn", pane: "adminProfileHealthTab" }
+  };
+
+  const fb = document.getElementById("adminProfileFeedback");
+  if (fb) fb.className = "hidden";
+
+  Object.entries(tabs).forEach(([k, v]) => {
+    const b = document.getElementById(v.btn);
+    const p = document.getElementById(v.pane);
+    if (k === tab) {
+      if (b) b.className = "btn btn-sm btn-primary";
+      if (p) p.classList.remove("hidden");
+    } else {
+      if (b) b.className = "btn btn-sm btn-ghost";
+      if (p) p.classList.add("hidden");
+    }
+  });
+
+  if (tab === "health") {
+    loadAdminSystemHealth();
+  }
+}
+window.switchAdminProfileTab = switchAdminProfileTab;
+
+async function handleAdminChangePasswordSubmit(e) {
+  if (e) e.preventDefault();
+  const curPassInput = document.getElementById("adminCurrentPasswordInput");
+  const newPassInput = document.getElementById("adminNewPasswordInput");
+  const confirmPassInput = document.getElementById("adminConfirmPasswordInput");
+  const btn = document.getElementById("btnAdminChangePasswordSubmit");
+
+  const currentPassword = curPassInput ? curPassInput.value : "";
+  const newPassword = newPassInput ? newPassInput.value : "";
+  const confirmPassword = confirmPassInput ? confirmPassInput.value : "";
+
+  if (!currentPassword) {
+    toast("Current password is required", "error");
+    return;
+  }
+  if (!newPassword || newPassword.length < 6) {
+    toast("New password must be at least 6 characters", "error");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    toast("New passwords do not match", "error");
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await apiRequest("/api/admin/account/change-password", {
+      method: "POST",
+      body: { currentPassword, newPassword, confirmPassword }
+    });
+
+    toast(res && res.message ? res.message : "Administrator password updated successfully!", "success");
+    if (curPassInput) curPassInput.value = "";
+    if (newPassInput) newPassInput.value = "";
+    if (confirmPassInput) confirmPassInput.value = "";
+    switchAdminProfileTab("overview");
+  } catch (err) {
+    toast(err.message || "Failed to update admin password", "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleAdminChangePasswordSubmit = handleAdminChangePasswordSubmit;
+
+async function handleAdminChangeUsernameSubmit(e) {
+  if (e) e.preventDefault();
+  const curPassInput = document.getElementById("adminChangeUserCurrentPass");
+  const newNameInput = document.getElementById("adminChangeUserNewName");
+  const btn = document.getElementById("btnAdminChangeUsernameSubmit");
+
+  const currentPassword = curPassInput ? curPassInput.value : "";
+  const newUsername = (newNameInput ? newNameInput.value : "").trim();
+
+  if (!currentPassword) {
+    toast("Current password is required to change username", "error");
+    return;
+  }
+  if (!newUsername || newUsername.length < 3) {
+    toast("New username must be at least 3 characters", "error");
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await apiRequest("/api/admin/account/change-username", {
+      method: "POST",
+      body: { currentPassword, newUsername }
+    });
+
+    toast(res && res.message ? res.message : `Admin username updated to: ${newUsername}`, "success");
+
+    // Update state and UI elements
+    if (state.profile) {
+      state.profile.username = newUsername;
+    }
+    const userEl = document.getElementById("adminProfileModalUsername");
+    if (userEl) userEl.textContent = newUsername;
+    const sidebarUser = document.getElementById("sidebarUsername");
+    if (sidebarUser) sidebarUser.textContent = newUsername;
+    const initials = newUsername.substring(0, 2).toUpperCase();
+    const avatarEl = document.getElementById("adminProfileModalAvatar");
+    if (avatarEl) avatarEl.textContent = initials;
+    const sidebarAvatar = document.getElementById("sidebarUserAvatar");
+    if (sidebarAvatar) sidebarAvatar.textContent = initials;
+
+    if (curPassInput) curPassInput.value = "";
+    if (newNameInput) newNameInput.value = "";
+    switchAdminProfileTab("overview");
+  } catch (err) {
+    toast(err.message || "Failed to update admin username", "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleAdminChangeUsernameSubmit = handleAdminChangeUsernameSubmit;
+
+async function loadAdminSystemHealth() {
+  const container = document.getElementById("adminSystemHealthBody");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:center; gap:8px; padding:16px;">
+      <div class="spinner"></div>
+      <span style="color:var(--text-muted); font-size:0.85rem;">Querying live system diagnostics...</span>
+    </div>
+  `;
+
+  try {
+    const h = await apiRequest("/api/admin/system-health");
+    const isSqlite = (h.databaseEngine || "").toLowerCase().includes("sqlite");
+    const isProd = (h.activeProfile || "").toLowerCase().includes("prod");
+
+    container.innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:0.82rem;">
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Database Engine</div>
+          <div style="margin-top:4px; font-weight:700; color:${isSqlite ? '#0284c7' : '#059669'}; display:flex; align-items:center; gap:6px;">
+            <span>${isSqlite ? '🗄️' : '🐬'}</span>
+            <span>${h.databaseEngine || 'Configured Database'}</span>
+          </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Active Environment</div>
+          <div style="margin-top:4px; font-weight:700; color:${isProd ? '#16a34a' : '#d97706'}; display:flex; align-items:center; gap:6px;">
+            <span>${isProd ? '☁️' : '💻'}</span>
+            <span>${(h.activeProfile || 'local').toUpperCase()}</span>
+          </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Email Notification Dispatch</div>
+          <div style="margin-top:4px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <span>📬</span>
+            <span>${h.emailProvider || 'Brevo Email Service'}</span>
+          </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Server Timezone</div>
+          <div style="margin-top:4px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <span>🕒</span>
+            <span>${h.serverTimezone || 'Asia/Kolkata'}</span>
+          </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Workforce Records</div>
+          <div style="margin-top:4px; font-weight:600; color:var(--text-primary);">
+            <strong>${h.activeEmployees != null ? h.activeEmployees : '-'}</strong> Active Staff / <strong>${h.totalEmployees != null ? h.totalEmployees : '-'}</strong> Total
+          </div>
+        </div>
+
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px;">
+          <div style="color:var(--text-muted); font-size:0.75rem; text-transform:uppercase; font-weight:700;">Roster Schedules</div>
+          <div style="margin-top:4px; font-weight:600; color:var(--text-primary);">
+            <strong>${h.publishedRosters != null ? h.publishedRosters : '-'}</strong> Published / <strong>${h.lockedRosters != null ? h.lockedRosters : '-'}</strong> Locked
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--text-muted); border-top:1px solid #e2e8f0; padding-top:8px;">
+        <span>Release Version: <strong>v${h.systemVersion || '2.8.5'}</strong></span>
+        <span>Checked: <strong>${new Date().toLocaleTimeString()}</strong></span>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `
+      <div style="padding:10px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#991b1b;">
+        Failed to load system diagnostics: ${err.message || 'Unknown error'}
+      </div>
+    `;
+  }
+}
+window.loadAdminSystemHealth = loadAdminSystemHealth;
+
+/* ==========================================================================
+   ADMIN ACCOUNT RECOVERY (BATCH 87)
+   ========================================================================== */
+
+let adminRecoveryCooldownTimer = null;
+let adminRecoveryCooldownSeconds = 0;
+
+function openAdminRecoveryModal() {
+  const otpInput = document.getElementById("adminRecoveryOtpCode");
+  const newPassInput = document.getElementById("adminRecoveryNewPass");
+  const confirmPassInput = document.getElementById("adminRecoveryConfirmPass");
+  const emKeyInput = document.getElementById("adminEmergencyKeyInput");
+  const emUserInput = document.getElementById("adminEmergencyTargetUsername");
+  const emPassInput = document.getElementById("adminEmergencyNewPass");
+  const emConfirmPassInput = document.getElementById("adminEmergencyConfirmPass");
+  const alertBox = document.getElementById("adminRecoveryAlertBox");
+
+  if (otpInput) otpInput.value = "";
+  if (newPassInput) newPassInput.value = "";
+  if (confirmPassInput) confirmPassInput.value = "";
+  if (emKeyInput) emKeyInput.value = "";
+  if (emUserInput) emUserInput.value = "admin";
+  if (emPassInput) emPassInput.value = "";
+  if (emConfirmPassInput) emConfirmPassInput.value = "";
+  if (alertBox) {
+    alertBox.className = "hidden";
+    alertBox.innerHTML = "";
+  }
+
+  switchAdminRecoveryTab("email");
+  openModal("adminRecoveryModal");
+}
+window.openAdminRecoveryModal = openAdminRecoveryModal;
+
+function closeAdminRecoveryModal() {
+  closeModal("adminRecoveryModal");
+}
+window.closeAdminRecoveryModal = closeAdminRecoveryModal;
+
+function switchAdminRecoveryTab(tab) {
+  const emailTab = document.getElementById("adminRecoveryEmailTab");
+  const emTab = document.getElementById("adminRecoveryEmergencyTab");
+  const emailBtn = document.getElementById("tabAdminRecoveryEmailBtn");
+  const emBtn = document.getElementById("tabAdminRecoveryEmergencyBtn");
+  const alertBox = document.getElementById("adminRecoveryAlertBox");
+
+  if (alertBox) alertBox.className = "hidden";
+
+  if (tab === "emergency") {
+    if (emailTab) emailTab.classList.add("hidden");
+    if (emTab) emTab.classList.remove("hidden");
+    if (emailBtn) emailBtn.className = "btn btn-sm btn-ghost";
+    if (emBtn) emBtn.className = "btn btn-sm btn-danger";
+  } else {
+    if (emailTab) emailTab.classList.remove("hidden");
+    if (emTab) emTab.classList.add("hidden");
+    if (emailBtn) emailBtn.className = "btn btn-sm btn-primary";
+    if (emBtn) emBtn.className = "btn btn-sm btn-ghost";
+  }
+}
+window.switchAdminRecoveryTab = switchAdminRecoveryTab;
+
+function setAdminRecoveryAlert(msg, type = "info") {
+  const alertBox = document.getElementById("adminRecoveryAlertBox");
+  if (!alertBox) return;
+  alertBox.className = "";
+  if (type === "error") {
+    alertBox.style.background = "#fee2e2";
+    alertBox.style.color = "#991b1b";
+    alertBox.style.border = "1px solid #f87171";
+  } else if (type === "success") {
+    alertBox.style.background = "#dcfce7";
+    alertBox.style.color = "#166534";
+    alertBox.style.border = "1px solid #86efac";
+  } else {
+    alertBox.style.background = "#e0f2fe";
+    alertBox.style.color = "#075985";
+    alertBox.style.border = "1px solid #7dd3fc";
+  }
+  alertBox.innerHTML = msg;
+}
+
+async function handleAdminSendOtp() {
+  const emailInput = document.getElementById("adminRecoveryEmailInput");
+  const btn = document.getElementById("btnAdminSendOtp");
+  const cooldownText = document.getElementById("adminOtpCooldownText");
+
+  const email = (emailInput ? emailInput.value : "").trim();
+  if (!email || !email.includes("@")) {
+    setAdminRecoveryAlert("Please enter a valid administrator email address.", "error");
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setAdminRecoveryAlert("Dispatching secure one-time code to admin email...", "info");
+
+  try {
+    const res = await apiRequest("/api/auth/admin/recovery/request", {
+      method: "POST",
+      body: { loginOrEmail: email },
+      auth: false
+    });
+
+    setAdminRecoveryAlert((res && res.message) ? res.message : "A 6-digit OTP code has been dispatched to your email (valid for 10 minutes).", "success");
+    toast("Recovery code sent to " + email, "success");
+
+    // Start 60s cooldown timer
+    adminRecoveryCooldownSeconds = 60;
+    if (cooldownText) cooldownText.textContent = `Please wait ${adminRecoveryCooldownSeconds}s before requesting a new code.`;
+    if (adminRecoveryCooldownTimer) clearInterval(adminRecoveryCooldownTimer);
+    adminRecoveryCooldownTimer = setInterval(() => {
+      adminRecoveryCooldownSeconds--;
+      if (adminRecoveryCooldownSeconds <= 0) {
+        clearInterval(adminRecoveryCooldownTimer);
+        adminRecoveryCooldownTimer = null;
+        if (btn) btn.disabled = false;
+        if (cooldownText) cooldownText.textContent = "OTP rate limit: 60s cooldown between requests.";
+      } else {
+        if (cooldownText) cooldownText.textContent = `Please wait ${adminRecoveryCooldownSeconds}s before requesting a new code.`;
+      }
+    }, 1000);
+
+    const otpInput = document.getElementById("adminRecoveryOtpCode");
+    if (otpInput) otpInput.focus();
+
+  } catch (err) {
+    setAdminRecoveryAlert(err.message || "Failed to dispatch recovery code.", "error");
+    toast(err.message || "Failed to send OTP", "error");
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleAdminSendOtp = handleAdminSendOtp;
+
+async function handleAdminVerifyOtp() {
+  const emailInput = document.getElementById("adminRecoveryEmailInput");
+  const otpInput = document.getElementById("adminRecoveryOtpCode");
+  const passInput = document.getElementById("adminRecoveryNewPass");
+  const confirmInput = document.getElementById("adminRecoveryConfirmPass");
+  const btn = document.getElementById("btnAdminVerifyOtp");
+
+  const email = (emailInput ? emailInput.value : "").trim();
+  const otpCode = (otpInput ? otpInput.value : "").trim();
+  const newPassword = (passInput ? passInput.value : "");
+  const confirmPassword = (confirmInput ? confirmInput.value : "");
+
+  if (!email) {
+    setAdminRecoveryAlert("Please enter the administrator email.", "error");
+    return;
+  }
+  if (!otpCode || otpCode.length !== 6) {
+    setAdminRecoveryAlert("Please enter the complete 6-digit verification code.", "error");
+    if (otpInput) otpInput.focus();
+    return;
+  }
+  if (!newPassword || newPassword.length < 6) {
+    setAdminRecoveryAlert("New password must be at least 6 characters long.", "error");
+    if (passInput) passInput.focus();
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    setAdminRecoveryAlert("New password and confirm password do not match.", "error");
+    if (confirmInput) confirmInput.focus();
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setAdminRecoveryAlert("Verifying code and securely updating administrator password...", "info");
+
+  try {
+    const res = await apiRequest("/api/auth/admin/recovery/verify-reset", {
+      method: "POST",
+      body: { loginOrEmail: email, otpCode, newPassword, confirmPassword },
+      auth: false
+    });
+
+    setAdminRecoveryAlert("Admin password reset successfully! Redirecting to login...", "success");
+    toast("Admin password reset successfully!", "success");
+
+    const targetUser = (res && res.username) ? res.username : "admin";
+    setTimeout(() => {
+      closeAdminRecoveryModal();
+      if (dom.loginUsername) dom.loginUsername.value = targetUser;
+      if (dom.loginPassword) {
+        dom.loginPassword.value = "";
+        dom.loginPassword.focus();
+      }
+    }, 1500);
+
+  } catch (err) {
+    setAdminRecoveryAlert(err.message || "Verification failed. Invalid or expired OTP code.", "error");
+    toast(err.message || "Recovery verification failed", "error");
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleAdminVerifyOtp = handleAdminVerifyOtp;
+
+async function handleAdminEmergencyReset() {
+  const keyInput = document.getElementById("adminEmergencyKeyInput");
+  const userInput = document.getElementById("adminEmergencyTargetUsername");
+  const passInput = document.getElementById("adminEmergencyNewPass");
+  const confirmInput = document.getElementById("adminEmergencyConfirmPass");
+  const btn = document.getElementById("btnAdminEmergencyReset");
+
+  const emergencyKey = (keyInput ? keyInput.value : "").trim();
+  const targetUsername = (userInput ? userInput.value : "").trim() || "admin";
+  const newPassword = (passInput ? passInput.value : "");
+  const confirmPassword = (confirmInput ? confirmInput.value : "");
+
+  if (!emergencyKey) {
+    setAdminRecoveryAlert("Please provide the configured emergency recovery key.", "error");
+    if (keyInput) keyInput.focus();
+    return;
+  }
+  if (!newPassword || newPassword.length < 6) {
+    setAdminRecoveryAlert("New password must be at least 6 characters long.", "error");
+    if (passInput) passInput.focus();
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    setAdminRecoveryAlert("New password and confirm password do not match.", "error");
+    if (confirmInput) confirmInput.focus();
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setAdminRecoveryAlert("Executing emergency credential override...", "info");
+
+  try {
+    const res = await apiRequest("/api/auth/admin/recovery/emergency", {
+      method: "POST",
+      body: { recoveryKey: emergencyKey, targetUsername, newPassword, confirmPassword },
+      auth: false
+    });
+
+    setAdminRecoveryAlert((res && res.message) ? res.message : "Emergency credential recovery successful! Redirecting to login...", "success");
+    toast("Emergency recovery executed successfully!", "success");
+
+    setTimeout(() => {
+      closeAdminRecoveryModal();
+      if (dom.loginUsername) dom.loginUsername.value = targetUsername;
+      if (dom.loginPassword) {
+        dom.loginPassword.value = "";
+        dom.loginPassword.focus();
+      }
+    }, 1500);
+
+  } catch (err) {
+    setAdminRecoveryAlert(err.message || "Emergency recovery failed. Invalid master key.", "error");
+    toast(err.message || "Emergency reset failed", "error");
+    if (btn) btn.disabled = false;
+  }
+}
+window.handleAdminEmergencyReset = handleAdminEmergencyReset;
 
 
 /* ==========================================================================
