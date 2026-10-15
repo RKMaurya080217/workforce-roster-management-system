@@ -2465,35 +2465,27 @@ async function renderAdminHolidaysView() {
         </div>
       </div>
 
-      <!-- Holiday Metric Summary Cards -->
-      <div class="metric-cards-grid" style="margin-bottom:20px;">
-        <div class="metric-card">
-          <div class="metric-icon" style="background:#e0f2fe; color:#0284c7;">📅</div>
-          <div class="metric-details">
-            <span class="metric-label">Total Registered Holidays</span>
-            <strong class="metric-value">${currentHolidaysData.length}</strong>
-          </div>
+      <!-- Holiday Metric Summary Cards (Batch 88-UI: Horizontal inline alignment) -->
+      <div class="metric-cards-grid holiday-summary-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:20px;">
+        <div class="metric-card holiday-summary-card" style="display:inline-flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-card, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <span class="metric-icon" style="font-size:1.15rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; flex-shrink:0; background:#e0f2fe; color:#0284c7;">📅</span>
+          <span class="metric-label" style="font-size:0.86rem; font-weight:500; color:var(--text-secondary, #475569); white-space:nowrap;">Total Registered Holidays</span>
+          <strong class="metric-value" style="font-size:1rem; font-weight:700; color:var(--text-primary, #0f172a); margin-left:4px;">${currentHolidaysData.length}</strong>
         </div>
-        <div class="metric-card">
-          <div class="metric-icon" style="background:#dcfce7; color:#16a34a;">✅</div>
-          <div class="metric-details">
-            <span class="metric-label">Active Holidays</span>
-            <strong class="metric-value">${activeHolidays.length}</strong>
-          </div>
+        <div class="metric-card holiday-summary-card" style="display:inline-flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-card, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <span class="metric-icon" style="font-size:1.15rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; flex-shrink:0; background:#dcfce7; color:#16a34a;">✅</span>
+          <span class="metric-label" style="font-size:0.86rem; font-weight:500; color:var(--text-secondary, #475569); white-space:nowrap;">Active Holidays</span>
+          <strong class="metric-value" style="font-size:1rem; font-weight:700; color:var(--text-primary, #0f172a); margin-left:4px;">${activeHolidays.length}</strong>
         </div>
-        <div class="metric-card">
-          <div class="metric-icon" style="background:#fef9c3; color:#854d0e;">⏳</div>
-          <div class="metric-details">
-            <span class="metric-label">Upcoming This Year</span>
-            <strong class="metric-value">${upcomingHolidays.length}</strong>
-          </div>
+        <div class="metric-card holiday-summary-card" style="display:inline-flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-card, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <span class="metric-icon" style="font-size:1.15rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; flex-shrink:0; background:#fef9c3; color:#854d0e;">⏳</span>
+          <span class="metric-label" style="font-size:0.86rem; font-weight:500; color:var(--text-secondary, #475569); white-space:nowrap;">Upcoming This Year</span>
+          <strong class="metric-value" style="font-size:1rem; font-weight:700; color:var(--text-primary, #0f172a); margin-left:4px;">${upcomingHolidays.length}</strong>
         </div>
-        <div class="metric-card">
-          <div class="metric-icon" style="background:#fee2e2; color:#991b1b;">⏸️</div>
-          <div class="metric-details">
-            <span class="metric-label">Inactive / Archived</span>
-            <strong class="metric-value">${currentHolidaysData.length - activeHolidays.length}</strong>
-          </div>
+        <div class="metric-card holiday-summary-card" style="display:inline-flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-card, #ffffff); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <span class="metric-icon" style="font-size:1.15rem; line-height:1; display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; flex-shrink:0; background:#fee2e2; color:#991b1b;">⏸️</span>
+          <span class="metric-label" style="font-size:0.86rem; font-weight:500; color:var(--text-secondary, #475569); white-space:nowrap;">Inactive / Archived</span>
+          <strong class="metric-value" style="font-size:1rem; font-weight:700; color:var(--text-primary, #0f172a); margin-left:4px;">${currentHolidaysData.length - activeHolidays.length}</strong>
         </div>
       </div>
 

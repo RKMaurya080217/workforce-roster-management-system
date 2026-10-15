@@ -53,6 +53,11 @@ function toggleSidebarCollapse() {
       dom.mobileMenuBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
       dom.mobileMenuBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
     }
+    const brandBtn = document.getElementById("sidebarBrandBtn");
+    if (brandBtn) {
+      brandBtn.setAttribute("aria-expanded", String(!state.isSidebarCollapsed));
+      brandBtn.setAttribute("title", state.isSidebarCollapsed ? "Expand Sidebar Navigation" : "Collapse Sidebar Navigation");
+    }
   }
 }
 window.toggleSidebarCollapse = toggleSidebarCollapse;
@@ -631,20 +636,21 @@ function bindGlobalEvents() {
     });
   }
 
-  // Step 4: Top sidebar brand click -> Home / Dashboard
+  // Step 4: Top sidebar brand click -> Toggle Sidebar (Collapse / Expand)
   const sidebarBrandBtn = document.getElementById("sidebarBrandBtn");
   if (sidebarBrandBtn) {
-    const handleBrandClick = (e) => {
-      e.stopPropagation();
-      const isEmployee = state.profile && state.profile.role === "ROLE_EMPLOYEE";
-      navigateTo(isEmployee ? "overview" : "dashboard");
-      closeMobileSidebar();
+    const handleBrandToggle = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      toggleSidebarCollapse();
     };
-    sidebarBrandBtn.addEventListener("click", handleBrandClick);
+    sidebarBrandBtn.addEventListener("click", handleBrandToggle);
     sidebarBrandBtn.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        handleBrandClick(e);
+        handleBrandToggle(e);
       }
     });
   }
@@ -1350,6 +1356,7 @@ function showWorkspace() {
   dom.appView.classList.remove("hidden");
 
   // Apply saved sidebar collapsed state
+  const brandBtn = document.getElementById("sidebarBrandBtn");
   if (state.isSidebarCollapsed) {
     if (dom.appSidebar) dom.appSidebar.classList.add("collapsed");
     if (dom.appView) dom.appView.classList.add("sidebar-collapsed");
@@ -1357,12 +1364,20 @@ function showWorkspace() {
       dom.mobileMenuBtn.setAttribute("aria-expanded", "false");
       dom.mobileMenuBtn.setAttribute("title", "Expand Sidebar");
     }
+    if (brandBtn) {
+      brandBtn.setAttribute("aria-expanded", "false");
+      brandBtn.setAttribute("title", "Expand Sidebar Navigation");
+    }
   } else {
     if (dom.appSidebar) dom.appSidebar.classList.remove("collapsed");
     if (dom.appView) dom.appView.classList.remove("sidebar-collapsed");
     if (dom.mobileMenuBtn) {
       dom.mobileMenuBtn.setAttribute("aria-expanded", "true");
       dom.mobileMenuBtn.setAttribute("title", "Collapse Sidebar");
+    }
+    if (brandBtn) {
+      brandBtn.setAttribute("aria-expanded", "true");
+      brandBtn.setAttribute("title", "Collapse Sidebar Navigation");
     }
   }
 

@@ -1803,14 +1803,19 @@ textarea {
   min-width: 0;
   border-radius: var(--radius-md, 8px);
   padding: 4px 6px;
-  transition: opacity var(--trans-fast), background-color var(--trans-fast);
+  transition: opacity var(--trans-fast), background-color var(--trans-fast), transform var(--trans-fast);
+  user-select: none;
 }
 
 .sidebar-brand-group:hover,
 .sidebar-brand-group:focus-visible {
   opacity: 0.95;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   outline: none;
+}
+
+.sidebar-brand-group:active {
+  transform: scale(0.98);
 }
 
 .user-profile-clickable {
@@ -6271,4 +6276,66 @@ body.sidebar-mobile-locked {
   gap: 8px;
   margin: 0 12px;
 }
+
+/* ==========================================================================
+   BATCH 88-UI: HOLIDAY SUMMARY CARDS & HORIZONTAL INLINE ALIGNMENT
+   ========================================================================== */
+
+.holiday-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.holiday-summary-card {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 10px 14px !important;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform var(--trans-fast, 0.15s), box-shadow var(--trans-fast, 0.15s);
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+.holiday-summary-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
+}
+
+.holiday-summary-card .metric-icon {
+  font-size: 1.15rem;
+  line-height: 1;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 6px;
+  flex-shrink: 0 !important;
+  margin: 0 !important;
+}
+
+.holiday-summary-card .metric-label {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  white-space: nowrap;
+  margin: 0 !important;
+  line-height: 1.2;
+}
+
+.holiday-summary-card .metric-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 0 4px !important;
+  line-height: 1.2;
+}
+
 
