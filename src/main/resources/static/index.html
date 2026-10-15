@@ -1886,9 +1886,9 @@
     <div class="modal-box modal-sm" style="max-width:500px;">
       <div class="modal-header">
         <h3 id="holidayModalTitle">Add Official Holiday</h3>
-        <button class="modal-close" data-close-modal="holidayModal">&times;</button>
+        <button class="modal-close" data-close-modal="holidayModal" onclick="closeHolidayModal()">&times;</button>
       </div>
-      <form id="holidayModalForm" class="modal-body stack-gap">
+      <form id="holidayModalForm" class="modal-body stack-gap" onsubmit="handleSaveHoliday(event); return false;">
         <input type="hidden" id="holidayFormId">
         
         <div class="form-group">
@@ -1912,8 +1912,8 @@
         </div>
 
         <div class="modal-footer">
-          <button type="button" class="btn btn-ghost" data-close-modal="holidayModal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="saveHolidayBtn">Save Holiday</button>
+          <button type="button" class="btn btn-ghost" data-close-modal="holidayModal" onclick="closeHolidayModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveHolidayBtn" onclick="handleSaveHoliday(event)">Save Holiday</button>
         </div>
       </form>
     </div>
@@ -2087,10 +2087,10 @@
   <!-- Firebase Cloud Messaging Web Push SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
-  <script src="/js/fcm-client.js?v=2.8.6"></script>
+  <script src="/js/fcm-client.js?v=2.8.8"></script>
 
   <!-- App JavaScript with Cache Busting -->
-  <script src="/app.js?v=2.8.6"></script>
-  <script src="/enterprise-app.js?v=2.8.6"></script>
+  <script src="/app.js?v=2.8.8"></script>
+  <script src="/enterprise-app.js?v=2.8.8"></script>
 </body>
 </html>

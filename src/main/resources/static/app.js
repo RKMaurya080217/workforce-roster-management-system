@@ -8221,6 +8221,9 @@ function closeModal(id) {
   if (m) m.classList.add("hidden");
 }
 
+window.openModal = openModal;
+window.closeModal = closeModal;
+
 // Add/Edit Employee Modal
 async function openEmployeeModal(emp) {
   const form = document.getElementById("employeeModalForm");

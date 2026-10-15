@@ -2454,11 +2454,11 @@ async function renderAdminHolidaysView() {
           <p class="text-muted">Manage official holidays recognized in automated weekly roster generation and employee work-day calculations</p>
         </div>
         <div class="header-actions" style="display:flex; gap:8px;">
-          <button class="btn btn-primary btn-sm" id="openAddHolidayBtn">
+          <button class="btn btn-primary btn-sm" id="openAddHolidayBtn" onclick="openHolidayModal(null)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             <span>+ Add Holiday</span>
           </button>
-          <button class="btn btn-secondary btn-sm" id="refreshHolidaysBtn">
+          <button class="btn btn-secondary btn-sm" id="refreshHolidaysBtn" onclick="renderAdminHolidaysView()">
             ${WRMS_ICONS.refresh || '🔄'}
             <span>Refresh</span>
           </button>
@@ -2641,11 +2641,32 @@ function openHolidayModal(holiday) {
     if (titleEl) titleEl.textContent = "Add Official Holiday";
     if (idEl) idEl.value = "";
     if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
+    if (nameEl) nameEl.value = "";
+    if (descEl) descEl.value = "";
     if (activeEl) activeEl.checked = true;
   }
 
-  openModal("holidayModal");
-  form.onsubmit = null;
+  if (typeof openModal === "function") {
+    openModal("holidayModal");
+  } else if (typeof window.openModal === "function") {
+    window.openModal("holidayModal");
+  } else {
+    const m = document.getElementById("holidayModal");
+    if (m) m.classList.remove("hidden");
+  }
+
+  form.onsubmit = handleSaveHoliday;
+}
+
+function closeHolidayModal() {
+  if (typeof closeModal === "function") {
+    closeModal("holidayModal");
+  } else if (typeof window.closeModal === "function") {
+    window.closeModal("holidayModal");
+  } else {
+    const m = document.getElementById("holidayModal");
+    if (m) m.classList.add("hidden");
+  }
 }
 
 let isSavingHoliday = false;
@@ -2686,7 +2707,7 @@ async function handleSaveHoliday(e) {
       await apiRequest("/api/admin/holidays", { method: "POST", body: payload });
       toast("Official Holiday added successfully!", "success");
     }
-    closeModal("holidayModal");
+    closeHolidayModal();
     if (typeof window.ensureHolidaysLoaded === "function") {
       await window.ensureHolidaysLoaded(true);
     }
@@ -2743,11 +2764,21 @@ async function confirmDeleteHoliday(id) {
 // Global window attachments
 window.openHolidayModalById = openHolidayModalById;
 window.openHolidayModal = openHolidayModal;
+window.closeHolidayModal = closeHolidayModal;
 window.handleSaveHoliday = handleSaveHoliday;
 window.toggleHolidayActiveStatus = toggleHolidayActiveStatus;
 window.confirmDeleteHoliday = confirmDeleteHoliday;
 window.renderAdminHolidaysView = renderAdminHolidaysView;
 window.filterHolidaysTable = filterHolidaysTable;
+
+// Immediate binding for holiday form if already in DOM
+try {
+  const hForm = document.getElementById("holidayModalForm");
+  if (hForm && !hForm.dataset.boundSubmit) {
+    hForm.dataset.boundSubmit = "true";
+    hForm.addEventListener("submit", handleSaveHoliday);
+  }
+} catch (e) {}
 
 /* ==========================================================================
    BATCH 66: ADMIN EMPLOYEE WORK-DAY REPORT
