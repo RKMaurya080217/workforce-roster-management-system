@@ -8213,16 +8213,68 @@ async function renderEmployeeRosterDetailView() {
 
 function openModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.remove("hidden");
+  if (m) {
+    m.classList.remove("hidden");
+    m.style.display = "grid";
+    m.style.visibility = "visible";
+    m.style.opacity = "1";
+    m.style.zIndex = "9999";
+  }
 }
 
 function closeModal(id) {
   const m = document.getElementById(id);
-  if (m) m.classList.add("hidden");
+  if (m) {
+    m.classList.add("hidden");
+    m.style.display = "none";
+  }
+}
+
+function openHolidayModal(holiday) {
+  if (typeof window.openHolidayModalEnterprise === "function") {
+    return window.openHolidayModalEnterprise(holiday);
+  }
+  const form = document.getElementById("holidayModalForm");
+  if (!form) return;
+  form.reset();
+
+  const titleEl = document.getElementById("holidayModalTitle");
+  const idEl = document.getElementById("holidayFormId");
+  const dateEl = document.getElementById("holidayFormDate");
+  const nameEl = document.getElementById("holidayFormName");
+  const descEl = document.getElementById("holidayFormDescription");
+  const activeEl = document.getElementById("holidayFormActive");
+
+  if (holiday) {
+    if (titleEl) titleEl.textContent = `Edit Holiday: ${holiday.name}`;
+    if (idEl) idEl.value = holiday.id;
+    if (dateEl) dateEl.value = holiday.holidayDate;
+    if (nameEl) nameEl.value = holiday.name;
+    if (descEl) descEl.value = holiday.description || "";
+    if (activeEl) activeEl.checked = holiday.active;
+  } else {
+    if (titleEl) titleEl.textContent = "Add Official Holiday";
+    if (idEl) idEl.value = "";
+    if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
+    if (nameEl) nameEl.value = "";
+    if (descEl) descEl.value = "";
+    if (activeEl) activeEl.checked = true;
+  }
+
+  openModal("holidayModal");
+  if (typeof handleSaveHoliday === "function") {
+    form.onsubmit = handleSaveHoliday;
+  }
+}
+
+function closeHolidayModal() {
+  closeModal("holidayModal");
 }
 
 window.openModal = openModal;
 window.closeModal = closeModal;
+window.openHolidayModal = openHolidayModal;
+window.closeHolidayModal = closeHolidayModal;
 
 // Add/Edit Employee Modal
 async function openEmployeeModal(emp) {

@@ -282,7 +282,9 @@
             </div>
 
           </div>
-        </main>
+        </div>
+      </div>
+    </main>
 
         <!-- Full Bottom Footer on Login Page -->
         <footer class="auth-page-footer auth-footer">
@@ -747,6 +749,9 @@
           <button type="submit" class="btn btn-primary" id="saveBulkDatePrefBtn">Apply Bulk Preference</button>
         </div>
       </form>
+    </div>
+  </div>
+
   <!-- Modal 1d: Cell Shift Preference Planning Modal (Batch 81) -->
   <div id="cellDatePrefModal" class="modal-backdrop hidden">
     <div class="modal-box" style="max-width:500px;">
@@ -1882,7 +1887,7 @@
   </div>
 
   <!-- Modal 15: Holiday Modal (Batch 66) -->
-  <div id="holidayModal" class="modal-backdrop hidden">
+  <div id="holidayModal" class="modal-backdrop hidden" style="z-index: 9999;">
     <div class="modal-box modal-sm" style="max-width:500px;">
       <div class="modal-header">
         <h3 id="holidayModalTitle">Add Official Holiday</h3>
@@ -1913,7 +1918,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="holidayModal" onclick="closeHolidayModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="saveHolidayBtn" onclick="handleSaveHoliday(event)">Save Holiday</button>
+          <button type="submit" class="btn btn-primary" id="saveHolidayBtn">Save Holiday</button>
         </div>
       </form>
     </div>
@@ -2087,10 +2092,10 @@
   <!-- Firebase Cloud Messaging Web Push SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
-  <script src="/js/fcm-client.js?v=2.8.8"></script>
+  <script src="/js/fcm-client.js?v=2.8.9"></script>
 
   <!-- App JavaScript with Cache Busting -->
-  <script src="/app.js?v=2.8.8"></script>
-  <script src="/enterprise-app.js?v=2.8.8"></script>
+  <script src="/app.js?v=2.8.9"></script>
+  <script src="/enterprise-app.js?v=2.8.9"></script>
 </body>
 </html>

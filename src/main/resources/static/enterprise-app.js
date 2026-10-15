@@ -2454,7 +2454,7 @@ async function renderAdminHolidaysView() {
           <p class="text-muted">Manage official holidays recognized in automated weekly roster generation and employee work-day calculations</p>
         </div>
         <div class="header-actions" style="display:flex; gap:8px;">
-          <button class="btn btn-primary btn-sm" id="openAddHolidayBtn" onclick="openHolidayModal(null)">
+          <button class="btn btn-primary btn-sm" id="openAddHolidayBtn" onclick="if(window.openHolidayModal){window.openHolidayModal(null);}else{const m=document.getElementById('holidayModal');if(m){m.classList.remove('hidden');m.style.display='grid';m.style.zIndex='9999';}}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             <span>+ Add Holiday</span>
           </button>
@@ -2646,26 +2646,34 @@ function openHolidayModal(holiday) {
     if (activeEl) activeEl.checked = true;
   }
 
+  const m = document.getElementById("holidayModal");
+  if (m) {
+    m.classList.remove("hidden");
+    m.style.display = "grid";
+    m.style.visibility = "visible";
+    m.style.opacity = "1";
+    m.style.zIndex = "9999";
+  }
+
   if (typeof openModal === "function") {
     openModal("holidayModal");
   } else if (typeof window.openModal === "function") {
     window.openModal("holidayModal");
-  } else {
-    const m = document.getElementById("holidayModal");
-    if (m) m.classList.remove("hidden");
   }
 
   form.onsubmit = handleSaveHoliday;
 }
 
 function closeHolidayModal() {
+  const m = document.getElementById("holidayModal");
+  if (m) {
+    m.classList.add("hidden");
+    m.style.display = "none";
+  }
   if (typeof closeModal === "function") {
     closeModal("holidayModal");
   } else if (typeof window.closeModal === "function") {
     window.closeModal("holidayModal");
-  } else {
-    const m = document.getElementById("holidayModal");
-    if (m) m.classList.add("hidden");
   }
 }
 
@@ -2764,6 +2772,7 @@ async function confirmDeleteHoliday(id) {
 // Global window attachments
 window.openHolidayModalById = openHolidayModalById;
 window.openHolidayModal = openHolidayModal;
+window.openHolidayModalEnterprise = openHolidayModal;
 window.closeHolidayModal = closeHolidayModal;
 window.handleSaveHoliday = handleSaveHoliday;
 window.toggleHolidayActiveStatus = toggleHolidayActiveStatus;
