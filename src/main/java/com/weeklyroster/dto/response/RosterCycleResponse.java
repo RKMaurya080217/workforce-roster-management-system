@@ -36,8 +36,49 @@ public record RosterCycleResponse(
         List<ConflictItem> conflicts,
         List<EmployeeWorkloadMetric> workloadMetrics,
         Double shiftContinuityScore,
-        Double workloadBalanceScore
+        Double workloadBalanceScore,
+        Integer workingDays
 ) {
+    public RosterCycleResponse(
+            Long id,
+            LocalDate startDate,
+            LocalDate endDate,
+            LocalDateTime generatedAt,
+            GenerationMode generationMode,
+            RosterStatus status,
+            LocalDateTime publishedAt,
+            String publishedBy,
+            LocalDateTime lockedAt,
+            String lockedBy,
+            LocalDateTime unlockedAt,
+            String unlockedBy,
+            String unlockReason,
+            String emailStatus,
+            List<RosterAssignmentResponse> assignments,
+            CoverageReportResponse coverageReport,
+            String classification,
+            String source,
+            boolean deletable,
+            String generationStatus,
+            Double preferenceComplianceScore,
+            String maleNightCoverage,
+            Integer criticalConflicts,
+            Integer warnings,
+            Double healthScore,
+            List<ConflictItem> conflicts,
+            List<EmployeeWorkloadMetric> workloadMetrics,
+            Double shiftContinuityScore,
+            Double workloadBalanceScore
+    ) {
+        this(id, startDate, endDate, generatedAt, generationMode, status,
+                publishedAt, publishedBy, lockedAt, lockedBy, unlockedAt, unlockedBy, unlockReason,
+                emailStatus, assignments, coverageReport,
+                classification, source, deletable,
+                generationStatus, preferenceComplianceScore, maleNightCoverage,
+                criticalConflicts, warnings, healthScore, conflicts, workloadMetrics,
+                shiftContinuityScore, workloadBalanceScore, 6);
+    }
+
     public RosterCycleResponse(
             Long id,
             LocalDate startDate,
@@ -73,7 +114,7 @@ public record RosterCycleResponse(
                 classification, source, deletable,
                 generationStatus, preferenceComplianceScore, maleNightCoverage,
                 criticalConflicts, warnings, healthScore, conflicts, workloadMetrics,
-                100.0, 100.0);
+                100.0, 100.0, 6);
     }
 
     public RosterCycleResponse(

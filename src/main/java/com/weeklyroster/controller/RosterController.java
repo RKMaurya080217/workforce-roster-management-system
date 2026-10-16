@@ -67,15 +67,22 @@ public class RosterController {
     @PostMapping(value = "/generate", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> generate(
-            @RequestParam(name = "startDate", required = false) String startDate) {
+            @RequestParam(name = "startDate", required = false) String startDate,
+            @RequestParam(name = "workingDays", required = false, defaultValue = "6") Integer workingDays) {
         java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
                 .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
         java.time.LocalDate parsedDate = com.weeklyroster.util.DateParser.parse(startDate, defaultMonday);
-        return ResponseEntity.ok(rosterService.generateWeeklyRoster(parsedDate, GenerationMode.MANUAL));
+        int validWorkingDays = (workingDays != null && workingDays == 5) ? 5 : 6;
+        return ResponseEntity.ok(rosterService.generateWeeklyRoster(parsedDate, GenerationMode.MANUAL, validWorkingDays));
     }
 
     public ResponseEntity<RosterCycleResponse> generate(java.time.LocalDate startDate) {
-        return ResponseEntity.ok(rosterService.generateWeeklyRoster(startDate, GenerationMode.MANUAL));
+        return generate(startDate, 6);
+    }
+
+    public ResponseEntity<RosterCycleResponse> generate(java.time.LocalDate startDate, int workingDays) {
+        int validWorkingDays = (workingDays == 5) ? 5 : 6;
+        return ResponseEntity.ok(rosterService.generateWeeklyRoster(startDate, GenerationMode.MANUAL, validWorkingDays));
     }
 
     @GetMapping("/check-existing")
@@ -165,8 +172,7 @@ public class RosterController {
     @PostMapping(value = "/cycle/{id}/optimize", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> optimizeCycle(@PathVariable("id") Long id) {
-        RosterCycleResponse current = rosterService.cycle(id);
-        return ResponseEntity.ok(rosterService.generateWeeklyRoster(current.startDate(), GenerationMode.MANUAL));
+        return ResponseEntity.ok(rosterService.reoptimizeCycle(id, "Admin requested optimization via web interface"));
     }
 
     @GetMapping("/cycle/{id}")

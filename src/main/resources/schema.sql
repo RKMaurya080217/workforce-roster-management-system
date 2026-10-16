@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS roster_cycles (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     generated_at DATETIME(6) NOT NULL,
+    working_days INT DEFAULT 6,
     CONSTRAINT uk_roster_cycles_dates UNIQUE (start_date, end_date)
 );
 
@@ -258,6 +259,7 @@ CREATE TABLE IF NOT EXISTS roster_generation_history (
     fingerprint VARCHAR(128) NOT NULL,
     generation_attempt INT NOT NULL DEFAULT 1,
     generation_mode VARCHAR(30),
+    working_days INT DEFAULT 6,
     quality_score INT DEFAULT 0,
     preference_score INT DEFAULT 0,
     continuity_score INT DEFAULT 0,

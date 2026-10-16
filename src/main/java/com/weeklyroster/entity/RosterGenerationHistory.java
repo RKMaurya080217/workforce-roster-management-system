@@ -39,6 +39,9 @@ public class RosterGenerationHistory {
     @Column(name = "continuity_score")
     private Integer continuityScore = 0;
 
+    @Column(name = "working_days")
+    private Integer workingDays = 6;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -47,11 +50,18 @@ public class RosterGenerationHistory {
     public RosterGenerationHistory(LocalDate startDate, LocalDate endDate, String fingerprint,
                                    Integer generationAttempt, String generationMode,
                                    Integer qualityScore, Integer preferenceScore, Integer continuityScore) {
+        this(startDate, endDate, fingerprint, generationAttempt, generationMode, 6, qualityScore, preferenceScore, continuityScore);
+    }
+
+    public RosterGenerationHistory(LocalDate startDate, LocalDate endDate, String fingerprint,
+                                   Integer generationAttempt, String generationMode, Integer workingDays,
+                                   Integer qualityScore, Integer preferenceScore, Integer continuityScore) {
         this.startDate = startDate;
         this.endDate = endDate;
         this.fingerprint = fingerprint;
         this.generationAttempt = generationAttempt != null ? generationAttempt : 1;
         this.generationMode = generationMode != null ? generationMode : "MANUAL";
+        this.workingDays = workingDays != null ? workingDays : 6;
         this.qualityScore = qualityScore != null ? qualityScore : 0;
         this.preferenceScore = preferenceScore != null ? preferenceScore : 0;
         this.continuityScore = continuityScore != null ? continuityScore : 0;
@@ -75,6 +85,9 @@ public class RosterGenerationHistory {
 
     public String getGenerationMode() { return generationMode; }
     public void setGenerationMode(String generationMode) { this.generationMode = generationMode; }
+
+    public Integer getWorkingDays() { return workingDays; }
+    public void setWorkingDays(Integer workingDays) { this.workingDays = workingDays; }
 
     public Integer getQualityScore() { return qualityScore; }
     public void setQualityScore(Integer qualityScore) { this.qualityScore = qualityScore; }

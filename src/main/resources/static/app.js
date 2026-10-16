@@ -2551,7 +2551,7 @@ async function renderDashboardView() {
             ${activeCycle ? `Active Roster Cycle: <strong>${formatDate(activeCycle.startDate)}</strong> to <strong>${formatDate(activeCycle.endDate)}</strong> (${activeCycle.assignments?.length || 0} assignments)` : 'No active roster cycle generated yet'}
           </span>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div class="dash-quick-actions home-quick-actions" style="display:flex; gap:8px; align-items:center;">
           <button class="btn btn-primary btn-sm" id="dashGenerateBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             <span>Generate Roster</span>
@@ -3540,9 +3540,10 @@ async function renderRosterView() {
               ${state.cycles.map(c => {
                 const cls = c.classification || "CYCLE";
                 const src = c.source === "AUTOMATIC" ? "Auto" : "Manual";
+                const wdLabel = `${c.workingDays || 6}D`;
                 return `
                 <option value="${c.id}" ${c.id === currentCycle.id ? 'selected' : ''}>
-                  [${cls}] ${formatDate(c.startDate)} - ${formatDate(c.endDate)} (${src}) - ${c.status || 'GENERATED'}
+                  [${cls}] ${formatDate(c.startDate)} - ${formatDate(c.endDate)} (${src}, ${wdLabel}) - ${c.status || 'GENERATED'}
                 </option>
               `}).join("")}
             </select>
@@ -3557,6 +3558,10 @@ async function renderRosterView() {
 
             <span class="roster-lifecycle-badge badge-${status.toLowerCase()}">
               ${isLocked ? '🔒 ' : isPublished ? '📢 ' : '⚙️ '}${status}
+            </span>
+
+            <span class="roster-lifecycle-badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; font-weight:700;" title="Configured Working Days per Employee for this Cycle">
+              💼 ${currentCycle.workingDays || 6} Working Days
             </span>
 
           </div>
@@ -8539,13 +8544,17 @@ function openFeasibilityModal(cycle) {
 function openGenerateRosterModal() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  document.getElementById("rosterStartDateInput").value = tomorrow.toISOString().split("T")[0];
+  const startInput = document.getElementById("rosterStartDateInput");
+  if (startInput) startInput.value = tomorrow.toISOString().split("T")[0];
+  const wdSelect = document.getElementById("rosterWorkingDaysSelect");
+  if (wdSelect && !wdSelect.value) wdSelect.value = "6";
   openModal("generateRosterModal");
 }
 
 async function handleTriggerGenerateRoster(e) {
   e.preventDefault();
   const rawDate = document.getElementById("rosterStartDateInput").value.trim();
+  const workingDays = document.getElementById("rosterWorkingDaysSelect")?.value || "6";
   const btn = document.getElementById("triggerGenerateBtn");
   const spinner = btn.querySelector(".spinner");
 
@@ -8580,12 +8589,12 @@ async function handleTriggerGenerateRoster(e) {
       btn.disabled = false;
       spinner.classList.add("hidden");
       closeModal("generateRosterModal");
-      openConflictWarningModal(check, formattedDate);
+      openConflictWarningModal(check, formattedDate, workingDays);
       return;
     }
 
     // Direct generation if no conflict
-    await executeRosterGeneration(formattedDate);
+    await executeRosterGeneration(formattedDate, workingDays);
   } catch (err) {
     console.error("Roster generation error:", err);
     toast(err.message || "Roster generation failed", "error");
@@ -8594,7 +8603,7 @@ async function handleTriggerGenerateRoster(e) {
   }
 }
 
-function openConflictWarningModal(check, rawDate) {
+function openConflictWarningModal(check, rawDate, workingDays) {
   const info = document.getElementById("conflictModalCycleInfo");
   if (info) {
     info.innerHTML = `Cycle #${check.cycleId}: <strong>${formatDate(check.startDate)}</strong> &rarr; <strong>${formatDate(check.endDate)}</strong> &bull; Mode: <strong>${check.mode || 'MANUAL'}</strong>`;
@@ -8613,22 +8622,26 @@ function openConflictWarningModal(check, rawDate) {
   if (regenBtn) {
     regenBtn.onclick = async () => {
       closeModal("conflictWarningModal");
-      await executeRosterGeneration(rawDate);
+      await executeRosterGeneration(rawDate, workingDays);
     };
   }
 
   openModal("conflictWarningModal");
 }
 
-async function executeRosterGeneration(rawDate) {
+async function executeRosterGeneration(rawDate, workingDays) {
   const btn = document.getElementById("triggerGenerateBtn");
   const spinner = btn ? btn.querySelector(".spinner") : null;
+  const wd = workingDays || document.getElementById("rosterWorkingDaysSelect")?.value || 6;
 
   try {
     if (btn) btn.disabled = true;
     if (spinner) spinner.classList.remove("hidden");
 
-    const queryParam = rawDate ? `?startDate=${encodeURIComponent(rawDate)}` : "";
+    let queryParam = rawDate ? `?startDate=${encodeURIComponent(rawDate)}` : "";
+    if (wd) {
+      queryParam += (queryParam ? `&workingDays=${encodeURIComponent(wd)}` : `?workingDays=${encodeURIComponent(wd)}`);
+    }
     const res = await apiRequest(`/api/rosters/generate${queryParam}`, { method: "POST" });
     broadcastDataMutation("ROSTER_GENERATED");
 
@@ -11741,7 +11754,7 @@ function renderCommandCenterHTML(s) {
             <select id="ccCycleSelector" class="form-select" style="min-width:240px; font-weight:700;">
               ${(state.cycles || []).map(c => `
                 <option value="${c.id}" ${c.id === s.cycleId ? 'selected' : ''}>
-                  ${formatDate(c.startDate)} – ${formatDate(c.endDate)} [${c.status || 'TENTATIVE'}]
+                  ${formatDate(c.startDate)} – ${formatDate(c.endDate)} (${c.workingDays || 6}D) [${c.status || 'TENTATIVE'}]
                 </option>
               `).join('')}
             </select>

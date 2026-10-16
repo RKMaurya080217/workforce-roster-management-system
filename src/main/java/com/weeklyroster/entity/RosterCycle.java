@@ -49,6 +49,9 @@ public class RosterCycle {
     @Column(length = 500)
     private String unlockReason;
 
+    @Column(name = "working_days")
+    private Integer workingDays = 6;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public LocalDate getStartDate() { return startDate; }
@@ -75,4 +78,6 @@ public class RosterCycle {
     public void setUnlockedBy(String unlockedBy) { this.unlockedBy = unlockedBy; }
     public String getUnlockReason() { return unlockReason; }
     public void setUnlockReason(String unlockReason) { this.unlockReason = unlockReason; }
+    public Integer getWorkingDays() { return workingDays; }
+    public void setWorkingDays(Integer workingDays) { this.workingDays = workingDays; }
 }

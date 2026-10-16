@@ -27,6 +27,7 @@ public class DataInitializer {
 			org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
 		return args -> {
 			fixSqliteAuditActionCheckConstraint(jdbcTemplate);
+			migrateWorkingDaysColumns(jdbcTemplate);
 			System.out.println(">>> SEED DATA EXECUTING <<<");
 			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
 				var existingOpt = shiftRepository.findByShiftType(type);
@@ -184,6 +185,21 @@ public class DataInitializer {
 			}
 		} catch (Exception e) {
 			System.err.println("Notice: SQLite check constraint migration skipped or encountered: " + e.getMessage());
+		}
+	}
+
+	private void migrateWorkingDaysColumns(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+		try {
+			jdbcTemplate.execute("ALTER TABLE roster_cycles ADD COLUMN working_days INT DEFAULT 6");
+			System.out.println(">>> Added working_days column to roster_cycles <<<");
+		} catch (Exception ignored) {
+			// Column already exists or table not yet created
+		}
+		try {
+			jdbcTemplate.execute("ALTER TABLE roster_generation_history ADD COLUMN working_days INT DEFAULT 6");
+			System.out.println(">>> Added working_days column to roster_generation_history <<<");
+		} catch (Exception ignored) {
+			// Column already exists or table not yet created
 		}
 	}
 }

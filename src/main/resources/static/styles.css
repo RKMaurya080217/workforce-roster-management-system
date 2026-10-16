@@ -1973,6 +1973,60 @@ textarea {
   border: 1px solid var(--border-light);
 }
 
+/* Header Utility Controls (Notification + Refresh aligned top-right) */
+.header-utility-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.header-utility-controls .notification-bell-btn,
+.header-utility-controls .header-refresh-btn,
+.header-utility-controls #globalRefreshBtn {
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+/* Horizontal scrollable navigation & action bars */
+.workspace-subnav,
+.dash-quick-actions,
+.home-quick-actions,
+.filter-group {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+
+.workspace-subnav > *,
+.dash-quick-actions > *,
+.home-quick-actions > *,
+.filter-group > * {
+  flex-shrink: 0;
+}
+
+.workspace-subnav::-webkit-scrollbar,
+.dash-quick-actions::-webkit-scrollbar,
+.home-quick-actions::-webkit-scrollbar,
+.filter-group::-webkit-scrollbar {
+  height: 4px;
+}
+
+.workspace-subnav::-webkit-scrollbar-thumb,
+.dash-quick-actions::-webkit-scrollbar-thumb,
+.home-quick-actions::-webkit-scrollbar-thumb,
+.filter-group::-webkit-scrollbar-thumb {
+  background: var(--border-light, #cbd5e1);
+  border-radius: 4px;
+}
+
 .app-content-viewport {
   padding: 24px 28px;
   flex: 1;
@@ -6018,6 +6072,25 @@ body.sidebar-mobile-locked {
 
   .topbar-right .date-badge {
     display: none !important;
+  }
+
+  .header-utility-controls {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  .header-utility-controls #globalRefreshBtn .refresh-btn-label {
+    display: none !important;
+  }
+
+  .header-utility-controls #globalRefreshBtn,
+  .header-utility-controls .header-refresh-btn {
+    padding: 6px 8px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
   }
 
   #notificationDropdown {
