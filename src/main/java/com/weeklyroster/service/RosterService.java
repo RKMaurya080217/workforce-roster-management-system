@@ -2780,7 +2780,7 @@ public class RosterService {
 				continue;
 			}
 
-			int targetOffs = Math.max(0, expectedOffs - (int) leaveCount);
+			int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - (int) leaveCount));
 
 			// 1. If employee worked NIGHT, the day immediately following ANY night shift (if not another night shift) MUST be OFF
 			Set<LocalDate> postNightOffDates = new HashSet<>();
@@ -3441,8 +3441,8 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 						+ " assigned " + nightCount + " night shifts in cycle (max allowed is " + maxNightsAllowed + ")");
 			}
 
-			int expectedOffs = (cycle != null && cycle.getWorkingDays() != null) ? (7 - cycle.getWorkingDays()) : 1;
-			int targetOffs = Math.max(0, expectedOffs - leaveCount);
+			int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
+			int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
 			if (offCount != targetOffs && leaveCount < 7) {
 				Employee emp = list.get(0).getEmployee();
 				throw new BusinessException("Validation failure: Employee " + emp.getEmployeeCode()
@@ -4671,7 +4671,16 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				String[] parts = dup.getKey().split("_");
 				Long empId = Long.parseLong(parts[0]);
 				LocalDate date = LocalDate.parse(parts[1]);
-				conflicts.add(new ConflictItem(date, empId, "Employee #" + empId, null, "DUPLICATE_ASSIGNMENT", dup.getValue() + " assignments", "1 assignment", "Employee has multiple roster assignments on " + date, "CRITICAL", "Remove duplicate assignments", false));
+				long offCountOnDate = assignments.stream()
+						.filter(a -> a.getEmployee() != null && a.getEmployee().getId().equals(empId) && a.getRosterDate().equals(date))
+						.filter(a -> a.isWeeklyOff() || (a.getShift() != null && a.getShift().getShiftType() == ShiftType.OFF))
+						.count();
+				boolean isDupOff = (offCountOnDate > 1);
+				String rule = isDupOff ? "DUPLICATE_WEEKLY_OFF" : "DUPLICATE_ASSIGNMENT";
+				String reason = isDupOff
+						? "Employee has duplicate Weekly OFF assignments on " + date
+						: "Employee has multiple roster assignments on " + date;
+				conflicts.add(new ConflictItem(date, empId, "Employee #" + empId, null, rule, dup.getValue() + " assignments", "1 assignment", reason, "CRITICAL", "Remove duplicate assignments", false));
 			}
 		}
 
@@ -4811,10 +4820,12 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, ShiftType.NIGHT, "MAX_NIGHT_LIMIT", nightCount + " night shifts", "<= 2 night shifts", empName + " assigned " + nightCount + " night shifts (max allowed is " + maxNightsAllowed + ")", "CRITICAL", "Reduce night shifts to at most 2", false));
 			}
 
-			int expectedOffs = (cycle != null && cycle.getWorkingDays() != null) ? (7 - cycle.getWorkingDays()) : 1;
-			int targetOffs = Math.max(0, expectedOffs - leaveCount);
+			int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
+			int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
 			if (offCount != targetOffs && leaveCount < 7) {
-				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, null, offCount < targetOffs ? "NO_WEEKLY_OFF" : "DUPLICATE_WEEKLY_OFF", offCount + " Weekly OFFs", "Exactly " + targetOffs + " Weekly OFF", "Employee " + empName + " has " + offCount + " weekly OFF assignments in cycle (expected exactly " + targetOffs + ")", "CRITICAL", "Ensure exactly " + targetOffs + " Weekly OFF", false));
+				String rule = offCount > targetOffs ? "EXCESS_WEEKLY_OFF" : (offCount == 0 ? "NO_WEEKLY_OFF" : "MIN_WEEKLY_OFF");
+				String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
+				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, null, rule, offCount + " Weekly OFFs", expectedStr, "Employee " + empName + " has " + offCount + " weekly OFF assignments in cycle (expected exactly " + targetOffs + ")", "CRITICAL", "Ensure exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : ""), false));
 			}
 
 			if (emp.getGender() == Gender.MALE && emp.isActive() && leaveCount < 7) {

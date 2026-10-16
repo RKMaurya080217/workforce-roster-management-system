@@ -80,4 +80,25 @@ public class RosterCycle {
     public void setUnlockReason(String unlockReason) { this.unlockReason = unlockReason; }
     public Integer getWorkingDays() { return workingDays; }
     public void setWorkingDays(Integer workingDays) { this.workingDays = workingDays; }
+
+    /**
+     * BATCH 92: Authoritative calculation for effective working days (5 or 6). Defaults to 6.
+     */
+    public int getEffectiveWorkingDays() {
+        return (workingDays != null && workingDays == 5) ? 5 : 6;
+    }
+
+    /**
+     * BATCH 92: Authoritative calculation for expected weekly offs: 7 - effectiveWorkingDays.
+     * 5 working days -> 2 weekly offs.
+     * 6 working days -> 1 weekly off.
+     */
+    public int getExpectedWeeklyOffs() {
+        return 7 - getEffectiveWorkingDays();
+    }
+
+    public static int calculateExpectedWeeklyOffs(Integer workingDays) {
+        int effective = (workingDays != null && workingDays == 5) ? 5 : 6;
+        return 7 - effective;
+    }
 }

@@ -134,6 +134,7 @@ public class RosterValidatorService {
 
             long offCount = empAssignments.stream().filter(RosterAssignment::isWeeklyOff).count();
             checksRun++;
+            int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
             if (offCount == 0) {
                 findings.add(new RosterValidationFinding(
                         "NO_WEEKLY_OFF",
@@ -143,14 +144,14 @@ public class RosterValidatorService {
                         empName + " has 0 Weekly OFF days in this cycle.",
                         "Every employee must receive at least 1 Weekly OFF per 7-day cycle."
                 ));
-            } else if (offCount > 2) {
+            } else if (offCount > expectedOffs) {
                 findings.add(new RosterValidationFinding(
                         "EXCESS_WEEKLY_OFF",
                         "High Weekly OFF Count",
                         ValidationSeverity.WARNING,
                         emp.getEmployeeCode(), empName, null,
                         empName + " has " + offCount + " Weekly OFF days in this cycle.",
-                        "Standard allotment is 1 Weekly OFF."
+                        "Configured allotment is " + expectedOffs + " Weekly OFF" + (expectedOffs > 1 ? "s" : "") + "."
                 ));
             }
 

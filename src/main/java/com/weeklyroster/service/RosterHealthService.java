@@ -179,10 +179,21 @@ public class RosterHealthService {
                 String[] parts = dupEntry.getKey().split("_");
                 Long empId = Long.parseLong(parts[0]);
                 LocalDate date = LocalDate.parse(parts[1]);
+
+                long offCountOnDate = assignments.stream()
+                        .filter(a -> a.getEmployee() != null && a.getEmployee().getId().equals(empId) && a.getRosterDate().equals(date))
+                        .filter(a -> a.isWeeklyOff() || (a.getShift() != null && a.getShift().getShiftType() == ShiftType.OFF))
+                        .count();
+                boolean isDupOff = (offCountOnDate > 1);
+                String rule = isDupOff ? "DUPLICATE_WEEKLY_OFF" : "DUPLICATE_ASSIGNMENT";
+                String reason = isDupOff
+                        ? "Employee has duplicate Weekly OFF assignments on the same date (" + date + ")"
+                        : "Employee has multiple roster assignments on the same date";
+
                 conflicts.add(new ConflictItem(
                         date, empId, "Employee #" + empId, null,
-                        "DUPLICATE_ASSIGNMENT", dupEntry.getValue() + " assignments", "1 assignment",
-                        "Employee has multiple roster assignments on the same date",
+                        rule, dupEntry.getValue() + " assignments", "1 assignment",
+                        reason,
                         "CRITICAL", "Remove duplicate assignments", false
                 ));
             }
@@ -310,29 +321,34 @@ public class RosterHealthService {
                 ));
             }
 
-            // Weekly OFF check: Exactly 1 Weekly OFF required per employee per cycle
-            boolean empOffCompliant = (weeklyOffCount == 1) || (leaveCount >= 7);
-            if (weeklyOffCount > 1) {
+            // BATCH 92: Authoritative Weekly OFF check: expectedWeeklyOffs = 7 - workingDays (5-day: 2 offs, 6-day: 1 off)
+            int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
+            int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
+            boolean empOffCompliant = (weeklyOffCount == targetOffs) || (leaveCount >= 7);
+            if (weeklyOffCount > targetOffs && leaveCount < 7) {
                 weeklyOffOk = false;
                 String datesStr = offDates.stream().map(LocalDate::toString).collect(Collectors.joining(", "));
+                String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
                 conflicts.add(new ConflictItem(
                         cycle.getStartDate(), emp.getId(), empName, null,
-                        "DUPLICATE_WEEKLY_OFF", weeklyOffCount + " Weekly OFFs (" + datesStr + ")", "Exactly 1 Weekly OFF",
-                        "Employee " + empName + " has " + weeklyOffCount + " weekly OFF assignments in cycle (expected exactly 1). OFF dates: " + datesStr,
+                        "EXCESS_WEEKLY_OFF", weeklyOffCount + " Weekly OFFs (" + datesStr + ")", expectedStr,
+                        "Employee " + empName + " has " + weeklyOffCount + " weekly OFF assignments in cycle (expected exactly " + targetOffs + "). OFF dates: " + datesStr,
                         "CRITICAL", "Reassign excess Weekly OFF days to working shifts", false
                 ));
-            } else if (weeklyOffCount == 0 && leaveCount < 7) {
+            } else if (weeklyOffCount < targetOffs && leaveCount < 7) {
                 weeklyOffOk = false;
+                String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
                 conflicts.add(new ConflictItem(
                         cycle.getStartDate(), emp.getId(), empName, null,
-                        "MIN_WEEKLY_OFF", "0 Weekly OFFs", "Exactly 1 Weekly OFF",
-                        "Employee " + empName + " has 0 scheduled weekly OFF days in the 7-day roster cycle",
-                        "HIGH", "Assign exactly one Weekly OFF day", false
+                        weeklyOffCount == 0 ? "NO_WEEKLY_OFF" : "MIN_WEEKLY_OFF", weeklyOffCount + " Weekly OFFs", expectedStr,
+                        "Employee " + empName + " has " + weeklyOffCount + " scheduled weekly OFF days in the 7-day roster cycle (expected " + targetOffs + ")",
+                        "HIGH", "Assign exactly " + targetOffs + " Weekly OFF day" + (targetOffs > 1 ? "s" : ""), false
                 ));
             }
 
-            // Workload status classification
-            String workloadStatus = dutyDays == 6 ? "Balanced" : (dutyDays > 6 ? "Higher" : "Lower");
+            // Workload status classification based on cycle working days
+            int expectedDutyDays = 7 - targetOffs - leaveCount;
+            String workloadStatus = dutyDays == expectedDutyDays ? "Balanced" : (dutyDays > expectedDutyDays ? "Higher" : "Lower");
             workloadItems.add(new RosterHealthReport.WorkloadEmployeeItem(
                     empName, emp.getEmployeeCode(), dutyDays, dutyHours, nightCount, eveningCount, weekendCount, workloadStatus
             ));
@@ -432,8 +448,9 @@ public class RosterHealthService {
 
         // 6. Workload Balance Score
         List<Integer> workingDaysList = workloadItems.stream().map(RosterHealthReport.WorkloadEmployeeItem::dutyDays).toList();
-        int minWorking = workingDaysList.stream().mapToInt(Integer::intValue).min().orElse(6);
-        int maxWorking = workingDaysList.stream().mapToInt(Integer::intValue).max().orElse(6);
+        int targetWd = (cycle != null) ? cycle.getEffectiveWorkingDays() : 6;
+        int minWorking = workingDaysList.stream().mapToInt(Integer::intValue).min().orElse(targetWd);
+        int maxWorking = workingDaysList.stream().mapToInt(Integer::intValue).max().orElse(targetWd);
         int spread = maxWorking - minWorking;
         double workloadBalanceScore = spread <= 1 ? 100.0 : Math.max(60.0, 100.0 - (spread - 1) * 15.0);
 
