@@ -251,3 +251,18 @@ CREATE TABLE IF NOT EXISTS device_tokens (
     INDEX idx_devtok_active (active)
 );
 
+CREATE TABLE IF NOT EXISTS roster_generation_history (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    fingerprint VARCHAR(128) NOT NULL,
+    generation_attempt INT NOT NULL DEFAULT 1,
+    generation_mode VARCHAR(30),
+    quality_score INT DEFAULT 0,
+    preference_score INT DEFAULT 0,
+    continuity_score INT DEFAULT 0,
+    created_at DATETIME(6) NOT NULL,
+    INDEX idx_rgh_dates (start_date, end_date),
+    INDEX idx_rgh_fingerprint (fingerprint)
+);
+

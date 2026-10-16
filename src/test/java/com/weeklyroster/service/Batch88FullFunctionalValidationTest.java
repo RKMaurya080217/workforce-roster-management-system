@@ -132,6 +132,7 @@ public class Batch88FullFunctionalValidationTest {
     @DisplayName("Holiday: Full CRUD, toggle active status, and duplicate date protection")
     void testHolidayFullCrudAndDuplicateProtection() throws Exception {
         LocalDate holidayDate = LocalDate.of(2026, 12, 25);
+        holidayRepository.findByHolidayDate(holidayDate).forEach(holidayRepository::delete);
         HolidayRequest req = new HolidayRequest(
                 "Office Christmas Festival",
                 holidayDate,
