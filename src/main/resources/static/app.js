@@ -3572,7 +3572,10 @@ async function renderRosterView() {
             </button>
 
             ${!isLocked && !isPublished ? `
-              <button class="btn btn-primary btn-sm" id="rosterPublishBtn" title="Publish Roster to Staff">
+              <button class="btn btn-primary btn-sm" id="rosterValidateFinalizeBtn" title="Validate all business rules and finalize roster" style="font-weight:700; background: #059669; border-color: #047857;">
+                ✅ Validate & Finalize
+              </button>
+              <button class="btn btn-secondary btn-sm" id="rosterPublishBtn" title="Publish Roster to Staff">
                 📢 Publish Roster
               </button>
             ` : ''}
@@ -3603,8 +3606,8 @@ async function renderRosterView() {
             </button>
 
             ${(currentCycle.deletable || status === 'DRAFT' || status === 'GENERATED') && !isLocked && !isPublished ? `
-              <button class="btn btn-secondary btn-sm" id="rosterDeleteCycleBtn" title="Delete Un-Published Roster Cycle" style="border-color:#ef4444; color:#dc2626;">
-                🗑️ Delete
+              <button class="btn btn-secondary btn-sm" id="rosterDeleteCycleBtn" title="Discard/Delete Un-Published Roster Cycle" style="border-color:#ef4444; color:#dc2626;">
+                🗑️ ${status === 'DRAFT' ? 'Discard Draft' : 'Delete'}
               </button>
             ` : ''}
 
@@ -3634,6 +3637,9 @@ async function renderRosterView() {
 
         <!-- Coverage & Feasibility Shortage Banner -->
         ${renderCoverageBanner(currentCycle)}
+
+        <!-- BATCH 91: Draft Roster Validation Status Panel -->
+        ${renderValidationStatusPanel(currentCycle)}
 
         <!-- Filter Sub-bar with View Switcher Beside Filters -->
         <div class="table-toolbar" style="background-color:var(--bg-app); padding:10px 20px; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center;">
@@ -3725,6 +3731,26 @@ async function renderRosterView() {
       });
     }
 
+    const valFinalizeBtn = document.getElementById("rosterValidateFinalizeBtn");
+    if (valFinalizeBtn) {
+      valFinalizeBtn.addEventListener("click", () => handleValidateAndFinalize(currentCycle.id));
+    }
+
+    const valPanelFinalizeBtn = document.getElementById("valPanelFinalizeBtn");
+    if (valPanelFinalizeBtn) {
+      valPanelFinalizeBtn.addEventListener("click", () => handleValidateAndFinalize(currentCycle.id));
+    }
+
+    document.querySelectorAll("[data-action='focus-val-issue']").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const empId = el.getAttribute("data-emp-id");
+        const dateStr = el.getAttribute("data-date");
+        const isEdit = el.tagName === "BUTTON";
+        focusValidationIssue(empId, dateStr, isEdit);
+      });
+    });
+
     const publishBtn = document.getElementById("rosterPublishBtn");
     if (publishBtn) {
       publishBtn.addEventListener("click", () => handlePublishRoster(currentCycle.id));
@@ -3778,11 +3804,15 @@ async function renderRosterView() {
     const rosterDeleteBtn = document.getElementById("rosterDeleteCycleBtn");
     if (rosterDeleteBtn) {
       rosterDeleteBtn.addEventListener("click", async () => {
-        if (confirm(`Are you sure you want to delete roster cycle #${currentCycle.id} (${formatDate(currentCycle.startDate)} to ${formatDate(currentCycle.endDate)})? This action will remove un-published shift assignments safely.`)) {
+        const isDraftCycle = (currentCycle.status === 'DRAFT');
+        const confirmMsg = isDraftCycle
+          ? `Are you sure you want to discard draft roster cycle #${currentCycle.id} (${formatDate(currentCycle.startDate)} to ${formatDate(currentCycle.endDate)})? This removes the draft candidate without touching employee records, leaves, holidays, or finalized rosters.`
+          : `Are you sure you want to delete roster cycle #${currentCycle.id} (${formatDate(currentCycle.startDate)} to ${formatDate(currentCycle.endDate)})? This action will remove un-published shift assignments safely.`;
+        if (confirm(confirmMsg)) {
           try {
-            showToast("Deleting roster cycle...", "info");
+            showToast(isDraftCycle ? "Discarding draft roster..." : "Deleting roster cycle...", "info");
             await apiRequest(`/api/rosters/cycle/${currentCycle.id}`, { method: "DELETE" });
-            showToast("Roster cycle deleted successfully", "success");
+            showToast(isDraftCycle ? "Draft discarded successfully" : "Roster cycle deleted successfully", "success");
             state.selectedCycleId = null;
             await renderRosterView();
           } catch (err) {
@@ -3824,6 +3854,279 @@ function updateRosterContent(cycle) {
   }
 }
 
+// BATCH 91: Validation Status Panel
+function renderValidationStatusPanel(cycle) {
+  if (!cycle) return '';
+  const status = cycle.status || 'GENERATED';
+  const isDraftOrGen = (status === 'DRAFT' || status === 'GENERATED');
+  const conflicts = cycle.conflicts || [];
+  const critCount = cycle.criticalConflicts !== undefined ? cycle.criticalConflicts : conflicts.filter(c => c.severity === 'CRITICAL').length;
+  const warnCount = cycle.warnings !== undefined ? cycle.warnings : conflicts.filter(c => c.severity === 'WARNING' || c.severity === 'HIGH').length;
+
+  // Only render on drafts / generated cycles or if conflicts exist
+  if (!isDraftOrGen && conflicts.length === 0) return '';
+
+  const panelClass = critCount > 0 ? 'has-errors' : (warnCount > 0 ? 'has-warnings' : 'all-passed');
+
+  return `
+    <div class="roster-validation-panel ${panelClass}" id="rosterValidationPanel">
+      <div class="val-panel-header">
+        <div class="val-panel-title-group">
+          <h3>📋 Roster Draft — Validation Status</h3>
+          ${critCount > 0 
+            ? `<span class="val-badge val-badge-error">⚠️ ${critCount} Mandatory Issue${critCount > 1 ? 's' : ''} Found • NEEDS MANUAL CORRECTION</span>`
+            : (warnCount > 0 
+              ? `<span class="val-badge val-badge-warning">⚠️ 0 Errors, ${warnCount} Warning${warnCount > 1 ? 's' : ''} • READY TO FINALIZE</span>`
+              : `<span class="val-badge val-badge-passed">✓ All Mandatory Rules Passed (0 Issues) • READY TO FINALIZE</span>`)}
+        </div>
+        <div class="val-metrics-summary">
+          <span>Health Score: <strong>${cycle.healthScore || 100}%</strong></span>
+          <span>Night Allocation: <strong>${cycle.maleNightCoverage || '100%'}</strong></span>
+          <span>Continuity: <strong>${cycle.shiftContinuityScore || 100}%</strong></span>
+          <span>Working Days: <strong>${cycle.workingDays || 6} Days</strong></span>
+        </div>
+      </div>
+
+      ${conflicts.length > 0 ? `
+        <div style="max-height: 240px; overflow-y: auto;">
+          <table class="val-issue-table">
+            <thead>
+              <tr>
+                <th style="width: 85px;">Severity</th>
+                <th style="width: 140px;">Employee</th>
+                <th style="width: 95px;">Date</th>
+                <th style="width: 110px;">Current Shift</th>
+                <th style="width: 110px;">Required</th>
+                <th>Issue / Reason</th>
+                <th style="width: 90px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${conflicts.map(c => {
+                const isCrit = c.severity === 'CRITICAL';
+                const sevClass = isCrit ? 'val-badge-error' : (c.severity === 'WARNING' || c.severity === 'HIGH' ? 'val-badge-warning' : 'val-badge-info');
+                const sevLabel = isCrit ? 'ERROR' : (c.severity === 'WARNING' || c.severity === 'HIGH' ? 'WARNING' : 'INFO');
+                const dateLabel = c.date ? formatDate(c.date) : '— (Cycle)';
+                const empLabel = c.employeeName || 'Staff';
+                return `
+                  <tr class="val-issue-row ${isCrit ? 'row-error' : 'row-warning'}" 
+                      data-action="focus-val-issue"
+                      data-emp-id="${c.employeeId || ''}"
+                      data-date="${c.date || ''}"
+                      title="Click to view and edit in roster">
+                    <td><span class="val-badge ${sevClass}">${sevLabel}</span></td>
+                    <td><strong>${escapeHTML(empLabel)}</strong></td>
+                    <td><code>${dateLabel}</code></td>
+                    <td>${escapeHTML(c.currentValue || '—')}</td>
+                    <td><span style="color:var(--text-muted);">${escapeHTML(c.expectedValue || '—')}</span></td>
+                    <td>${escapeHTML(c.reason)}</td>
+                    <td style="text-align: right;">
+                      <button type="button" class="btn btn-secondary btn-sm" style="font-size:0.72rem; padding:3px 8px;"
+                              data-action="focus-val-issue"
+                              data-emp-id="${c.employeeId || ''}"
+                              data-date="${c.date || ''}">
+                        ✏️ Edit
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `
+        <div style="padding: 12px 18px; font-size: 0.84rem; color: #065f46; background: #f0fdf4; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <strong>✓ All mandatory business rules are satisfied!</strong> Minimum staffing, 12-hour rest intervals, night shifts, and working day limits are fully compliant.
+          </div>
+          <button class="btn btn-primary btn-sm" id="valPanelFinalizeBtn" style="background:#059669; border-color:#047857; font-weight:700;">
+            ✅ Validate & Finalize
+          </button>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// BATCH 91: Actionable issue navigation and highlighting
+function focusValidationIssue(empId, dateStr, openModalDirectly = false) {
+  let target = null;
+  if (empId && dateStr) {
+    target = document.getElementById(`rosterCell_${empId}_${dateStr}`) || 
+             document.querySelector(`[data-emp-id="${empId}"][data-date="${dateStr}"]`);
+  }
+  if (!target && empId) {
+    target = document.getElementById(`rosterEmpRow_${empId}`) ||
+             document.querySelector(`[data-emp-id="${empId}"]`);
+  }
+
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.remove("roster-cell-highlight-flash", "roster-row-highlight-flash");
+    void target.offsetWidth;
+    if (target.tagName === "TR") {
+      target.classList.add("roster-row-highlight-flash");
+    } else {
+      target.classList.add("roster-cell-highlight-flash");
+    }
+    setTimeout(() => {
+      target.classList.remove("roster-cell-highlight-flash", "roster-row-highlight-flash");
+    }, 3500);
+
+    if (openModalDirectly && empId && dateStr && state.selectedCycleId) {
+      const cycle = state.cycles?.find(c => c.id === state.selectedCycleId);
+      const assign = cycle?.assignments?.find(a => a.employeeId == empId && a.rosterDate === dateStr);
+      if (assign) {
+        openShiftOverrideModal({
+          id: assign.id,
+          employeeName: assign.employeeName,
+          rosterDate: assign.rosterDate,
+          shiftType: assign.shiftType
+        });
+      }
+    }
+  }
+}
+
+// BATCH 91: Validate & Finalize Workflow
+async function handleValidateAndFinalize(cycleId) {
+  try {
+    showToast("Validating draft roster constraints...", "info");
+    const val = await apiRequest(`/api/rosters/cycle/${cycleId}/validate`);
+    
+    const modal = document.getElementById("finalizeRosterModal");
+    const titleEl = document.getElementById("finalizeModalTitle");
+    const bannerEl = document.getElementById("finalizeStatusBanner");
+    const sectionEl = document.getElementById("finalizeIssuesSection");
+    const listEl = document.getElementById("finalizeIssuesList");
+    const footerEl = document.getElementById("finalizeModalFooter");
+
+    if (titleEl) titleEl.textContent = `Validate & Finalize — Cycle #${cycleId}`;
+
+    if (val.criticalConflicts > 0) {
+      if (bannerEl) {
+        bannerEl.className = "finalize-status-banner blocked";
+        bannerEl.innerHTML = `
+          <h3>⛔ Cannot Finalize Roster</h3>
+          <p><strong>${val.criticalConflicts} mandatory issue(s) still need correction</strong> before this roster can become official.</p>
+        `;
+      }
+
+      if (sectionEl) sectionEl.style.display = "block";
+      const critConflicts = (val.conflicts || []).filter(c => c.severity === "CRITICAL");
+      if (listEl) {
+        listEl.innerHTML = `
+          <table class="val-issue-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Date</th>
+                <th>Current</th>
+                <th>Required</th>
+                <th>Issue</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${critConflicts.map(c => `
+                <tr class="val-issue-row row-error">
+                  <td><strong>${escapeHTML(c.employeeName || 'Staff')}</strong></td>
+                  <td><code>${c.date ? formatDate(c.date) : '—'}</code></td>
+                  <td>${escapeHTML(c.currentValue || '—')}</td>
+                  <td>${escapeHTML(c.expectedValue || '—')}</td>
+                  <td>${escapeHTML(c.reason)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      if (footerEl) {
+        footerEl.innerHTML = `
+          <button type="button" class="btn btn-primary" id="finalizeBackToDraftBtn">
+            ✏️ Back to Edit Draft
+          </button>
+        `;
+      }
+
+      const backBtn = document.getElementById("finalizeBackToDraftBtn");
+      if (backBtn) {
+        backBtn.addEventListener("click", () => {
+          closeModal("finalizeRosterModal");
+          if (critConflicts.length > 0) {
+            focusValidationIssue(critConflicts[0].employeeId, critConflicts[0].date);
+          }
+        });
+      }
+
+      openModal("finalizeRosterModal");
+    } else {
+      if (bannerEl) {
+        bannerEl.className = "finalize-status-banner passed";
+        bannerEl.innerHTML = `
+          <h3>✅ Validation Passed</h3>
+          <p>All mandatory scheduling and workforce constraints are satisfied. You may now finalize this roster to make it official and notify all assigned staff.</p>
+        `;
+      }
+
+      if (val.warnings > 0) {
+        if (sectionEl) sectionEl.style.display = "block";
+        const warnConflicts = (val.conflicts || []).filter(c => c.severity === "WARNING" || c.severity === "HIGH");
+        if (listEl) {
+          listEl.innerHTML = `
+            <div style="font-size:0.78rem; color:#b45309; margin-bottom:6px;">
+              ⚠️ Note: ${val.warnings} soft preference/continuity warning(s) are present, but they do not block finalization:
+            </div>
+            <table class="val-issue-table">
+              <tbody>
+                ${warnConflicts.map(c => `
+                  <tr class="val-issue-row row-warning">
+                    <td><strong>${escapeHTML(c.employeeName || 'Staff')}</strong></td>
+                    <td><code>${c.date ? formatDate(c.date) : '—'}</code></td>
+                    <td>${escapeHTML(c.reason)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          `;
+        }
+      } else {
+        if (sectionEl) sectionEl.style.display = "none";
+        if (listEl) listEl.innerHTML = "";
+      }
+
+      if (footerEl) {
+        footerEl.innerHTML = `
+          <button type="button" class="btn btn-ghost" data-close-modal="finalizeRosterModal">Keep as Draft</button>
+          <button type="button" class="btn btn-primary" id="confirmFinalizeActionBtn" style="background:#059669; border-color:#047857; font-weight:700;">
+            🚀 Finalize & Publish Roster
+          </button>
+        `;
+      }
+
+      const confirmBtn = document.getElementById("confirmFinalizeActionBtn");
+      if (confirmBtn) {
+        confirmBtn.addEventListener("click", async () => {
+          try {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = "Finalizing...";
+            await apiRequest(`/api/rosters/cycle/${cycleId}/finalize`, { method: "POST" });
+            closeModal("finalizeRosterModal");
+            showToast("Roster finalized and published successfully!", "success");
+            await renderRosterView();
+          } catch (err) {
+            showToast("Finalization failed: " + (err.message || err), "error");
+          }
+        });
+      }
+
+      openModal("finalizeRosterModal");
+    }
+  } catch (err) {
+    showToast("Validation check failed: " + (err.message || err), "error");
+  }
+}
+
 // Transform 1D Assignments to 2D Matrix (Employee x Date)
 function renderRosterMatrixHTML(cycle) {
   const assignments = cycle.assignments || [];
@@ -3846,10 +4149,12 @@ function renderRosterMatrixHTML(cycle) {
   });
 
   let employees = Array.from(employeeMap.values());
-  const q = state.rosterSearchTerm.toLowerCase();
+  const q = (state.rosterSearchTerm || '').toLowerCase();
   if (q) {
     employees = employees.filter(e => e.name.toLowerCase().includes(q) || e.code.toLowerCase().includes(q));
   }
+
+  const conflicts = cycle.conflicts || [];
 
   return `
     <table class="roster-matrix-table">
@@ -3874,30 +4179,43 @@ function renderRosterMatrixHTML(cycle) {
         </tr>
       </thead>
       <tbody>
-        ${employees.map(emp => `
-          <tr>
+        ${employees.map(emp => {
+          const empConflicts = conflicts.filter(c => c.employeeId === emp.id);
+          const hasCritConflict = empConflicts.some(c => c.severity === 'CRITICAL');
+          const hasWarnConflict = empConflicts.some(c => c.severity === 'WARNING' || c.severity === 'HIGH');
+          return `
+          <tr id="rosterEmpRow_${emp.id}" class="roster-emp-row" data-emp-id="${emp.id}" data-emp-name="${escapeHTML(emp.name)}">
             <td class="emp-col-cell">
-              <strong>${emp.name}</strong>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                <strong>${emp.name}</strong>
+                ${hasCritConflict ? `<span class="val-badge val-badge-error" style="font-size:0.62rem; padding:1px 5px;" title="${escapeHTML(empConflicts[0].reason)}">⚠️ ERROR</span>`
+                  : (hasWarnConflict ? `<span class="val-badge val-badge-warning" style="font-size:0.62rem; padding:1px 5px;" title="${escapeHTML(empConflicts[0].reason)}">⚠️ WARN</span>` : '')}
+              </div>
               <span style="display:block; font-size:0.74rem; color:var(--text-muted);">
                 <code>${emp.code}</code> &bull; ${emp.gender}
               </span>
             </td>
             ${dates.map(dateStr => {
               const assign = emp.days[dateStr];
-              if (!assign) return `<td>-</td>`;
+              if (!assign) return `<td id="rosterCell_${emp.id}_${dateStr}">-</td>`;
+
+              const cellConflict = empConflicts.find(c => c.date === dateStr);
+              const cellConflictBadge = cellConflict ? `<span style="position:absolute; top:2px; right:4px; font-size:0.75rem;" title="${escapeHTML(cellConflict.reason)}">⚠️</span>` : '';
 
               if (state.rosterShiftFilter !== "ALL" && assign.shiftType !== state.rosterShiftFilter) {
-                return `<td style="opacity:0.3;">${renderCellChip(assign)}</td>`;
+                return `<td id="rosterCell_${emp.id}_${dateStr}" class="matrix-shift-cell roster-matrix-cell" data-emp-id="${emp.id}" data-date="${dateStr}" style="opacity:0.3; position:relative;">${renderCellChip(assign)}${cellConflictBadge}</td>`;
               }
 
               return `
-                <td class="matrix-shift-cell">
+                <td class="matrix-shift-cell roster-matrix-cell" id="rosterCell_${emp.id}_${dateStr}" data-emp-id="${emp.id}" data-date="${dateStr}" style="position:relative;">
                   ${renderCellChip(assign)}
+                  ${cellConflictBadge}
                 </td>
               `;
             }).join("")}
           </tr>
-        `).join("")}
+        `;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -3908,7 +4226,9 @@ function renderCellChip(assign) {
   if (hol) {
     return `
       <div class="matrix-cell-chip holiday" 
+           id="rosterChip_${assign.id}"
            data-assign-id="${assign.id}" 
+           data-emp-id="${assign.employeeId}"
            data-emp-name="${assign.employeeName}"
            data-date="${assign.rosterDate}"
            data-shift="${assign.shiftType}"
@@ -3932,7 +4252,9 @@ function renderCellChip(assign) {
 
   return `
     <div class="matrix-cell-chip ${typeLower}" 
+         id="rosterChip_${assign.id}"
          data-assign-id="${assign.id}" 
+         data-emp-id="${assign.employeeId}"
          data-emp-name="${assign.employeeName}"
          data-date="${assign.rosterDate}"
          data-shift="${assign.shiftType}"
@@ -3969,7 +4291,7 @@ function renderRosterTableHTML(cycle) {
         ${list.map(a => {
           const hol = getHolidayForDate(a.rosterDate, a);
           return `
-          <tr>
+          <tr id="rosterTableRow_${a.id}" class="roster-table-row" data-emp-id="${a.employeeId}" data-date="${a.rosterDate}">
             <td><strong>${formatDate(a.rosterDate)}</strong></td>
             <td>
               <strong>${a.employeeName}</strong>
@@ -4029,6 +4351,16 @@ function bindRosterCellActions() {
       const date = btn.getAttribute("data-date");
       const currentShift = btn.getAttribute("data-shift");
       openShiftOverrideModal({ id: assignId, employeeName: empName, rosterDate: date, shiftType: currentShift });
+    });
+  });
+
+  document.querySelectorAll("[data-action='focus-val-issue']").forEach(el => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const empId = el.getAttribute("data-emp-id");
+      const dateStr = el.getAttribute("data-date");
+      const isEdit = el.tagName === "BUTTON";
+      focusValidationIssue(empId, dateStr, isEdit);
     });
   });
 }

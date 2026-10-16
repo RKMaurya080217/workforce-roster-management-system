@@ -494,13 +494,12 @@ public class RosterService {
 			bestGenerated = leastConflictsGenerated;
 			bestValidation = leastConflictsValidation;
 			bestChosenAttempt = 1;
+			log.info("[BATCH 91] No zero-conflict candidate found in {} attempts; selected candidate with least conflicts ({} critical conflicts)",
+					maxAttempts, (leastConflictsValidation != null ? leastConflictsValidation.criticalConflicts() : 0));
 		}
 
-		if (bestValidation == null || bestValidation.criticalConflicts() > 0) {
-			String firstCrit = (bestValidation != null && !bestValidation.conflicts().isEmpty())
-					? bestValidation.conflicts().stream().filter(c -> "CRITICAL".equalsIgnoreCase(c.severity())).map(ConflictItem::reason).findFirst().orElse("Mandatory scheduling constraints violated")
-					: "Unable to generate compliant roster within safety and workforce rules";
-			throw new BusinessException("Validation failure: " + firstCrit);
+		if (bestGenerated == null || bestGenerated.isEmpty()) {
+			throw new BusinessException("Unable to generate compliant roster within safety and workforce rules");
 		}
 
 		List<RosterAssignment> existingAssignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(startDate, endDate);
@@ -575,8 +574,11 @@ public class RosterService {
 		try { assignmentRepository.flush(); } catch (Exception ignored) {}
 		try { cycleRepository.flush(); } catch (Exception ignored) {}
 
-		// 5. Final Invariant Assertion
-		validateGeneratedRoster(cycle, generated, shifts, maxNightsAllowed, preferencesMap);
+		// BATCH 91: Evaluate live validation against saved draft assignments without throwing blocking exceptions
+		FinalValidationResult currentValidation = evaluateFinalValidation(cycle, generated, shifts, maxNightsAllowed, preferencesMap, priorOverrideMap);
+		boolean hasCriticalErrors = (currentValidation != null && currentValidation.criticalConflicts() > 0);
+		cycle.setStatus(hasCriticalErrors ? RosterStatus.DRAFT : RosterStatus.GENERATED);
+		cycle = cycleRepository.save(cycle);
 
 		// BATCH 80: Verify date-specific preferences fulfillment and log any constraint fallbacks
 		if (preferencesMap != null) {
@@ -603,7 +605,7 @@ public class RosterService {
 
 		if (rosterVersionService != null) {
 			try {
-				rosterVersionService.recordVersionSnapshot(cycle, mode == GenerationMode.AUTOMATIC ? "AUTOMATIC_GENERATION" : "GENERATED", "Roster cycle generated", "system");
+				rosterVersionService.recordVersionSnapshot(cycle, mode == GenerationMode.AUTOMATIC ? "AUTOMATIC_GENERATION" : (hasCriticalErrors ? "DRAFT" : "GENERATED"), hasCriticalErrors ? "Draft roster generated with " + currentValidation.criticalConflicts() + " validation issue(s)" : "Roster cycle generated", "system");
 			} catch (Exception ignored) {}
 		}
 
@@ -633,7 +635,7 @@ public class RosterService {
 
 		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, generated);
 
-		return toCycleResponse(cycle, generated, coverageReport, bestValidation);
+		return toCycleResponse(cycle, generated, coverageReport, currentValidation != null ? currentValidation : bestValidation);
 	}
 
 
@@ -1135,6 +1137,49 @@ public class RosterService {
 
 		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, assignments);
 		return toCycleResponse(cycle, assignments, coverageReport);
+	}
+
+	@Transactional(readOnly = true)
+	public FinalValidationResult validateCycle(Long cycleId) {
+		RosterCycle cycle = cycleRepository.findById(cycleId)
+				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle not found with id: " + cycleId));
+		List<RosterAssignment> assignments = assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(cycle);
+		if (assignments.isEmpty()) {
+			assignments = assignmentRepository.findByRosterDateBetweenWithDetails(cycle.getStartDate(), cycle.getEndDate());
+		}
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, cycle.getStartDate(), cycle.getEndDate());
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		return evaluateFinalValidation(cycle, assignments, shifts, 2, preferencesMap, Collections.emptyMap());
+	}
+
+	@Transactional
+	public RosterCycleResponse finalizeRoster(Long cycleId) {
+		var auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+			throw new AccessDeniedException("Only administrators can finalize rosters");
+		}
+		RosterCycle cycle = cycleRepository.findById(cycleId)
+				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle not found with id: " + cycleId));
+		List<RosterAssignment> assignments = assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(cycle);
+		if (assignments.isEmpty()) {
+			assignments = assignmentRepository.findByRosterDateBetweenWithDetails(cycle.getStartDate(), cycle.getEndDate());
+		}
+
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, cycle.getStartDate(), cycle.getEndDate());
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		FinalValidationResult val = evaluateFinalValidation(cycle, assignments, shifts, 2, preferencesMap, Collections.emptyMap());
+
+		if (val.criticalConflicts() > 0) {
+			String conflictDetails = val.conflicts().stream()
+					.filter(c -> "CRITICAL".equalsIgnoreCase(c.severity()))
+					.map(c -> (c.employeeName() != null ? c.employeeName() + ": " : "") + c.reason())
+					.collect(Collectors.joining("; "));
+			throw new BusinessException("Cannot finalize roster: " + val.criticalConflicts() + " mandatory issue(s) still need correction. " + conflictDetails);
+		}
+
+		return publishRoster(cycleId);
 	}
 
 	@Transactional
@@ -3664,14 +3709,51 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 					+ assignment.getCycle().getEndDate() + " is locked and cannot be modified. Changes require an authorized unlock action.");
 		}
 
+		if (!weeklyOff && assignment.isOnLeave()) {
+			throw new BusinessException("Cannot assign working shift: Employee " + (assignment.getEmployee() != null ? assignment.getEmployee().getFirstName() : "employee") + " is on approved Leave on " + assignment.getRosterDate());
+		}
+
 		if (!weeklyOff && !isEligible(assignment.getEmployee(), shiftType)) {
 			throw new BusinessException("Selected employee is not eligible for " + shiftType);
 		}
 		Shift shift = shiftRepository.findByShiftType(shiftType)
 				.orElseThrow(() -> new ResourceNotFoundException("Shift not found"));
 
+		// 12-hour minimum rest constraint validation
+		if (!weeklyOff && shift != null && shift.getShiftType() != ShiftType.OFF && assignment.getEmployee() != null) {
+			LocalDate date = assignment.getRosterDate();
+			Long empId = assignment.getEmployee().getId();
+
+			// Check previous day worked shift
+			List<RosterAssignment> prevList = assignmentRepository.findByEmployeeIdAndRosterDate(empId, date.minusDays(1));
+			if (!prevList.isEmpty()) {
+				RosterAssignment prevA = prevList.get(0);
+				if (!prevA.isWeeklyOff() && !prevA.isOnLeave() && prevA.getShift() != null && prevA.getShift().getShiftType() != ShiftType.OFF) {
+					if (!hasMinimumRest(prevA.getRosterDate(), prevA.getShift(), date, shift)) {
+						Duration rest = calculateRestDuration(prevA.getRosterDate(), prevA.getShift(), date, shift);
+						throw new BusinessException("Cannot assign " + shiftType + " shift: 12-hour rest conflict with "
+								+ prevA.getRosterDate() + " " + prevA.getShift().getShiftType() + " shift (rest: " + rest.toHours() + "h " + (rest.toMinutes() % 60) + "m)");
+					}
+				}
+			}
+
+			// Check next day worked shift
+			List<RosterAssignment> nextList = assignmentRepository.findByEmployeeIdAndRosterDate(empId, date.plusDays(1));
+			if (!nextList.isEmpty()) {
+				RosterAssignment nextA = nextList.get(0);
+				if (!nextA.isWeeklyOff() && !nextA.isOnLeave() && nextA.getShift() != null && nextA.getShift().getShiftType() != ShiftType.OFF) {
+					if (!hasMinimumRest(date, shift, nextA.getRosterDate(), nextA.getShift())) {
+						Duration rest = calculateRestDuration(date, shift, nextA.getRosterDate(), nextA.getShift());
+						throw new BusinessException("Cannot assign " + shiftType + " shift: 12-hour rest conflict with "
+								+ nextA.getRosterDate() + " " + nextA.getShift().getShiftType() + " shift (rest: " + rest.toHours() + "h " + (rest.toMinutes() % 60) + "m)");
+					}
+				}
+			}
+		}
+
 		ShiftType previous = assignment.getShift().getShiftType();
-		if ((weeklyOff || shiftType != previous) && previous != ShiftType.OFF && !assignment.isWeeklyOff()
+		boolean isDraft = assignment.getCycle() != null && assignment.getCycle().getStatus() == RosterStatus.DRAFT;
+		if (!isDraft && (weeklyOff || shiftType != previous) && previous != ShiftType.OFF && !assignment.isWeeklyOff()
 				&& !assignment.isOnLeave()) {
 			long remaining = assignmentRepository.countByRosterDateAndShiftShiftTypeAndWeeklyOffFalseAndOnLeaveFalse(
 					assignment.getRosterDate(), previous) - 1;
@@ -4496,6 +4578,10 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			this(isValid, overallStatus, preferenceComplianceScore, maleNightCoverage,
 					criticalConflicts, warnings, infoCount, healthScore, conflicts, workloadMetrics,
 					100.0, 100.0);
+		}
+
+		public boolean canFinalize() {
+			return criticalConflicts == 0;
 		}
 	}
 

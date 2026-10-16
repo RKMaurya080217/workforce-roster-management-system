@@ -994,6 +994,32 @@
     </div>
   </div>
 
+  <!-- Modal: Validate & Finalize Roster Modal (BATCH 91) -->
+  <div id="finalizeRosterModal" class="modal-backdrop hidden">
+    <div class="modal-box" style="max-width: 720px;">
+      <div class="modal-header">
+        <h3 id="finalizeModalTitle">Roster Finalization & Validation</h3>
+        <button class="modal-close" data-close-modal="finalizeRosterModal">&times;</button>
+      </div>
+      <div class="modal-body stack-gap">
+        <div id="finalizeStatusBanner" class="finalize-status-banner">
+          <!-- Populated by JS -->
+        </div>
+
+        <div id="finalizeIssuesSection">
+          <h4 style="font-size:0.92rem; margin-bottom:8px; font-weight:700;">Mandatory Rule Status & Corrections</h4>
+          <div id="finalizeIssuesList" style="max-height: 280px; overflow-y: auto;">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="modal-footer" id="finalizeModalFooter" style="margin-top:12px; display:flex; justify-content:flex-end; gap:10px;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal 5: Leave Decision Modal -->
   <div id="leaveDecisionModal" class="modal-backdrop hidden">
     <div class="modal-box modal-sm">

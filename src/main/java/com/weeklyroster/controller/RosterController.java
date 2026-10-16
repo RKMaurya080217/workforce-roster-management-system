@@ -224,6 +224,18 @@ public class RosterController {
         return ResponseEntity.ok(rosterService.swapShifts(request.assignmentId1(), request.assignmentId2(), request.reason()));
     }
 
+    @GetMapping(value = "/cycle/{id}/validate", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterService.FinalValidationResult> validateCycle(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(rosterService.validateCycle(id));
+    }
+
+    @PostMapping(value = "/cycle/{id}/finalize", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterCycleResponse> finalizeCycle(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(rosterService.finalizeRoster(id));
+    }
+
     @PostMapping("/cycle/{id}/publish")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterCycleResponse> publishCycle(@PathVariable("id") Long id) {

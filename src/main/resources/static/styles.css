@@ -6412,3 +6412,213 @@ body.sidebar-mobile-locked {
 }
 
 
+
+
+/* ==========================================================================
+   BATCH 91: DRAFT ROSTER PREVIEW & VALIDATION STATUS PANEL
+   ========================================================================== */
+
+.roster-validation-panel {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  margin: 14px 20px 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.roster-validation-panel.has-errors {
+  border-left: 5px solid #ef4444;
+}
+
+.roster-validation-panel.has-warnings {
+  border-left: 5px solid #f59e0b;
+}
+
+.roster-validation-panel.all-passed {
+  border-left: 5px solid #10b981;
+}
+
+.val-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #fafafa;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.val-panel-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.val-panel-title-group h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+
+.val-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+}
+
+.val-badge-error {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.val-badge-warning {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.val-badge-info {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.val-badge-passed {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.val-metrics-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: var(--text-secondary, #475569);
+  flex-wrap: wrap;
+}
+
+.val-metrics-summary span strong {
+  color: var(--text-primary, #0f172a);
+}
+
+.val-issue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.val-issue-table th {
+  background: #f8fafc;
+  color: var(--text-muted, #64748b);
+  font-weight: 700;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  text-align: left;
+}
+
+.val-issue-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.val-issue-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.val-issue-row:hover {
+  background-color: #f8fafc;
+}
+
+.val-issue-row.row-error {
+  border-left: 3px solid #ef4444;
+}
+
+.val-issue-row.row-warning {
+  border-left: 3px solid #f59e0b;
+}
+
+.finalize-status-banner {
+  padding: 14px 18px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.finalize-status-banner.blocked {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.finalize-status-banner.passed {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.finalize-status-banner h3 {
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.finalize-status-banner p {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+/* Flash animation when navigating from validation issue to roster cell */
+@keyframes rosterCellPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    outline: 3px solid #ef4444;
+    background-color: #fee2e2 !important;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    outline: 3px solid #ef4444;
+    background-color: #fef2f2 !important;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    outline: 2px solid transparent;
+  }
+}
+
+.roster-cell-highlight-flash {
+  animation: rosterCellPulse 1s ease-in-out 3 !important;
+  position: relative;
+  z-index: 10;
+}
+
+@keyframes rosterRowPulse {
+  0% {
+    background-color: #fef2f2 !important;
+  }
+  50% {
+    background-color: #fee2e2 !important;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.roster-row-highlight-flash {
+  animation: rosterRowPulse 1s ease-in-out 3 !important;
+}
