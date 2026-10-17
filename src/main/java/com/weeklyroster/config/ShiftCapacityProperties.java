@@ -14,6 +14,12 @@ public class ShiftCapacityProperties {
 	private int evening = 2;
 	private int night = 1;
 
+	private int weekdayMorningMin = 2;
+	private int weekendMorningMin = 1;
+	private int eveningMin = 1;
+	private int nightMin = 1;
+	private int generalMin = 1;
+
 	public Map<ShiftType, Integer> asMap() {
 		Map<ShiftType, Integer> capacities = new EnumMap<>(ShiftType.class);
 		capacities.put(ShiftType.MORNING, morning);
@@ -21,6 +27,21 @@ public class ShiftCapacityProperties {
 		capacities.put(ShiftType.EVENING, evening);
 		capacities.put(ShiftType.NIGHT, night);
 		return capacities;
+	}
+
+	public int getMinimumStaff(ShiftType type, java.time.DayOfWeek dayOfWeek) {
+		if (type == ShiftType.MORNING) {
+			return (dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY)
+					? weekendMorningMin : weekdayMorningMin;
+		}
+		if (type == ShiftType.EVENING) return eveningMin;
+		if (type == ShiftType.NIGHT) return nightMin;
+		if (type == ShiftType.GENERAL) return generalMin;
+		return 0;
+	}
+
+	public int getMinimumStaff(ShiftType type, java.time.LocalDate date) {
+		return date != null ? getMinimumStaff(type, date.getDayOfWeek()) : getMinimumStaff(type, java.time.DayOfWeek.MONDAY);
 	}
 
 	public int getMorning() {
@@ -53,5 +74,45 @@ public class ShiftCapacityProperties {
 
 	public void setNight(int night) {
 		this.night = night;
+	}
+
+	public int getWeekdayMorningMin() {
+		return weekdayMorningMin;
+	}
+
+	public void setWeekdayMorningMin(int weekdayMorningMin) {
+		this.weekdayMorningMin = weekdayMorningMin;
+	}
+
+	public int getWeekendMorningMin() {
+		return weekendMorningMin;
+	}
+
+	public void setWeekendMorningMin(int weekendMorningMin) {
+		this.weekendMorningMin = weekendMorningMin;
+	}
+
+	public int getEveningMin() {
+		return eveningMin;
+	}
+
+	public void setEveningMin(int eveningMin) {
+		this.eveningMin = eveningMin;
+	}
+
+	public int getNightMin() {
+		return nightMin;
+	}
+
+	public void setNightMin(int nightMin) {
+		this.nightMin = nightMin;
+	}
+
+	public int getGeneralMin() {
+		return generalMin;
+	}
+
+	public void setGeneralMin(int generalMin) {
+		this.generalMin = generalMin;
 	}
 }

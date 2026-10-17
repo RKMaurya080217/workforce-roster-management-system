@@ -65,7 +65,21 @@ public class RosterValidatorService {
                     .filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null)
                     .collect(Collectors.groupingBy(a -> a.getShift().getShiftType(), Collectors.counting()));
 
-            for (ShiftType st : ShiftType.values()) {
+            boolean isWeekend = (d.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
+            int minMorning = isWeekend ? 1 : 2;
+            long morningCount = counts.getOrDefault(ShiftType.MORNING, 0L);
+            if (morningCount < minMorning) {
+                findings.add(new RosterValidationFinding(
+                        morningCount == 0 ? "ZERO_SHIFT_COVERAGE" : "INSUFFICIENT_MORNING_COVERAGE",
+                        "Insufficient Morning Coverage",
+                        ValidationSeverity.ERROR,
+                        null, null, d,
+                        "Morning shift has " + morningCount + " employees assigned on " + d + " (minimum required is " + minMorning + ").",
+                        "Monday–Friday requires at least 2 employees on Morning shift; weekends require at least 1."
+                ));
+            }
+
+            for (ShiftType st : List.of(ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
                 long c = counts.getOrDefault(st, 0L);
                 if (c == 0) {
                     findings.add(new RosterValidationFinding(

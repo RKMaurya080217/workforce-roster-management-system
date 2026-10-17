@@ -10,6 +10,10 @@ public record ApplyLeaveRequest(
         @NotNull Long employeeId,
         @NotNull @FutureOrPresent LocalDate startDate,
         @NotNull @FutureOrPresent LocalDate endDate,
-        @NotBlank @Size(max = 500) String reason
+        @NotBlank @Size(max = 500) String reason,
+        String requestType
 ) {
+    public ApplyLeaveRequest(Long employeeId, LocalDate startDate, LocalDate endDate, String reason) {
+        this(employeeId, startDate, endDate, reason, "LEAVE");
+    }
 }

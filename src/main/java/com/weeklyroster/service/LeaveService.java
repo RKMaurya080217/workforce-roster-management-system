@@ -86,6 +86,10 @@ public class LeaveService {
         leave.setStartDate(request.startDate());
         leave.setEndDate(request.endDate());
         leave.setReason(request.reason());
+        String reqType = (request.requestType() != null && !request.requestType().isBlank())
+                ? request.requestType().trim().toUpperCase()
+                : (request.reason() != null && request.reason().toLowerCase().contains("holiday") ? "HOLIDAY_OFF" : "LEAVE");
+        leave.setRequestType(reqType);
         leave.setStatus(LeaveStatus.PENDING);
         leave.setRequestedAt(LocalDateTime.now());
         LeaveRequest saved = leaveRepository.save(leave);
@@ -608,7 +612,8 @@ public class LeaveService {
                 leave.getPendingEndDate(),
                 leave.getModificationReason(),
                 leave.getCancellationReason(),
-                leave.getModifiedAt()
+                leave.getModifiedAt(),
+                leave.getRequestType()
         );
     }
 }

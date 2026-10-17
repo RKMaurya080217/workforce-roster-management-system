@@ -55,6 +55,9 @@ public class LeaveRequest {
 
     private LocalDateTime modifiedAt;
 
+    @Column(name = "request_type", length = 50)
+    private String requestType = "LEAVE";
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Employee getEmployee() { return employee; }
@@ -88,4 +91,12 @@ public class LeaveRequest {
     public void setCancellationReason(String cancellationReason) { this.cancellationReason = cancellationReason; }
     public LocalDateTime getModifiedAt() { return modifiedAt; }
     public void setModifiedAt(LocalDateTime modifiedAt) { this.modifiedAt = modifiedAt; }
+
+    public String getRequestType() {
+        return requestType != null ? requestType : "LEAVE";
+    }
+
+    public void setRequestType(String requestType) {
+        this.requestType = requestType;
+    }
 }

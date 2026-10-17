@@ -4385,6 +4385,28 @@ async function renderShiftsView() {
     });
 
     container.innerHTML = `
+      <!-- Client Staffing Rules Banner -->
+      <div class="card" style="margin-bottom:16px; border-left:4px solid var(--primary); background:var(--card-bg);">
+        <div class="card-body" style="padding:14px 18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <div style="font-weight:800; font-size:0.95rem; color:var(--text-color); display:flex; align-items:center; gap:6px;">
+                <span>🛡️</span> Mandatory Staffing Capacity Engine Floor (Client Configuration)
+              </div>
+              <div style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">
+                Roster generator strictly validates and enforces these operational minima across candidates prior to publishing.
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <span class="badge morning" style="font-weight:700; padding:4px 8px;">🌅 Mon-Fri Morning: ≥ 2</span>
+              <span class="badge morning" style="font-weight:700; padding:4px 8px;">🌅 Sat-Sun Morning: ≥ 1</span>
+              <span class="badge evening" style="font-weight:700; padding:4px 8px;">🌇 Evening: ≥ 1</span>
+              <span class="badge night" style="font-weight:700; padding:4px 8px;">🌙 Night: 1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
@@ -4758,17 +4780,24 @@ function renderNewLeaveTableHTML(list) {
         </tr>
       </thead>
       <tbody>
-        ${list.map(l => `
+        ${list.map(l => {
+          const isHolidayOff = l.requestType === "HOLIDAY_OFF" || (l.reason && l.reason.toLowerCase().includes("holiday"));
+          const typeBadge = isHolidayOff
+            ? `<div style="margin-top:4px;"><span class="badge" style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.72rem; padding:2px 8px; border:1px solid #c7d2fe;">🏖️ Custom Off / Holiday</span></div>`
+            : `<div style="margin-top:4px;"><span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600; font-size:0.72rem; padding:2px 8px;">🗓️ Standard Leave</span></div>`;
+
+          return `
           <tr>
             <td>
               <strong>${l.employeeName}</strong>
               <div style="font-size:0.74rem; color:var(--text-muted);">${l.employeeCode || ''}</div>
+              ${typeBadge}
             </td>
             <td>
               <code>${formatDate(l.startDate)}</code> &rarr; <code>${formatDate(l.endDate)}</code>
             </td>
             <td><span class="badge morning">${calculateDaysBetween(l.startDate, l.endDate)} day(s)</span></td>
-            <td>${l.reason}</td>
+            <td>${escapeHTML(l.reason)}</td>
             <td>
               <span class="status-pill pending">Pending Review</span>
             </td>
@@ -4784,7 +4813,8 @@ function renderNewLeaveTableHTML(list) {
               </div>
             </td>
           </tr>
-        `).join("")}
+        `;
+        }).join("")}
       </tbody>
     </table>
   `;
@@ -5061,6 +5091,7 @@ function validateDutyResponse(data) {
 function formatDutyContextSummary(item) {
   if (!item || !item.status) return "Standby";
   const day = item.dayOfWeek || "";
+  if (item.status === "EMPLOYEE_HOLIDAY") return `${day} — 🏖️ Custom Off / Holiday`;
   if (item.status === "LEAVE") return `${day} — 🏖️ On Leave`;
   if (item.status === "OFF") return `${day} — 🛋️ Weekly Off`;
   if (item.status === "WORKING") {
@@ -5516,6 +5547,13 @@ function renderWorkspaceOverviewHTML(data) {
     iconEmoji = "🎉";
     iconBg = "#fef3c7";
     iconColor = "#b45309";
+  } else if (duty.status === "EMPLOYEE_HOLIDAY") {
+    shiftTitle = "APPROVED OFF / HOLIDAY";
+    timingSubtext = duty.leaveReason ? `Custom Off: ${duty.leaveReason}` : "Approved Employee Off / Holiday Requirement";
+    statusBadge = `<span class="flag-badge flag-holiday" style="background:#e0e7ff; color:#3730a3; font-weight:700; border:1px solid #c7d2fe;">🏖️ OFF — Custom Holiday / Off</span>`;
+    iconEmoji = "🏖️";
+    iconBg = "#e0e7ff";
+    iconColor = "#3730a3";
   } else if (duty.status === "LEAVE") {
     shiftTitle = "ON LEAVE";
     timingSubtext = duty.leaveReason ? `Approved: ${duty.leaveReason}` : (duty.leaveType || "Approved Absence");
@@ -5873,6 +5911,15 @@ function renderEmployeeRosterCalendarHTML(list) {
               <strong style="color:#b45309; font-size:1.05rem;">🎉 HOLIDAY</strong>
               <div style="font-size:0.88rem; font-weight:700; color:#92400e; margin-top:4px;">${escapeHTML(hol.name)}</div>
               <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Official Public Holiday • No Duty Required</div>
+            </div>
+          `;
+        } else if (a.status === "EMPLOYEE_HOLIDAY" || (a.onLeave && a.leaveReason && a.leaveReason.toLowerCase().includes("holiday"))) {
+          statusBadge = `<span class="flag-badge flag-holiday" style="font-size:0.75rem; padding:3px 8px; background:#e0e7ff; color:#3730a3; font-weight:700; border:1px solid #c7d2fe;">🏖️ CUSTOM OFF</span>`;
+          bodyHtml = `
+            <div class="shift-subgroup" style="margin-top:8px;">
+              <strong style="color:#3730a3; font-size:1.05rem;">CUSTOM OFF</strong>
+              <div style="font-size:0.78rem; color:#4338ca; margin-top:4px;">${escapeHTML(a.leaveReason || "Approved Custom Holiday/Off")}</div>
+              <div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">Approved Employee Off • No duty required</div>
             </div>
           `;
         } else if (a.onLeave) {
@@ -7425,7 +7472,9 @@ function renderUpcomingShiftsTableHTML(list) {
           const dayName = dt.toLocaleDateString("en-US", { weekday: "short" });
           let flagHtml = `<span class="flag-badge flag-working">WORKING</span>`;
           if (a.onLeave) {
-            flagHtml = `<span class="flag-badge flag-leave">🏖️ OFF — Leave</span>`;
+            flagHtml = (a.status === "EMPLOYEE_HOLIDAY" || (a.leaveReason && a.leaveReason.toLowerCase().includes("holiday")))
+              ? `<span class="flag-badge flag-holiday" style="background:#e0e7ff; color:#3730a3; font-weight:700; border:1px solid #c7d2fe;">🏖️ OFF — Custom Off</span>`
+              : `<span class="flag-badge flag-leave">🏖️ OFF — Leave</span>`;
           } else if (a.weeklyOff || a.shiftType === "OFF") {
             flagHtml = `<span class="flag-badge flag-weeklyoff">🛋️ OFF — Weekly OFF</span>`;
           } else if (a.overridden) {
@@ -7437,12 +7486,12 @@ function renderUpcomingShiftsTableHTML(list) {
               <td><strong>${formatDate(a.rosterDate)}</strong></td>
               <td><code>${dayName}</code></td>
               <td>
-                <span class="badge ${String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
-                  ${a.onLeave ? 'OFF (Leave)' : a.shiftType}
+                <span class="badge ${(a.status === 'EMPLOYEE_HOLIDAY' || (a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'holiday' : String(a.shiftType).toLowerCase()}" title="${escapeHTML(a.assignmentReason || '')}">
+                  ${(a.status === 'EMPLOYEE_HOLIDAY' || (a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'CUSTOM OFF' : a.onLeave ? 'OFF (Leave)' : a.shiftType}
                 </span>
                 ${a.assignmentReason ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:2px;">${escapeHTML(a.assignmentReason)}</div>` : ''}
               </td>
-              <td><small style="font-weight:600; color:var(--text-muted);">${a.onLeave ? 'Approved Leave' : getShiftTimingDisplay(a.shiftType)}</small></td>
+              <td><small style="font-weight:600; color:var(--text-muted);">${(a.status === 'EMPLOYEE_HOLIDAY' || (a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'Approved Custom Off' : a.onLeave ? 'Approved Leave' : getShiftTimingDisplay(a.shiftType)}</small></td>
               <td>${flagHtml}</td>
             </tr>
           `;
@@ -7463,11 +7512,22 @@ function renderWorkspaceLeaveManagementHTML(leaves, roster, empId) {
       <div class="card">
         <div class="card-header">
           <div>
-            <h3>Apply for Leave</h3>
+            <h3>Apply for Leave / Custom Off</h3>
             <span style="font-size:0.76rem; color:var(--text-muted);">Submit dates for administrative approval</span>
           </div>
         </div>
         <form id="empApplyLeaveForm" class="card-body stack-gap">
+          <div class="form-group">
+            <label for="leaveRequestTypeInput">Request Category <span class="req">*</span></label>
+            <select id="leaveRequestTypeInput" style="font-weight:600; padding:8px 10px;">
+              <option value="LEAVE" selected>🗓️ Standard Leave Request</option>
+              <option value="HOLIDAY_OFF">🏖️ Employee Off / Custom Holiday Request</option>
+            </select>
+            <span style="font-size:0.72rem; color:var(--text-muted); margin-top:3px; display:block;">
+              Select whether this is formal leave or an employee-specific custom holiday / off requirement.
+            </span>
+          </div>
+
           <div class="form-row two-col">
             <div class="form-group">
               <label for="leaveStartInput">Start Date <span class="req">*</span></label>
@@ -7492,12 +7552,12 @@ function renderWorkspaceLeaveManagementHTML(leaves, roster, empId) {
           </div>
 
           <div class="form-group">
-            <label for="leaveReasonInput">Reason for Leave <span class="req">*</span></label>
-            <textarea id="leaveReasonInput" placeholder="State reason (e.g. Urgent family work, Personal, Medical)" required></textarea>
+            <label for="leaveReasonInput">Reason / Notes <span class="req">*</span></label>
+            <textarea id="leaveReasonInput" placeholder="State reason (e.g. Urgent family work, Personal, Festival/Holiday off requirement)" required></textarea>
           </div>
 
           <button type="submit" class="btn btn-primary btn-block" id="submitEmpLeaveBtn">
-            <span>Submit Leave Request</span>
+            <span>Submit Request</span>
             <div class="spinner hidden"></div>
           </button>
         </form>
@@ -7608,11 +7668,17 @@ function renderActiveLeavesListHTML(list) {
             `;
           }
 
+          const isHolidayOff = l.requestType === "HOLIDAY_OFF" || (l.reason && l.reason.toLowerCase().includes("holiday"));
+          const catTag = isHolidayOff
+            ? `<div style="margin-top:3px;"><span class="badge" style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.68rem; padding:2px 6px; border:1px solid #c7d2fe;">🏖️ Custom Off</span></div>`
+            : `<div style="margin-top:3px;"><span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600; font-size:0.68rem; padding:2px 6px;">🗓️ Leave</span></div>`;
+
           return `
             <tr>
               <td>
                 <code>${formatDate(l.startDate)}</code> &rarr; <code>${formatDate(l.endDate)}</code>
                 ${l.originalStartDate && l.originalStartDate !== l.startDate ? `<div style="font-size:0.7rem; color:var(--text-muted);">Orig: ${formatDate(l.originalStartDate)} - ${formatDate(l.originalEndDate)}</div>` : ''}
+                ${catTag}
               </td>
               <td><strong>${days}d</strong></td>
               <td>${statusBadge}</td>
@@ -7665,8 +7731,12 @@ function renderFullLeaveHistoryTableHTML(list) {
                 <strong>${formatDate(l.startDate)}</strong> &rarr; <strong>${formatDate(l.endDate)}</strong>
               </td>
               <td><span class="badge morning">${days} Day(s)</span></td>
-              <td><small style="font-weight:600; color:var(--text-muted);">Personal Leave</small></td>
-              <td>${l.reason}</td>
+              <td>
+                ${(l.requestType === "HOLIDAY_OFF" || (l.reason && l.reason.toLowerCase().includes("holiday")))
+                  ? `<span class="badge" style="background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem;">🏖️ Custom Off</span>`
+                  : `<small style="font-weight:600; color:var(--text-muted);">Personal Leave</small>`}
+              </td>
+              <td>${escapeHTML(l.reason)}</td>
               <td><span class="status-pill ${statusPillClass}">${l.status}</span></td>
               <td><small style="color:var(--text-muted);">${l.requestedAt ? new Date(l.requestedAt).toLocaleDateString() : '-'}</small></td>
               <td style="font-size:0.78rem; color:var(--text-muted); max-width:220px;">${auditDetails}</td>
@@ -7817,6 +7887,8 @@ function bindLeaveManagementEvents(empId, leaves, roster) {
       const startDate = startInput.value;
       const endDate = endInput.value;
       const reason = document.getElementById("leaveReasonInput").value.trim();
+      const requestTypeSelect = document.getElementById("leaveRequestTypeInput");
+      const requestType = requestTypeSelect ? requestTypeSelect.value : "LEAVE";
       const submitBtn = document.getElementById("submitEmpLeaveBtn");
       const spinner = submitBtn.querySelector(".spinner");
 
@@ -7831,11 +7903,14 @@ function bindLeaveManagementEvents(empId, leaves, roster) {
 
         await apiRequest("/api/leaves", {
           method: "POST",
-          body: { employeeId: empId, startDate, endDate, reason }
+          body: { employeeId: empId, startDate, endDate, reason, requestType }
         });
 
         broadcastDataMutation("LEAVE_APPLIED");
-        toast("Leave request submitted successfully", "success");
+        const successMsg = requestType === "HOLIDAY_OFF"
+          ? "Custom holiday/off requirement submitted successfully"
+          : "Leave request submitted successfully";
+        toast(successMsg, "success");
         await renderEmployeeWorkspaceView();
       } catch (err) {
         toast(err.message, "error");
@@ -8097,20 +8172,20 @@ function renderMyRosterTableHTML(list) {
                   🎉 HOLIDAY
                 </span>
               ` : `
-                <span class="badge ${String(a.shiftType).toLowerCase()}">${a.onLeave ? 'LEAVE' : a.shiftType}</span>
+                <span class="badge ${(a.status === 'EMPLOYEE_HOLIDAY' || (a.onLeave && a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'holiday' : a.onLeave ? 'leave' : String(a.shiftType).toLowerCase()}">${(a.status === 'EMPLOYEE_HOLIDAY' || (a.onLeave && a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'CUSTOM OFF' : a.onLeave ? 'LEAVE' : a.shiftType}</span>
               `}
             </td>
             <td>
               ${hol ? `
                 <span style="font-size:0.85rem; font-weight:600; color:#b45309;">—</span>
               ` : `
-                <span style="font-size:0.85rem; font-weight:600; color:var(--text-muted);">${a.onLeave ? 'Approved Leave' : (getShiftTimingDisplay(a.shiftType) || 'No working hours')}</span>
+                <span style="font-size:0.85rem; font-weight:600; color:var(--text-muted);">${(a.status === 'EMPLOYEE_HOLIDAY' || (a.onLeave && a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? 'Approved Custom Off' : a.onLeave ? 'Approved Leave' : (getShiftTimingDisplay(a.shiftType) || 'No working hours')}</span>
               `}
             </td>
             <td>
               ${hol ? `
                 <span class="flag-badge flag-holiday" style="background:#fef3c7; color:#b45309; font-weight:700; border:1px solid #fde68a;">🎉 HOLIDAY${hol.name ? ': ' + escapeHTML(hol.name) : ''}</span>
-              ` : a.onLeave ? '<span class="flag-badge flag-leave">🏖️ LEAVE</span>' : a.weeklyOff ? '<span class="flag-badge flag-weeklyoff">🛋️ WEEKLY OFF</span>' : a.overridden ? '<span class="flag-badge flag-override">⚡ OVERRIDE</span>' : '<span class="flag-badge flag-working">WORKING</span>'}
+              ` : (a.status === 'EMPLOYEE_HOLIDAY' || (a.onLeave && a.leaveReason && a.leaveReason.toLowerCase().includes('holiday'))) ? '<span class="flag-badge flag-holiday" style="background:#e0e7ff; color:#3730a3; font-weight:700; border:1px solid #c7d2fe;">🏖️ CUSTOM OFF</span>' : a.onLeave ? '<span class="flag-badge flag-leave">🏖️ LEAVE</span>' : a.weeklyOff ? '<span class="flag-badge flag-weeklyoff">🛋️ WEEKLY OFF</span>' : a.overridden ? '<span class="flag-badge flag-override">⚡ OVERRIDE</span>' : '<span class="flag-badge flag-working">WORKING</span>'}
             </td>
           </tr>
         `;

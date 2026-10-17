@@ -332,7 +332,8 @@ public class DashboardService {
                 leave.getPendingEndDate(),
                 leave.getModificationReason(),
                 leave.getCancellationReason(),
-                leave.getModifiedAt()
+                leave.getModifiedAt(),
+                leave.getRequestType()
         );
     }
 

@@ -107,7 +107,35 @@ public class RosterService {
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private RosterEmailService rosterEmailService;
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private com.weeklyroster.config.ShiftCapacityProperties shiftCapacityProperties;
+
 	private final java.util.concurrent.ConcurrentHashMap<String, List<com.weeklyroster.dto.response.RosterCandidateResponse>> candidateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+	public void setShiftCapacityProperties(com.weeklyroster.config.ShiftCapacityProperties shiftCapacityProperties) {
+		this.shiftCapacityProperties = shiftCapacityProperties;
+	}
+
+	public int getRequiredMorningMin(LocalDate date) {
+		if (shiftCapacityProperties != null) {
+			return shiftCapacityProperties.getMinimumStaff(ShiftType.MORNING, date);
+		}
+		return isWeekend(date) ? 1 : 2;
+	}
+
+	public int getRequiredEveningMin(LocalDate date) {
+		if (shiftCapacityProperties != null) {
+			return shiftCapacityProperties.getMinimumStaff(ShiftType.EVENING, date);
+		}
+		return 1;
+	}
+
+	public int getRequiredNightMin(LocalDate date) {
+		if (shiftCapacityProperties != null) {
+			return shiftCapacityProperties.getMinimumStaff(ShiftType.NIGHT, date);
+		}
+		return 1;
+	}
 
 	public void setRosterEmailService(RosterEmailService rosterEmailService) {
 		this.rosterEmailService = rosterEmailService;
@@ -1673,7 +1701,7 @@ public class RosterService {
 			dailyConfiguredTotal += cap;
 		}
 
-		Map<ShiftType, Integer> feasibleDemands = calculateDailyFeasibleDemands(available, configuredDemands);
+		Map<ShiftType, Integer> feasibleDemands = calculateDailyFeasibleDemands(date, available, configuredDemands);
 		int dailyFeasibleTotal = feasibleDemands.values().stream().mapToInt(Integer::intValue).sum();
 
 		List<ShiftType> feasibleSlots = new ArrayList<>();
@@ -2050,7 +2078,7 @@ public class RosterService {
 		}
 	}
 
-	private Map<ShiftType, Integer> calculateDailyFeasibleDemands(List<Employee> available, Map<ShiftType, Integer> configuredDemands) {
+	private Map<ShiftType, Integer> calculateDailyFeasibleDemands(LocalDate date, List<Employee> available, Map<ShiftType, Integer> configuredDemands) {
 		Map<ShiftType, Integer> feasible = new EnumMap<>(ShiftType.class);
 		int availableCount = available.size();
 
@@ -2059,15 +2087,24 @@ public class RosterService {
 			return feasible;
 		}
 
-		int nightTarget = configuredDemands.getOrDefault(ShiftType.NIGHT, 1);
-		int eveningTarget = configuredDemands.getOrDefault(ShiftType.EVENING, 1);
-		int morningTarget = configuredDemands.getOrDefault(ShiftType.MORNING, 2);
+		int morningMin = getRequiredMorningMin(date);
+		int eveningMin = getRequiredEveningMin(date);
+		int nightMin = getRequiredNightMin(date);
+
+		int nightTarget = Math.max(nightMin, configuredDemands.getOrDefault(ShiftType.NIGHT, 1));
+		int eveningTarget = Math.max(eveningMin, configuredDemands.getOrDefault(ShiftType.EVENING, 1));
+		int morningTarget = Math.max(morningMin, configuredDemands.getOrDefault(ShiftType.MORNING, 2));
 		int generalTarget = configuredDemands.getOrDefault(ShiftType.GENERAL, 2);
 
 		feasible.put(ShiftType.NIGHT, (nightTarget > 0 && availableCount >= 1) ? 1 : 0);
 		feasible.put(ShiftType.EVENING, (eveningTarget > 0 && availableCount >= 2) ? 1 : 0);
 		feasible.put(ShiftType.MORNING, (morningTarget > 0 && availableCount >= 3) ? 1 : 0);
-		feasible.put(ShiftType.GENERAL, (generalTarget > 0 && availableCount >= 4) ? 1 : 0);
+		if (morningMin >= 2 && availableCount >= 4) {
+			feasible.put(ShiftType.MORNING, 2);
+			feasible.put(ShiftType.GENERAL, (generalTarget > 0 && availableCount >= 5) ? 1 : 0);
+		} else {
+			feasible.put(ShiftType.GENERAL, (generalTarget > 0 && availableCount >= 4) ? 1 : 0);
+		}
 
 		int baselineAssigned = feasible.values().stream().mapToInt(Integer::intValue).sum();
 		int remainingStaff = Math.max(0, availableCount - baselineAssigned);
@@ -2077,6 +2114,9 @@ public class RosterService {
 			for (ShiftType type : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
 				int cur = feasible.getOrDefault(type, 0);
 				int target = configuredDemands.getOrDefault(type, 1);
+				if (type == ShiftType.MORNING) {
+					target = Math.max(target, morningMin);
+				}
 				if (cur < target && remainingStaff > 0) {
 					feasible.put(type, cur + 1);
 					remainingStaff--;
@@ -2090,6 +2130,10 @@ public class RosterService {
 		}
 
 		return feasible;
+	}
+
+	private Map<ShiftType, Integer> calculateDailyFeasibleDemands(List<Employee> available, Map<ShiftType, Integer> configuredDemands) {
+		return calculateDailyFeasibleDemands(LocalDate.now(), available, configuredDemands);
 	}
 
 	private String determineCandidateRejectionReason(Employee emp, ShiftType shiftType, LocalDate date, Shift shift,
@@ -2881,7 +2925,8 @@ public class RosterService {
 
 				for (ShiftType donorType : List.of(ShiftType.MORNING, ShiftType.EVENING)) {
 					List<RosterAssignment> donors = shiftMap.getOrDefault(donorType, Collections.emptyList());
-					if (donors.size() <= 1) continue;
+					int minDonorKeep = (donorType == ShiftType.MORNING) ? getRequiredMorningMin(date) : 1;
+					if (donors.size() <= minDonorKeep) continue;
 
 					for (RosterAssignment a : donors) {
 						Employee emp = a.getEmployee();
@@ -2924,16 +2969,18 @@ public class RosterService {
 				}
 			}
 
-			// Similarly ensure Morning has at least 1 if workingTotal >= 3
+			// Ensure Morning has at least requiredMorning (2 on Mon-Fri, 1 on weekends)
+			int requiredMorning = getRequiredMorningMin(date);
 			int updatedM = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList()).size();
-			if (updatedM == 0 && workingTotal >= 3) {
+			while (updatedM < requiredMorning && workingTotal >= (requiredMorning + 2)) {
 				Shift morningShift = shifts.get(ShiftType.MORNING);
 				RosterAssignment candidateToMove = null;
 				ShiftType donorShiftType = null;
 
 				for (ShiftType donorType : List.of(ShiftType.GENERAL, ShiftType.EVENING)) {
 					List<RosterAssignment> donors = shiftMap.getOrDefault(donorType, Collections.emptyList());
-					if (donors.size() <= 1) continue;
+					int minDonorKeep = (donorType == ShiftType.EVENING) ? 1 : 0;
+					if (donors.size() <= minDonorKeep) continue;
 
 					for (RosterAssignment a : donors) {
 						Employee emp = a.getEmployee();
@@ -2969,11 +3016,62 @@ public class RosterService {
 				}
 
 				if (candidateToMove != null) {
-					log.info("[WRMS REBALANCE] Day {}: Reassigning {} from {} to MORNING to satisfy mandatory coverage",
-							date, candidateToMove.getEmployee().getEmployeeCode(), donorShiftType);
+					log.info("[WRMS REBALANCE] Day {}: Reassigning {} from {} to MORNING to satisfy mandatory coverage (current: {}, required: {})",
+							date, candidateToMove.getEmployee().getEmployeeCode(), donorShiftType, updatedM, requiredMorning);
 					candidateToMove.setShift(morningShift);
 					shiftMap.get(donorShiftType).remove(candidateToMove);
 					shiftMap.computeIfAbsent(ShiftType.MORNING, k -> new ArrayList<>()).add(candidateToMove);
+					updatedM = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList()).size();
+				} else {
+					break;
+				}
+			}
+
+			// Ensure Evening has at least 1 if workingTotal >= 2
+			int updatedE = shiftMap.getOrDefault(ShiftType.EVENING, Collections.emptyList()).size();
+			if (updatedE == 0 && workingTotal >= 2) {
+				Shift eveningShift = shifts.get(ShiftType.EVENING);
+				RosterAssignment candidateToMove = null;
+				ShiftType donorShiftType = null;
+
+				for (ShiftType donorType : List.of(ShiftType.GENERAL, ShiftType.MORNING)) {
+					List<RosterAssignment> donors = shiftMap.getOrDefault(donorType, Collections.emptyList());
+					int minDonorKeep = (donorType == ShiftType.MORNING) ? requiredMorning : 1;
+					if (donors.size() <= minDonorKeep) continue;
+
+					for (RosterAssignment a : donors) {
+						Employee emp = a.getEmployee();
+						if (emp.getGender() == Gender.FEMALE) continue;
+						ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(emp.getId()) : null;
+						if (donorType == ShiftType.GENERAL && isDevelopmentTeam(emp) && date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.SUNDAY) continue;
+						if (pref != null && pref.hasDateSpecificShift(date)) continue;
+						if (!isEligible(emp, ShiftType.EVENING, pref)) continue;
+
+						List<RosterAssignment> empList = empAssignments.getOrDefault(emp.getId(), Collections.emptyList());
+						int idx = empList.indexOf(a);
+						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
+						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
+
+						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
+								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, eveningShift));
+						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
+								hasMinimumRest(date, eveningShift, next.getRosterDate(), next.getShift()));
+
+						if (restPrev && restNext) {
+							candidateToMove = a;
+							donorShiftType = donorType;
+							break;
+						}
+					}
+					if (candidateToMove != null) break;
+				}
+
+				if (candidateToMove != null) {
+					log.info("[WRMS REBALANCE] Day {}: Reassigning {} from {} to EVENING to satisfy mandatory coverage",
+							date, candidateToMove.getEmployee().getEmployeeCode(), donorShiftType);
+					candidateToMove.setShift(eveningShift);
+					shiftMap.get(donorShiftType).remove(candidateToMove);
+					shiftMap.computeIfAbsent(ShiftType.EVENING, k -> new ArrayList<>()).add(candidateToMove);
 				}
 			}
 		}
@@ -3959,15 +4057,24 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			// Calculate realistic feasible daily demand tailored for available staff
 			Map<ShiftType, Integer> dayFeasibleDemands = new EnumMap<>(ShiftType.class);
 			int avail = Math.max(0, plannedWorkingStaff);
-			int nightTarget = dayConfiguredDemands.getOrDefault(ShiftType.NIGHT, 1);
-			int eveningTarget = dayConfiguredDemands.getOrDefault(ShiftType.EVENING, 1);
-			int morningTarget = dayConfiguredDemands.getOrDefault(ShiftType.MORNING, 2);
+			int morningMin = getRequiredMorningMin(date);
+			int eveningMin = getRequiredEveningMin(date);
+			int nightMin = getRequiredNightMin(date);
+
+			int nightTarget = Math.max(nightMin, dayConfiguredDemands.getOrDefault(ShiftType.NIGHT, 1));
+			int eveningTarget = Math.max(eveningMin, dayConfiguredDemands.getOrDefault(ShiftType.EVENING, 1));
+			int morningTarget = Math.max(morningMin, dayConfiguredDemands.getOrDefault(ShiftType.MORNING, 2));
 			int generalTarget = dayConfiguredDemands.getOrDefault(ShiftType.GENERAL, 2);
 
 			dayFeasibleDemands.put(ShiftType.NIGHT, (nightTarget > 0 && avail >= 1) ? 1 : 0);
 			dayFeasibleDemands.put(ShiftType.EVENING, (eveningTarget > 0 && avail >= 2) ? 1 : 0);
 			dayFeasibleDemands.put(ShiftType.MORNING, (morningTarget > 0 && avail >= 3) ? 1 : 0);
-			dayFeasibleDemands.put(ShiftType.GENERAL, (generalTarget > 0 && avail >= 4) ? 1 : 0);
+			if (morningMin >= 2 && avail >= 4) {
+				dayFeasibleDemands.put(ShiftType.MORNING, 2);
+				dayFeasibleDemands.put(ShiftType.GENERAL, (generalTarget > 0 && avail >= 5) ? 1 : 0);
+			} else {
+				dayFeasibleDemands.put(ShiftType.GENERAL, (generalTarget > 0 && avail >= 4) ? 1 : 0);
+			}
 
 			int rem = Math.max(0, avail - dayFeasibleDemands.values().stream().mapToInt(Integer::intValue).sum());
 			while (rem > 0) {
@@ -3975,6 +4082,9 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				for (ShiftType type : List.of(ShiftType.MORNING, ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
 					int cur = dayFeasibleDemands.getOrDefault(type, 0);
 					int target = dayConfiguredDemands.getOrDefault(type, 1);
+					if (type == ShiftType.MORNING) {
+						target = Math.max(target, morningMin);
+					}
 					if (cur < target && rem > 0) {
 						dayFeasibleDemands.put(type, cur + 1);
 						rem--;
@@ -4858,12 +4968,14 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 
 		if (!approvedLeaves.isEmpty()) {
 			com.weeklyroster.entity.LeaveRequest leave = approvedLeaves.get(0);
-			res.status = "LEAVE";
-			res.source = "LEAVE";
-			res.leaveType = "Approved Leave";
-			res.leaveReason = leave.getReason() != null ? leave.getReason() : "Annual / Approved Leave";
+			boolean isHolidayOff = "HOLIDAY_OFF".equalsIgnoreCase(leave.getRequestType())
+					|| (leave.getReason() != null && leave.getReason().toLowerCase().contains("holiday"));
+			res.status = isHolidayOff ? "EMPLOYEE_HOLIDAY" : "LEAVE";
+			res.source = isHolidayOff ? "EMPLOYEE_HOLIDAY" : "LEAVE";
+			res.leaveType = isHolidayOff ? "Approved Employee Off/Holiday" : "Approved Leave";
+			res.leaveReason = leave.getReason() != null ? leave.getReason() : (isHolidayOff ? "Custom Off/Holiday" : "Annual / Approved Leave");
 			res.shiftType = null;
-			res.shiftName = "On Leave";
+			res.shiftName = isHolidayOff ? ("🏖️ Off: " + res.leaveReason) : "On Leave";
 			return res;
 		}
 
@@ -4922,11 +5034,13 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 
 		// 3. Evaluate Roster Assignment
 		if (assignment.isOnLeave()) {
-			res.status = "LEAVE";
-			res.source = "LEAVE";
-			res.leaveType = "Approved Leave";
-			res.leaveReason = "Scheduled Absence";
-			res.shiftName = "On Leave";
+			boolean isHolidayOff = assignment.getAssignmentReason() != null
+					&& assignment.getAssignmentReason().toLowerCase().contains("holiday");
+			res.status = isHolidayOff ? "EMPLOYEE_HOLIDAY" : "LEAVE";
+			res.source = isHolidayOff ? "EMPLOYEE_HOLIDAY" : "LEAVE";
+			res.leaveType = isHolidayOff ? "Approved Employee Off/Holiday" : "Approved Leave";
+			res.leaveReason = assignment.getAssignmentReason() != null ? assignment.getAssignmentReason() : (isHolidayOff ? "Custom Off/Holiday" : "Scheduled Absence");
+			res.shiftName = isHolidayOff ? ("🏖️ Off: " + res.leaveReason) : "On Leave";
 			return res;
 		}
 
@@ -4955,6 +5069,7 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 	private String calculateDynamicStatusText(DutyResolution res, LocalDate date, LocalDateTime currentDateTime) {
 		if (res == null) return "Standby / Not Assigned";
 		if ("HOLIDAY".equals(res.status)) return "Official Holiday: " + (res.leaveReason != null ? res.leaveReason : "Gazetted Holiday");
+		if ("EMPLOYEE_HOLIDAY".equals(res.status)) return "Approved Employee Holiday/Off: " + (res.leaveReason != null ? res.leaveReason : "Requested Off");
 		if ("LEAVE".equals(res.status)) return "On approved leave.";
 		if ("OFF".equals(res.status)) return "Today is your weekly OFF.";
 		if ("NO_ASSIGNMENT".equals(res.status)) return "Standby / Not Assigned";
@@ -5087,13 +5202,27 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			int nCount = shiftMap.getOrDefault(ShiftType.NIGHT, Collections.emptyList()).size();
 
 			long workingCountOnDate = (mCount + gCount + eCount + nCount);
+			int reqMorning = getRequiredMorningMin(date);
+			int reqEvening = getRequiredEveningMin(date);
+			int reqNight = getRequiredNightMin(date);
+			int minTotalStaff = reqMorning + reqEvening + reqNight;
 
-			if (mCount < 1) {
-				if (workingCountOnDate < 3) {
-					conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", "0 assigned", ">= 1 assigned", "Morning shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
+			if (workingCountOnDate < minTotalStaff) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(
+						date, null, "Staffing Capacity", null,
+						"STAFFING_CAPACITY_DEFICIT", workingCountOnDate + " available", ">= " + minTotalStaff + " required",
+						"Staffing conflict: Approved employee requirements for " + date + " leave insufficient eligible employees for the required shifts (available: " + workingCountOnDate + ", minimum required: " + minTotalStaff + ")",
+						"CRITICAL", "Review approved employee requirements for " + date, false
+				));
+			}
+
+			if (mCount < reqMorning) {
+				if (workingCountOnDate < (reqMorning + 2)) {
+					conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", mCount + " assigned", ">= " + reqMorning + " assigned", "Morning shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
 				} else {
 					coverageOk = false;
-					conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", "0 assigned", ">= 1 assigned", "Morning shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to Morning", false));
+					conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", mCount + " assigned", ">= " + reqMorning + " assigned", "Morning shift staffing deficit on " + date + " (" + mCount + " assigned, minimum " + reqMorning + " required)", "CRITICAL", "Assign at least " + reqMorning + " staff to Morning", false));
 				}
 			}
 			if (gCount < 1) {
@@ -5104,23 +5233,23 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 					conflicts.add(new ConflictItem(date, null, "General Staffing", ShiftType.GENERAL, "MIN_COVERAGE_GENERAL", "0 assigned", ">= 1 assigned", "General shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to General", false));
 				}
 			}
-			if (eCount < 1) {
+			if (eCount < reqEvening) {
 				if (workingCountOnDate < 2 || eligibleMaleStaff == 0) {
-					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", "0 assigned", ">= 1 assigned", "Evening shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
+					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", eCount + " assigned", ">= " + reqEvening + " assigned", "Evening shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
 				} else {
 					coverageOk = false;
-					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", "0 assigned", ">= 1 assigned", "Evening shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to Evening", false));
+					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", eCount + " assigned", ">= " + reqEvening + " assigned", "Evening shift has " + eCount + " assigned staff on " + date + " (minimum " + reqEvening + " required)", "CRITICAL", "Assign at least " + reqEvening + " staff to Evening", false));
 				}
 			}
 
-			if (nCount == 0) {
+			if (nCount < reqNight) {
 				if (nightCapacityShortage) {
 					conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "MIN_COVERAGE_NIGHT", "0 assigned", "1 assigned", "Night shift unstaffed on " + date + " due to active male capacity (" + eligibleMaleStaff + " eligible males * " + maxNightsAllowed + " max nights < 7)", "WARNING", "Review male workforce staffing capacity", false));
 				} else {
 					coverageOk = false;
 					conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "MIN_COVERAGE_NIGHT", "0 assigned", "Exactly 1 assigned", "Night shift has 0 assigned staff on " + date, "CRITICAL", "Assign exactly 1 eligible male staff to Night", false));
 				}
-			} else if (nCount > 1) {
+			} else if (nCount > reqNight) {
 				coverageOk = false;
 				conflicts.add(new ConflictItem(date, null, "Night Staffing", ShiftType.NIGHT, "EXACT_NIGHT_COVERAGE", nCount + " assigned", "Exactly 1 assigned", "Night shift has " + nCount + " staff assigned (strictly 1 required) on " + date, "CRITICAL", "Reduce Night shift to 1 employee", false));
 			}
@@ -5205,6 +5334,15 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 						}
 					}
 				} else {
+					if (isApprovedLeave(empId, d)) {
+						coverageOk = false;
+						conflicts.add(new ConflictItem(
+								d, empId, empName, curr.getShift() != null ? curr.getShift().getShiftType() : null,
+								"APPROVED_LEAVE_VIOLATION", "Assigned Duty", "Must be ON_LEAVE",
+								"Employee " + empName + " has an approved leave/off request on " + d + " but was assigned a duty shift",
+								"CRITICAL", "Reassign to Leave / Off", false
+						));
+					}
 					consecutiveDays++;
 					maxConsecutiveDays = Math.max(maxConsecutiveDays, consecutiveDays);
 					if (isWeekend) weekendDuties++;

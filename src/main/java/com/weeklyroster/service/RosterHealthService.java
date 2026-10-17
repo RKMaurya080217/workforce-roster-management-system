@@ -118,14 +118,16 @@ public class RosterHealthService {
             int nightCount = shiftMap.getOrDefault(ShiftType.NIGHT, Collections.emptyList()).size();
 
             boolean dayOk = true;
-            if (morningCount < 1) {
+            boolean isWeekend = (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY);
+            int minMorning = isWeekend ? 1 : 2;
+            if (morningCount < minMorning) {
                 coverageOk = false;
                 dayOk = false;
                 conflicts.add(new ConflictItem(
                         date, null, "Morning Staffing", ShiftType.MORNING,
-                        "MIN_COVERAGE_MORNING", "0 assigned", ">= 1 assigned",
-                        "Morning shift has 0 assigned staff on " + date,
-                        "CRITICAL", "Assign at least 1 employee to Morning shift", false
+                        "MIN_COVERAGE_MORNING", morningCount + " assigned", ">= " + minMorning + " assigned",
+                        "Morning shift has " + morningCount + " assigned staff on " + date + " (minimum " + minMorning + " required)",
+                        "CRITICAL", "Assign at least " + minMorning + " employee" + (minMorning > 1 ? "s" : "") + " to Morning shift", false
                 ));
             }
             if (generalCount < 1) {
