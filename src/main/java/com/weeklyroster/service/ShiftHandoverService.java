@@ -69,7 +69,11 @@ public class ShiftHandoverService {
                     .map(this::toResponse)
                     .toList();
         }
-        return handoverRepository.findAllWithDetails().stream()
+        List<ShiftHandover> list = handoverRepository.findAllWithDetails();
+        if (list == null || list.isEmpty()) {
+            list = handoverRepository.findAll();
+        }
+        return list.stream()
                 .map(this::toResponse)
                 .toList();
     }

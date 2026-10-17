@@ -3109,53 +3109,55 @@ async function renderEmployeesView() {
     container.innerHTML = `
       <!-- Admin Pending Profile Change Requests Card -->
       ${pendingPcrList.length > 0 ? `
-        <div class="card admin-pending-pcr-card">
-          <div class="card-header">
+        <div class="card admin-pending-pcr-card" style="margin-bottom:14px; border-left:4px solid var(--warning, #f59e0b);">
+          <div class="card-header" style="padding:10px 16px; cursor:pointer;" onclick="const el = document.getElementById('adminPcrTableWrapper'); if (el) el.classList.toggle('hidden');">
             <div style="display:flex; align-items:center; gap:8px;">
               <span style="font-size:1.1rem;">📝</span>
               <div>
-                <h3>Pending Profile Change Requests (${pendingPcrList.length})</h3>
-                <span style="font-size:0.76rem; color:var(--text-muted);">Staff requesting modifications to verified workforce master data</span>
+                <h4 style="margin:0; font-size:0.95rem; font-weight:700;">Pending Profile Change Requests (${pendingPcrList.length})</h4>
+                <span style="font-size:0.74rem; color:var(--text-muted);">Staff requesting modifications to verified workforce master data</span>
               </div>
             </div>
-            <span class="badge pending">${pendingPcrList.length} Pending Review</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge pending">${pendingPcrList.length} Pending Review</span>
+              <span style="font-size:0.75rem; color:var(--text-muted); border:1px solid var(--border-light); padding:2px 6px; border-radius:4px;">Toggle Table</span>
+            </div>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap" id="adminPcrTableWrapper">
             ${renderAdminPendingPcrTableHTML(pendingPcrList)}
           </div>
         </div>
       ` : ''}
 
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3>Workforce Directory</h3>
-            <span style="font-size:0.76rem; color:var(--text-muted);">Manage active staff records, shift eligibility, and login accounts</span>
+      <div class="card emp-management-card">
+        <div class="card-header emp-management-header">
+          <div class="emp-header-left">
+            <h3 style="margin:0; font-size:1.05rem; display:flex; align-items:center; gap:8px;">
+              <span>Workforce Directory</span>
+              <span class="badge morning" style="font-size:0.72rem; font-weight:600;">${state.employees.length} Staff</span>
+            </h3>
           </div>
-          <span class="badge morning">${state.employees.length} Staff Members</span>
-        </div>
+          <div class="emp-header-controls">
+            <div class="search-input-box emp-search-box">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="employeeSearchInput" placeholder="Search employee..." value="${escapeHTML(state.employeeSearchTerm || '')}">
+            </div>
 
-        <!-- Toolbar -->
-        <div class="table-toolbar">
-          <div class="search-input-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            <input type="text" id="employeeSearchInput" placeholder="Search by name, code or email..." value="${state.employeeSearchTerm}">
-          </div>
+            <div class="emp-filter-selects">
+              <select id="empGenderFilter" class="emp-select-filter" aria-label="Filter by gender">
+                <option value="ALL" ${state.employeeGenderFilter === 'ALL' ? 'selected' : ''}>All Genders</option>
+                <option value="MALE" ${state.employeeGenderFilter === 'MALE' ? 'selected' : ''}>Male</option>
+                <option value="FEMALE" ${state.employeeGenderFilter === 'FEMALE' ? 'selected' : ''}>Female</option>
+              </select>
 
-          <div class="filter-group">
-            <select id="empGenderFilter">
-              <option value="ALL" ${state.employeeGenderFilter === 'ALL' ? 'selected' : ''}>All Genders</option>
-              <option value="MALE" ${state.employeeGenderFilter === 'MALE' ? 'selected' : ''}>Male</option>
-              <option value="FEMALE" ${state.employeeGenderFilter === 'FEMALE' ? 'selected' : ''}>Female</option>
-            </select>
+              <select id="empStatusFilter" class="emp-select-filter" aria-label="Filter by status">
+                <option value="ALL" ${state.employeeStatusFilter === 'ALL' ? 'selected' : ''}>All Statuses</option>
+                <option value="ACTIVE" ${state.employeeStatusFilter === 'ACTIVE' ? 'selected' : ''}>Active Only</option>
+                <option value="INACTIVE" ${state.employeeStatusFilter === 'INACTIVE' ? 'selected' : ''}>Inactive Only</option>
+              </select>
+            </div>
 
-            <select id="empStatusFilter">
-              <option value="ALL" ${state.employeeStatusFilter === 'ALL' ? 'selected' : ''}>All Statuses</option>
-              <option value="ACTIVE" ${state.employeeStatusFilter === 'ACTIVE' ? 'selected' : ''}>Active Only</option>
-              <option value="INACTIVE" ${state.employeeStatusFilter === 'INACTIVE' ? 'selected' : ''}>Inactive Only</option>
-            </select>
-
-            <button class="btn btn-primary btn-sm" id="openAddEmployeeModalBtn">
+            <button class="btn btn-primary btn-sm emp-add-btn" id="openAddEmployeeModalBtn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               <span>Add Employee</span>
             </button>
@@ -3256,7 +3258,8 @@ function filterEmployees() {
       emp.employeeCode.toLowerCase().includes(q) ||
       emp.firstName.toLowerCase().includes(q) ||
       (emp.lastName && emp.lastName.toLowerCase().includes(q)) ||
-      emp.email.toLowerCase().includes(q);
+      (emp.email && emp.email.toLowerCase().includes(q)) ||
+      (emp.contactNumber && emp.contactNumber.toLowerCase().includes(q));
 
     const matchesGender = state.employeeGenderFilter === "ALL" || emp.gender === state.employeeGenderFilter;
     const matchesStatus = state.employeeStatusFilter === "ALL" || 
@@ -3355,38 +3358,44 @@ function renderEmployeeTableHTML(list) {
   }
 
   return `
-    <table>
+    <table class="emp-directory-table">
       <thead>
         <tr>
-          <th>Code</th>
-          <th>Employee Details</th>
-          <th>Gender / Eligibility</th>
+          <th style="width: 80px;">ID</th>
+          <th>Name</th>
+          <th>Gender</th>
+          <th>Email</th>
+          <th>Mobile</th>
           <th>Shift Preference</th>
           <th>Status</th>
-          <th>Login Account</th>
-          <th style="text-align:right;">Actions</th>
+          <th style="text-align:right; min-width: 170px;">Actions</th>
         </tr>
       </thead>
       <tbody>
         ${list.map(emp => `
           <tr>
-            <td><code>${emp.employeeCode}</code></td>
+            <td><code>${escapeHTML(emp.employeeCode)}</code></td>
             <td>
-              <strong>${emp.firstName} ${emp.lastName || ''}</strong>
-              <span style="display:block; font-size:0.76rem; color:var(--text-muted);">${emp.email}</span>
+              <strong style="color:var(--text-main); font-weight:600;">${escapeHTML(emp.firstName)} ${escapeHTML(emp.lastName || '')}</strong>
             </td>
             <td>
-              <span class="badge ${emp.gender === 'FEMALE' ? 'general' : 'morning'}">
-                ${emp.gender} &bull; ${emp.gender === 'FEMALE' ? 'Day Shifts' : 'All Shifts'}
+              <span class="badge ${emp.gender === 'FEMALE' ? 'general' : 'morning'}" style="font-size:0.75rem;">
+                ${escapeHTML(emp.gender)}
               </span>
             </td>
             <td>
+              <span style="font-size:0.83rem; color:var(--text-muted);">${escapeHTML(emp.email)}</span>
+            </td>
+            <td>
+              <span style="font-size:0.83rem; color:var(--text-muted);">${emp.contactNumber ? escapeHTML(emp.contactNumber) : '<span style="color:var(--text-subtle);">—</span>'}</span>
+            </td>
+            <td>
               ${emp.shiftPreference ? `
-                <span class="badge ${formatShiftBadgeClass(emp.shiftPreference)}">
+                <span class="badge ${formatShiftBadgeClass(emp.shiftPreference)}" style="font-size:0.75rem;">
                   ${escapeHTML(formatShiftName(emp.shiftPreference))}
                 </span>
               ` : `
-                <span style="font-size:0.8rem; color:var(--text-muted);">Not Set</span>
+                <span style="font-size:0.78rem; color:var(--text-subtle);">Not Set</span>
               `}
             </td>
             <td>
@@ -3394,23 +3403,18 @@ function renderEmployeeTableHTML(list) {
                 <span class="badge-dot"></span> ${emp.active ? 'Active' : 'Inactive'}
               </span>
             </td>
-            <td>
-              <span style="font-size:0.82rem; font-weight:600; color:var(--text-muted);">
-                ${emp.username ? `<code>${emp.username}</code>` : '<em>None</em>'}
-              </span>
-            </td>
-            <td>
-              <div class="row-actions" style="justify-content:flex-end;">
-                <button class="btn btn-secondary btn-sm" data-action="set-preference" data-id="${emp.id}" data-code="${emp.employeeCode}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="Admin configure shift preference">
+            <td style="text-align:right;">
+              <div class="row-actions" style="justify-content:flex-end; gap:6px;">
+                <button class="btn btn-secondary btn-xs" data-action="set-preference" data-id="${emp.id}" data-code="${escapeHTML(emp.employeeCode)}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="Admin configure shift preference">
                   Pref
                 </button>
-                <button class="btn btn-secondary btn-sm" data-action="view-roster" data-id="${emp.id}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-code="${escapeHTML(emp.employeeCode)}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="View employee details, roster and shift preference">
+                <button class="btn btn-secondary btn-xs" data-action="view-roster" data-id="${emp.id}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-code="${escapeHTML(emp.employeeCode)}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="View employee details, roster and shift preference">
                   Roster
                 </button>
-                <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${emp.id}">
+                <button class="btn btn-secondary btn-xs" data-action="edit" data-id="${emp.id}" title="Edit employee details">
                   Edit
                 </button>
-                <label class="switch" title="Toggle active status">
+                <label class="switch switch-sm" title="Toggle active status" style="margin:0;">
                   <input type="checkbox" ${emp.active ? 'checked' : ''} data-action="toggle-status" data-id="${emp.id}">
                   <span class="slider"></span>
                 </label>
@@ -8726,6 +8730,8 @@ async function openEmployeeModal(emp) {
     document.getElementById("empFormFirstName").value = emp.firstName;
     document.getElementById("empFormLastName").value = emp.lastName || "";
     document.getElementById("empFormEmail").value = emp.email;
+    const contactInput = document.getElementById("empFormContactNumber");
+    if (contactInput) contactInput.value = emp.contactNumber || "";
     const prefSelect = document.getElementById("empFormShiftPreference");
     if (prefSelect) {
       prefSelect.value = (emp.shiftPreference) ? emp.shiftPreference.toUpperCase() : "";
@@ -8734,6 +8740,8 @@ async function openEmployeeModal(emp) {
   } else {
     document.getElementById("employeeModalTitle").textContent = "Add New Employee";
     document.getElementById("empFormId").value = "";
+    const contactInput = document.getElementById("empFormContactNumber");
+    if (contactInput) contactInput.value = "";
     const prefSelect = document.getElementById("empFormShiftPreference");
     if (prefSelect) {
       prefSelect.value = "";
@@ -8772,6 +8780,7 @@ async function handleSaveEmployee(e) {
   const firstName = document.getElementById("empFormFirstName").value.trim();
   const lastName = document.getElementById("empFormLastName").value.trim();
   const email = document.getElementById("empFormEmail").value.trim();
+  const contactNumber = document.getElementById("empFormContactNumber") ? document.getElementById("empFormContactNumber").value.trim() : "";
   const username = document.getElementById("empFormUsername").value.trim();
   const password = document.getElementById("empFormPassword").value;
   const prefSelect = document.getElementById("empFormShiftPreference");
@@ -8779,6 +8788,9 @@ async function handleSaveEmployee(e) {
   const saveBtn = document.getElementById("saveEmployeeBtn");
 
   const payload = { employeeCode, gender, firstName, lastName, email };
+  if (contactNumber) {
+    payload.contactNumber = contactNumber;
+  }
   if (!id) {
     if (username) payload.username = username;
     if (password) payload.password = password;

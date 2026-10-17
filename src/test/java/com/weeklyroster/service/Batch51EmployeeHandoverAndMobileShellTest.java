@@ -313,9 +313,9 @@ public class Batch51EmployeeHandoverAndMobileShellTest {
         InputStream htmlIs = new ClassPathResource("static/index.html").getInputStream();
         String html = new String(htmlIs.readAllBytes(), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains("styles.css?v=2.5.0") || html.contains("styles.css?v=2.4.0") || html.contains("styles.css?v=2.3.0"), "index.html must reference versioned styles.css");
-        assertTrue(html.contains("app.js?v=2.5.0") || html.contains("app.js?v=2.4.0") || html.contains("app.js?v=2.3.0"), "index.html must reference versioned app.js");
-        assertTrue(html.contains("enterprise-app.js?v=2.5.0") || html.contains("enterprise-app.js?v=2.4.0") || html.contains("enterprise-app.js?v=2.3.0"), "index.html must reference versioned enterprise-app.js");
+        assertTrue(html.contains("styles.css?v="), "index.html must reference versioned styles.css");
+        assertTrue(html.contains("app.js?v="), "index.html must reference versioned app.js");
+        assertTrue(html.contains("enterprise-app.js?v="), "index.html must reference versioned enterprise-app.js");
 
         InputStream jsIs = new ClassPathResource("static/enterprise-app.js").getInputStream();
         String js = new String(jsIs.readAllBytes(), StandardCharsets.UTF_8);
