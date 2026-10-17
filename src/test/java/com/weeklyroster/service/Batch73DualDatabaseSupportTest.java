@@ -64,7 +64,7 @@ public class Batch73DualDatabaseSupportTest {
     @Test
     @DisplayName("Seed Data in SQLite: Admin user and default employee workforce seeded automatically")
     void testDefaultAdminAndEmployeesSeededInSqlite() {
-        Optional<User> admin = userRepository.findByUsername("Admin");
+        Optional<User> admin = userRepository.findByUsernameIgnoreCase("admin");
         assertTrue(admin.isPresent(), "Default Admin user must be present in SQLite");
         assertEquals(Role.ROLE_ADMIN, admin.get().getRole());
 
