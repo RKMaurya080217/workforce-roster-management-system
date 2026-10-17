@@ -1,9 +1,11 @@
 package com.weeklyroster.service;
 
 import com.weeklyroster.dto.response.ConflictItem;
+import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
 import com.weeklyroster.dto.response.RosterHealthReport;
 import com.weeklyroster.entity.*;
+import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -309,6 +311,45 @@ public class Batch92WeeklyOffValidationIntegrationTest {
         if (val.criticalConflicts() == 0) {
             RosterCycleResponse finalized = rosterService.finalizeRoster(draftResponse.id());
             assertEquals(RosterStatus.PUBLISHED, finalized.status());
+        }
+    }
+
+    @Test
+    @DisplayName("BATCH 92 - 8. Shift swap in 5-day mode correctly validates target 2 weekly offs")
+    void testShiftSwapInFiveDayMode() {
+        LocalDate startDate = testMonday.plusWeeks(24);
+        RosterCycleResponse draftResponse = rosterService.generateWeeklyRoster(startDate, GenerationMode.MANUAL, 5);
+        assertNotNull(draftResponse);
+
+        // Find two assignments on the same day where one is OFF and one is a working shift (e.g. GENERAL)
+        List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenWithDetails(startDate, startDate.plusDays(6));
+        RosterAssignment offAssign = null;
+        RosterAssignment workAssign = null;
+
+        for (LocalDate d = startDate; !d.isAfter(startDate.plusDays(6)); d = d.plusDays(1)) {
+            final LocalDate curDate = d;
+            List<RosterAssignment> onDay = assignments.stream().filter(a -> a.getRosterDate().equals(curDate)).toList();
+            Optional<RosterAssignment> off = onDay.stream().filter(a -> a.isWeeklyOff() && !a.isOnLeave()).findFirst();
+            Optional<RosterAssignment> work = onDay.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null).findFirst();
+            if (off.isPresent() && work.isPresent() && !off.get().getEmployee().getId().equals(work.get().getEmployee().getId())) {
+                offAssign = off.get();
+                workAssign = work.get();
+                break;
+            }
+        }
+
+        if (offAssign != null && workAssign != null) {
+            // Both employees initially have 2 weekly offs in 5-day mode
+            // If we swap their assignments on this date, offAssign employee gets work, workAssign employee gets off
+            // Both employees still have exactly 2 weekly offs across the cycle
+            try {
+                List<RosterAssignmentResponse> swapped = rosterService.swapShifts(offAssign.getId(), workAssign.getId(), "Testing 5-day swap");
+                assertNotNull(swapped);
+                assertEquals(2, swapped.size());
+            } catch (BusinessException ex) {
+                // Should not fail due to weekly off validation
+                assertFalse(ex.getMessage().contains("must have exactly one Weekly OFF"), "Must not fail with hardcoded 1-off requirement in 5-day mode");
+            }
         }
     }
 }

@@ -2632,7 +2632,7 @@ function openHolidayModal(holiday) {
   } else {
     if (titleEl) titleEl.textContent = "Add Official Holiday";
     if (idEl) idEl.value = "";
-    if (dateEl) dateEl.value = new Date().toISOString().split("T")[0];
+    if (dateEl) dateEl.value = (typeof getKolkataDateString === "function" ? getKolkataDateString() : new Date().toISOString().split("T")[0]);
     if (nameEl) nameEl.value = "";
     if (descEl) descEl.value = "";
     if (activeEl) activeEl.checked = true;

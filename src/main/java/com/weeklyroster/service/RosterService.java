@@ -1549,6 +1549,7 @@ public class RosterService {
 
 		// 5. Weekly OFF Rule Validation
 		if (off1 != off2 && a1.getCycle() != null) {
+			int targetOffs = a1.getCycle().getWorkingDays() != null && a1.getCycle().getWorkingDays() == 5 ? 2 : 1;
 			long offCount1 = assignmentRepository.findByEmployeeIdOrderByRosterDateAsc(a1.getEmployee().getId()).stream()
 					.filter(a -> a.getCycle() != null && a.getCycle().getId().equals(a1.getCycle().getId()))
 					.filter(a -> !a.getId().equals(a1.getId()))
@@ -1561,8 +1562,8 @@ public class RosterService {
 					.filter(RosterAssignment::isWeeklyOff)
 					.count() + (off1 ? 1 : 0);
 
-			if (offCount1 != 1 || offCount2 != 1) {
-				throw new BusinessException("Shift swap rejected: Every active employee must have exactly one Weekly OFF in a Monday-Sunday roster cycle");
+			if (offCount1 != targetOffs || offCount2 != targetOffs) {
+				throw new BusinessException("Shift swap rejected: Every active employee must have exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "") + " in a Monday-Sunday roster cycle");
 			}
 		}
 
