@@ -158,6 +158,25 @@ public class RosterEmailService {
             return List.of();
         }
 
+        if (cycle == null) {
+            log.warn("[WRMS EMAIL] Email distribution skipped: null cycle");
+            return List.of();
+        }
+
+        // BATCH 94: Manual generation draft safety rule.
+        // Draft, candidate, selected, or un-finalized rosters must NEVER trigger emails to employees.
+        if (mode == GenerationMode.MANUAL) {
+            if (cycle.getStatus() != com.weeklyroster.entity.RosterStatus.PUBLISHED 
+                    && cycle.getStatus() != com.weeklyroster.entity.RosterStatus.FINAL 
+                    && cycle.getStatus() != com.weeklyroster.entity.RosterStatus.LOCKED) {
+                log.warn("[WRMS EMAIL] Manual email distribution rejected for cycle #{} (status: {}). "
+                        + "Manual roster emails are STRICTLY RESTRICTED to PUBLISHED, FINAL, or LOCKED cycles. "
+                        + "Draft / Candidate / Selected rosters must NEVER send emails.",
+                        cycle.getId(), cycle.getStatus());
+                return List.of();
+            }
+        }
+
         if (mode == GenerationMode.AUTOMATIC && !isImmediateUpcomingWeek(cycle.getStartDate(), cycle.getEndDate())) {
             log.warn("[WRMS EMAIL] Automatic email distribution skipped for cycle #{} ({} to {}). "
                     + "Automatic distribution is STRICTLY RESTRICTED to the immediate upcoming week.",
@@ -287,21 +306,23 @@ public class RosterEmailService {
                 ? EmailType.FINAL_ROSTER
                 : EmailType.WEEKLY_ROSTER_DISTRIBUTION);
 
-        if (mode == GenerationMode.AUTOMATIC) {
-            List<EmailDeliveryLog> sentForEmp = emailLogRepository.findByCycleAndEmployeeAndEmailTypeAndStatus(cycle, emp, targetEmailType, EmailDeliveryStatus.SENT);
-            if (sentForEmp == null || sentForEmp.isEmpty()) {
-                List<EmailDeliveryLog> allSent = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
-                if (allSent != null) {
-                    sentForEmp = allSent.stream()
-                            .filter(l -> l.getEmployee() != null && l.getEmployee().getId().equals(emp.getId()))
-                            .toList();
-                }
+        // BATCH 94: Idempotency check across BOTH AUTOMATIC and MANUAL modes.
+        // Prevents duplicate emails when an admin clicks Publish multiple times,
+        // refreshes the page, or when automatic scheduler runs idempotently.
+        List<EmailDeliveryLog> sentForEmp = emailLogRepository.findByCycleAndEmployeeAndEmailTypeAndStatus(cycle, emp, targetEmailType, EmailDeliveryStatus.SENT);
+        if (sentForEmp == null || sentForEmp.isEmpty()) {
+            List<EmailDeliveryLog> allSent = emailLogRepository.findByCycleAndStatus(cycle, EmailDeliveryStatus.SENT);
+            if (allSent != null) {
+                sentForEmp = allSent.stream()
+                        .filter(l -> l.getEmployee() != null && l.getEmployee().getId().equals(emp.getId()))
+                        .filter(l -> l.getEmailType() == targetEmailType || (targetEmailType == EmailType.FINAL_ROSTER && l.getEmailType() == EmailType.WEEKLY_ROSTER_DISTRIBUTION))
+                        .toList();
             }
-            if (!sentForEmp.isEmpty()) {
-                log.info("[WRMS EMAIL] Employee {} <{}> already received {} email for cycle #{} ({} -> {}). Skipping duplicate dispatch.",
-                        emp.getEmployeeCode(), emp.getEmail(), targetEmailType, cycle.getId(), cycle.getStartDate(), cycle.getEndDate());
-                return sentForEmp.get(0);
-            }
+        }
+        if (sentForEmp != null && !sentForEmp.isEmpty()) {
+            log.info("[WRMS EMAIL] Employee {} <{}> already received {} email for cycle #{}. Skipping duplicate dispatch.",
+                    emp.getEmployeeCode(), emp.getEmail(), targetEmailType, cycle.getId());
+            return sentForEmp.get(0);
         }
 
         EmailDeliveryLog deliveryLog = new EmailDeliveryLog();

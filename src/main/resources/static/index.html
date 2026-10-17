@@ -827,6 +827,7 @@
   </div>
 
   <!-- Modal 2: Generate Roster Modal -->
+  <!-- Modal 2: Generate Roster Modal -->
   <div id="generateRosterModal" class="modal-backdrop hidden">
     <div class="modal-box modal-sm">
       <div class="modal-header">
@@ -834,7 +835,7 @@
         <button class="modal-close" data-close-modal="generateRosterModal">&times;</button>
       </div>
       <form id="generateRosterForm" class="modal-body stack-gap">
-        <p class="modal-desc">Select the start date (Day 1) for the 7-day weekly roster cycle. Default is next day.</p>
+        <p class="modal-desc">Select the start date (Day 1) for the 7-day weekly roster cycle. Default is next Monday.</p>
         
         <div class="form-group">
           <label for="rosterStartDateInput">Cycle Start Date (7 Days)</label>
@@ -853,31 +854,81 @@
         </div>
 
         <div class="form-group">
-          <label for="rosterAdminMessageInput">
-            Custom Message for Employees
-            <span style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">(Optional — highlighted in <strong>BOLD</strong> in email)</span>
-          </label>
-          <textarea id="rosterAdminMessageInput" rows="2" placeholder="e.g. Please review your shifts for the upcoming week. Handover notes required."></textarea>
+          <label for="rosterCandidateCountSelect">Candidates to Generate</label>
+          <select id="rosterCandidateCountSelect" class="form-control" style="font-weight:600;">
+            <option value="5" selected>5 Candidates (Recommended — Full Options)</option>
+            <option value="4">4 Candidates</option>
+            <option value="3">3 Candidates (Fast)</option>
+          </select>
+          <span style="font-size:0.75rem; color:var(--text-muted); display:block; margin-top:4px;">
+            Generates multiple distinct, valid alternatives for you to compare and select.
+          </span>
         </div>
 
-        <div class="alert-info-box">
-          <strong>Constraints Applied:</strong>
-          <ul>
-            <li>Minimum shift staffing guaranteed</li>
-            <li>Female staff assigned to Day shifts only</li>
-            <li>Zero Night &rarr; Morning direct transitions</li>
-            <li>Balanced weekly off across active workforce</li>
-          </ul>
+        <div class="alert-info-box" style="border-left: 4px solid var(--accent-primary, #2563eb); background: rgba(37, 99, 235, 0.06); padding: 10px 14px; border-radius: 6px;">
+          <strong style="color:var(--text-main); font-size:0.85rem;">Zero-Email Draft Guarantee:</strong>
+          <p style="margin: 4px 0 0; font-size: 0.8rem; color: var(--text-muted);">
+            Generating candidates sends <strong>ZERO emails</strong>. Compare options, preview full rosters, and make manual edits freely. Email is sent <strong>ONLY</strong> when you explicitly click <em>Finalize &amp; Publish</em>.
+          </p>
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" data-close-modal="generateRosterModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="triggerGenerateBtn">
-            <span>Run Generator</span>
+            <span>Generate Candidates</span>
             <div class="spinner hidden"></div>
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal 2C: Multi-Candidate Comparison Modal -->
+  <div id="candidateComparisonModal" class="modal-backdrop hidden">
+    <div class="modal-box modal-lg" style="max-width: 1080px; max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <div>
+          <h3 id="candidateModalTitle" style="margin: 0; font-size: 1.25rem;">Weekly Roster Candidates</h3>
+          <p id="candidateModalSubtitle" style="margin: 2px 0 0; font-size: 0.825rem; color: var(--text-muted);">
+            Compare generated alternatives, review quality metrics, and select the best candidate.
+          </p>
+        </div>
+        <button class="modal-close" data-close-modal="candidateComparisonModal">&times;</button>
+      </div>
+
+      <div class="modal-body stack-gap" style="padding: 16px 20px;">
+        <!-- Candidate Cards Container -->
+        <div id="candidateCardsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px;">
+          <!-- Dynamically populated candidate cards -->
+        </div>
+
+        <!-- Full Roster Preview of Active / Selected Candidate -->
+        <div id="candidateRosterPreviewSection" class="hidden" style="margin-top: 16px; border-top: 1px solid var(--border-color, #e2e8f0); padding-top: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h4 id="previewCandidateTitle" style="margin: 0; font-size: 1rem;">Candidate Full Roster Preview</h4>
+            <button type="button" class="btn btn-sm btn-ghost" id="closeCandidatePreviewBtn">Hide Preview</button>
+          </div>
+          <div id="candidatePreviewGridWrapper" style="overflow-x: auto; background: var(--bg-card); border-radius: 8px; padding: 8px;"></div>
+        </div>
+
+        <!-- Side-by-Side Employee Comparison Matrix -->
+        <div id="candidateEmployeeMatrixSection" style="margin-top: 20px; border-top: 1px solid var(--border-color, #e2e8f0); padding-top: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h4 style="margin: 0; font-size: 1rem;">Employee Schedule Across Candidates</h4>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">M=Morning, G=General, E=Evening, N=Night, O=Weekly Off, L=Leave, H=Holiday</span>
+          </div>
+          <div id="candidateEmployeeMatrixWrapper" style="overflow-x: auto;">
+            <!-- Matrix populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <span style="font-size: 0.8rem; color: var(--text-muted);">
+          Selecting a candidate sets it as your active draft. Staff receive email <strong>ONLY</strong> when published.
+        </span>
+        <button type="button" class="btn btn-secondary" data-close-modal="candidateComparisonModal">Close</button>
+      </div>
     </div>
   </div>
 

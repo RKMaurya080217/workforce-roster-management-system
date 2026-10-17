@@ -92,6 +92,6 @@ public final class RosterLifecycleUtil {
     public static boolean isDeletable(RosterCycle cycle) {
         if (cycle == null || cycle.getStatus() == null) return true;
         RosterStatus status = cycle.getStatus();
-        return status == RosterStatus.DRAFT || status == RosterStatus.GENERATED;
+        return status == RosterStatus.DRAFT || status == RosterStatus.CANDIDATE || status == RosterStatus.SELECTED || status == RosterStatus.GENERATED;
     }
 }

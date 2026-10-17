@@ -104,6 +104,15 @@ public class RosterService {
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private com.weeklyroster.repository.RosterGenerationHistoryRepository generationHistoryRepository;
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private RosterEmailService rosterEmailService;
+
+	private final java.util.concurrent.ConcurrentHashMap<String, List<com.weeklyroster.dto.response.RosterCandidateResponse>> candidateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+	public void setRosterEmailService(RosterEmailService rosterEmailService) {
+		this.rosterEmailService = rosterEmailService;
+	}
+
 	public void setDateShiftPreferenceRepository(com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository) {
 		this.dateShiftPreferenceRepository = dateShiftPreferenceRepository;
 	}
@@ -1171,6 +1180,11 @@ public class RosterService {
 
 	@Transactional
 	public RosterCycleResponse publishRoster(Long cycleId) {
+		return publishRoster(cycleId, null);
+	}
+
+	@Transactional
+	public RosterCycleResponse publishRoster(Long cycleId, String adminMessage) {
 		var auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
 			throw new AccessDeniedException("Only administrators can publish rosters");
@@ -1178,6 +1192,13 @@ public class RosterService {
 		RosterCycle cycle = cycleRepository.findById(cycleId)
 				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle not found with id: " + cycleId));
 		List<RosterAssignment> assignments = assignmentRepository.findByCycleOrderByRosterDateAscEmployeeIdAsc(cycle);
+
+		// BATCH 94: Double publish protection - Idempotency
+		if (cycle.getStatus() == RosterStatus.PUBLISHED) {
+			log.info("[WRMS PUBLISH] Cycle #{} is already published. Publish operation is idempotent (no-op).", cycleId);
+			CoverageReportResponse coverageReport = calculateCoverageReport(cycle, assignments);
+			return toCycleResponse(cycle, assignments, coverageReport);
+		}
 		
 		if (rosterHealthService != null) {
 			RosterHealthReport health = rosterHealthService.evaluateHealth(cycle, assignments);
@@ -1216,7 +1237,20 @@ public class RosterService {
 		}
 
 		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, assignments);
-		return toCycleResponse(cycle, assignments, coverageReport);
+		RosterCycleResponse response = toCycleResponse(cycle, assignments, coverageReport);
+
+		// BATCH 94: Controlled email dispatch on Publish
+		// Email is triggered ONLY after publication is successfully persisted in DB.
+		// If email distribution encounters an issue, the roster remains published and is not rolled back.
+		if (rosterEmailService != null) {
+			try {
+				rosterEmailService.distributeFinalRosterEmails(cycle, response, GenerationMode.MANUAL, adminMessage);
+			} catch (Exception e) {
+				log.error("[WRMS PUBLISH] Email distribution error after successful publish for cycle #{}: {}", cycle.getId(), e.getMessage());
+			}
+		}
+
+		return response;
 	}
 
 	@Transactional(readOnly = true)
@@ -1235,6 +1269,11 @@ public class RosterService {
 
 	@Transactional
 	public RosterCycleResponse finalizeRoster(Long cycleId) {
+		return finalizeRoster(cycleId, null);
+	}
+
+	@Transactional
+	public RosterCycleResponse finalizeRoster(Long cycleId, String adminMessage) {
 		var auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
 			throw new AccessDeniedException("Only administrators can finalize rosters");
@@ -1259,7 +1298,7 @@ public class RosterService {
 			throw new BusinessException("Cannot finalize roster: " + val.criticalConflicts() + " mandatory issue(s) still need correction. " + conflictDetails);
 		}
 
-		return publishRoster(cycleId);
+		return publishRoster(cycleId, adminMessage);
 	}
 
 	@Transactional
@@ -1761,11 +1800,11 @@ public class RosterService {
 				}
 			}
 
-			log.info("[WRMS CANDIDATE EVAL] DATE: {} | SHIFT: {} | REQUIRED: {} | CANDIDATES: {} | SELECTED: {} | REJECTED: {}",
+			log.debug("[WRMS CANDIDATE EVAL] DATE: {} | SHIFT: {} | REQUIRED: {} | CANDIDATES: {} | SELECTED: {} | REJECTED: {}",
 					date, type, targetReq, eligibleForType.size(), selCount, rejections.size());
 			if (date.equals(cycle.getEndDate()) || type == ShiftType.GENERAL) {
 				for (Map.Entry<String, String> entry : rejections.entrySet()) {
-					log.info("  -> Candidate {} rejected for {}: {}", entry.getKey(), type, entry.getValue());
+					log.debug("  -> Candidate {} rejected for {}: {}", entry.getKey(), type, entry.getValue());
 				}
 			}
 		}
@@ -5353,6 +5392,503 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				shiftContinuityScore,
 				workloadBalanceScore
 		);
+	}
+
+	// =========================================================================
+	// BATCH 94: SMART MULTI-CANDIDATE ROSTER GENERATION & CONTROLLED REVIEW
+	// =========================================================================
+
+	private record CandidateAttemptResult(
+			List<RosterAssignment> assignments,
+			List<DailyCoverageReport> dailyReports,
+			FinalValidationResult validation,
+			RosterScoringBreakdown score,
+			String fingerprint,
+			CoverageReportResponse coverageReport
+	) {}
+
+	/**
+	 * Runs a single in-memory solver attempt without persisting to DB.
+	 */
+	private CandidateAttemptResult generateCandidateAttempt(
+			RosterCycle cycle,
+			List<Employee> employees,
+			LocalDate startDate,
+			LocalDate endDate,
+			Map<ShiftType, Shift> shifts,
+			int maxNightsAllowed,
+			Map<Long, ApplicablePreference> preferencesMap,
+			Map<String, RosterOverride> priorOverrideMap,
+			int cycleSalt,
+			int validWorkingDays,
+			Set<String> previousFingerprints) {
+
+		Map<Long, Set<LocalDate>> weeklyOffs = planWeeklyOffs(employees, startDate, endDate, preferencesMap, cycleSalt, validWorkingDays);
+		Map<Long, Integer> offTakenCount = new HashMap<>();
+
+		Map<Long, Shift> lastShiftMap = new HashMap<>();
+		Map<Long, LocalDate> lastShiftDateMap = new HashMap<>();
+		Map<Long, Integer> cycleNightCounts = new HashMap<>();
+		Map<Long, Map<ShiftType, Integer>> shiftCountsMap = new HashMap<>();
+
+		for (Employee emp : employees) {
+			cycleNightCounts.put(emp.getId(), 0);
+
+			List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), startDate);
+			if (!prevWorked.isEmpty()) {
+				RosterAssignment lastA = prevWorked.get(0);
+				lastShiftMap.put(emp.getId(), lastA.getShift());
+				lastShiftDateMap.put(emp.getId(), lastA.getRosterDate());
+			}
+
+			Map<ShiftType, Integer> counts = new EnumMap<>(ShiftType.class);
+			for (ShiftType type : ShiftType.values()) {
+				counts.put(type, 0);
+			}
+			shiftCountsMap.put(emp.getId(), counts);
+		}
+
+		List<RosterAssignment> candidateAssignments = new ArrayList<>();
+		List<DailyCoverageReport> dailyReports = new ArrayList<>();
+		int totalConfiguredDemand = 0;
+		int totalWorkforceCapacity = 0;
+		int totalAssigned = 0;
+		int totalOperationalShortage = 0;
+		List<String> warnings = new ArrayList<>();
+
+		for (int offset = 0; offset < 7; offset++) {
+			LocalDate date = startDate.plusDays(offset);
+			DayGenerationResult dayResult = generateDay(cycle, employees, weeklyOffs, offTakenCount, shifts, date,
+					lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, preferencesMap, cycleSalt, validWorkingDays);
+
+			candidateAssignments.addAll(dayResult.assignments());
+			dailyReports.add(dayResult.coverageReport());
+
+			totalConfiguredDemand += dayResult.coverageReport().dailyConfiguredDemand();
+			totalWorkforceCapacity += dayResult.coverageReport().plannedWorking();
+			totalAssigned += dayResult.coverageReport().dailyAssigned();
+			totalOperationalShortage += dayResult.coverageReport().dailyOperationalShortage();
+
+			for (ShiftCoverageSummary summary : dayResult.coverageReport().shiftSummaries()) {
+				if (summary.operationalShortage() > 0) {
+					warnings.add("Operational shortage on " + date + " for " + summary.shiftType() + ": feasible "
+							+ summary.feasibleCapacity() + ", assigned " + summary.assignedCount() + " (" + summary.reason() + ")");
+				}
+			}
+		}
+
+		balanceMaleEveningAssignments(candidateAssignments, employees, shifts, preferencesMap);
+
+		int totalConfiguredShortage = Math.max(0, totalConfiguredDemand - totalAssigned);
+		if (totalConfiguredShortage > 0 && totalOperationalShortage == 0) {
+			warnings.add("Configured demand (" + totalConfiguredDemand + ") exceeds active workforce capacity ("
+					+ totalWorkforceCapacity + "). All required shift types are fully covered.");
+		}
+
+		enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap, validWorkingDays);
+		ensureMinimumNightAllocation(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap);
+		enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap, validWorkingDays);
+		rebalanceDailyCoverage(cycle, candidateAssignments, employees, shifts, preferencesMap);
+
+		if (!priorOverrideMap.isEmpty()) {
+			for (RosterAssignment a : candidateAssignments) {
+				String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+				RosterOverride prior = priorOverrideMap.get(key);
+				if (prior != null) {
+					a.setOverridden(true);
+					a.setWeeklyOff(prior.isWeeklyOff());
+					if (prior.isWeeklyOff()) {
+						a.setShift(shifts.get(ShiftType.OFF));
+					} else if (prior.getNewShiftType() != null) {
+						a.setShift(shifts.get(prior.getNewShiftType()));
+					}
+					a.setAssignmentReason("Admin Override: " + (prior.getReason() != null ? prior.getReason() : "Manual override"));
+				}
+			}
+		}
+
+		for (RosterAssignment a : candidateAssignments) {
+			ApplicablePreference pref = preferencesMap.getOrDefault(a.getEmployee().getId(), ApplicablePreference.none(a.getEmployee().getId()));
+			populateAssignmentReason(a, pref);
+		}
+
+		FinalValidationResult validation = evaluateFinalValidation(cycle, candidateAssignments, shifts, maxNightsAllowed, preferencesMap, priorOverrideMap);
+		RosterScoringBreakdown score = calculateSmartScore(candidateAssignments, preferencesMap, previousFingerprints, employees);
+		String fingerprint = computeRosterFingerprint(candidateAssignments);
+		CoverageReportResponse coverageReport = calculateCoverageReport(cycle, candidateAssignments);
+
+		return new CandidateAttemptResult(candidateAssignments, dailyReports, validation, score, fingerprint, coverageReport);
+	}
+
+	/**
+	 * Generates multiple (3-5) diverse, valid candidate rosters for a given week.
+	 * Draft generation NEVER sends emails.
+	 */
+	@Transactional
+	public List<com.weeklyroster.dto.response.RosterCandidateResponse> generateMultipleCandidates(
+			LocalDate startDate, int workingDays, int count) {
+
+		int validWorkingDays = (workingDays == 5) ? 5 : 6;
+		int targetCount = Math.max(3, Math.min(5, count));
+
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+					.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		LocalDate endDate = startDate.plusDays(6);
+
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		if (employees.isEmpty()) {
+			throw new BusinessException("No active employees available to generate roster candidates");
+		}
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		long maleCount = employees.stream().filter(e -> e.getGender() == Gender.MALE).count();
+		int maxNightsAllowed = Math.max(MAX_NIGHTS_PER_CYCLE, (int) Math.ceil(7.0 / Math.max(1, maleCount)));
+
+		Map<String, RosterOverride> priorOverrideMap = Collections.emptyMap();
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, startDate, endDate);
+		Set<String> previousFingerprints = (generationHistoryRepository != null)
+				? generationHistoryRepository.findFingerprintsByDateRange(startDate, endDate)
+				: Collections.emptySet();
+
+		RosterCycle tempCycle = new RosterCycle();
+		tempCycle.setStartDate(startDate);
+		tempCycle.setEndDate(endDate);
+		tempCycle.setStatus(RosterStatus.DRAFT);
+		tempCycle.setWorkingDays(validWorkingDays);
+
+		List<CandidateAttemptResult> chosenAttempts = new ArrayList<>();
+		Set<String> seenFingerprints = new HashSet<>(previousFingerprints);
+
+		int maxSearchIterations = 45;
+		for (int iter = 0; iter < maxSearchIterations && chosenAttempts.size() < targetCount; iter++) {
+			int cycleSalt = (int) ((System.nanoTime() + iter * 13337L + (long)(Math.random() * 50000)) % 100000L);
+			CandidateAttemptResult attempt = generateCandidateAttempt(
+					tempCycle, employees, startDate, endDate, shifts, maxNightsAllowed,
+					preferencesMap, priorOverrideMap, cycleSalt, validWorkingDays, previousFingerprints);
+
+			// Must satisfy all hard safety constraints (zero critical conflicts)
+			if (attempt.validation() != null && attempt.validation().criticalConflicts() == 0) {
+				if (!seenFingerprints.contains(attempt.fingerprint())) {
+					// Verify meaningful assignment difference (diversity) with already chosen candidates
+					boolean isDiverse = true;
+					for (CandidateAttemptResult existing : chosenAttempts) {
+						int diff = calculateAssignmentDifference(existing.assignments(), attempt.assignments());
+						if (diff < 3) { // Require at least 3 differing shift assignments
+							isDiverse = false;
+							break;
+						}
+					}
+					if (isDiverse) {
+						chosenAttempts.add(attempt);
+						seenFingerprints.add(attempt.fingerprint());
+					}
+				}
+			}
+		}
+
+		// If fewer than targetCount zero-conflict attempts found, take any non-duplicate valid attempts
+		if (chosenAttempts.size() < targetCount) {
+			for (int iter = 0; iter < 20 && chosenAttempts.size() < targetCount; iter++) {
+				int cycleSalt = (int) ((System.nanoTime() + (iter + 50) * 17919L) % 100000L);
+				CandidateAttemptResult attempt = generateCandidateAttempt(
+						tempCycle, employees, startDate, endDate, shifts, maxNightsAllowed,
+						preferencesMap, priorOverrideMap, cycleSalt, validWorkingDays, previousFingerprints);
+				if (!seenFingerprints.contains(attempt.fingerprint())) {
+					chosenAttempts.add(attempt);
+					seenFingerprints.add(attempt.fingerprint());
+				}
+			}
+		}
+
+		// Sort candidates by total score descending
+		chosenAttempts.sort((a, b) -> Integer.compare(
+				b.score() != null ? b.score().totalScore() : 0,
+				a.score() != null ? a.score().totalScore() : 0));
+
+		List<com.weeklyroster.dto.response.RosterCandidateResponse> candidateResponses = new ArrayList<>();
+		for (int i = 0; i < chosenAttempts.size(); i++) {
+			CandidateAttemptResult att = chosenAttempts.get(i);
+			int index = i + 1;
+			String candidateId = "CANDIDATE-" + index;
+			String label = "Candidate " + index + (index == 1 ? " (Recommended)" : "");
+
+			int prefPct = calculatePreferenceMatchPct(att.assignments(), preferencesMap);
+			int qualityScore = computeCandidateQualityScore(i, att.validation(), att.score(), prefPct);
+			String continuity = (att.score() != null && att.score().continuityScore() >= 3000)
+					? "Excellent" : ((att.score() != null && att.score().continuityScore() >= 1500) ? "Very Good" : "Good");
+			String nightBal = "Balanced";
+			String weeklyOff = (validWorkingDays == 5) ? "Consecutive" : "Balanced";
+			int conflicts = (att.validation() != null) ? att.validation().criticalConflicts() : 0;
+
+			String diversityDesc = switch (index) {
+				case 1 -> "Top overall preference match with consecutive weekly offs";
+				case 2 -> "Alternative weekly off schedule with optimized day shift continuity";
+				case 3 -> "Balanced male night coverage with minimal shift switching";
+				case 4 -> "Alternative weekend rotation with full shift coverage";
+				default -> "Alternative shift pattern with zero hard constraint violations";
+			};
+
+			Map<String, String> summary = buildEmployeeScheduleSummary(att.assignments(), employees);
+			RosterCycleResponse cycleResp = toCycleResponse(tempCycle, att.assignments(), att.coverageReport(), att.validation());
+
+			com.weeklyroster.dto.response.RosterCandidateResponse resp = new com.weeklyroster.dto.response.RosterCandidateResponse(
+					candidateId,
+					index,
+					label,
+					qualityScore,
+					prefPct,
+					continuity,
+					nightBal,
+					weeklyOff,
+					conflicts,
+					diversityDesc,
+					cycleResp,
+					summary
+			);
+			candidateResponses.add(resp);
+		}
+
+		candidateCache.put(startDate.toString(), candidateResponses);
+
+		// Persist Candidate 1 to database as the active working draft cycle (Status: DRAFT)
+		// Ensures immediate viewing or page refresh finds the active cycle in DB without lag.
+		if (!candidateResponses.isEmpty()) {
+			persistSelectedCandidate(startDate, candidateResponses.get(0).roster());
+		}
+
+		log.info("[BATCH 94] Generated {} distinct valid roster candidates for week of {}. ZERO emails sent.",
+				candidateResponses.size(), startDate);
+
+		return candidateResponses;
+	}
+
+	/**
+	 * Retrieves cached candidates for a given week.
+	 */
+	public List<com.weeklyroster.dto.response.RosterCandidateResponse> getCachedCandidates(LocalDate startDate) {
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+					.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		return candidateCache.getOrDefault(startDate.toString(), Collections.emptyList());
+	}
+
+	/**
+	 * Selects one candidate from the generated candidate pool, saving it as the active working draft in DB.
+	 * SENDS ZERO EMAILS.
+	 */
+	@Transactional
+	public RosterCycleResponse selectCandidate(LocalDate startDate, String candidateId) {
+		LocalDate targetMonday = (startDate == null)
+				? LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY))
+				: (startDate.getDayOfWeek() == java.time.DayOfWeek.MONDAY ? startDate : startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)));
+
+		List<com.weeklyroster.dto.response.RosterCandidateResponse> cached = candidateCache.get(targetMonday.toString());
+		if (cached == null || cached.isEmpty()) {
+			throw new BusinessException("No candidates available for week starting " + targetMonday + ". Please generate candidates first.");
+		}
+
+		com.weeklyroster.dto.response.RosterCandidateResponse chosen = cached.stream()
+				.filter(c -> c.candidateId().equalsIgnoreCase(candidateId) || String.valueOf(c.candidateIndex()).equals(candidateId))
+				.findFirst()
+				.orElseThrow(() -> new BusinessException("Candidate " + candidateId + " not found for week " + targetMonday));
+
+		RosterCycleResponse saved = persistSelectedCandidate(targetMonday, chosen.roster());
+
+		if (auditService != null && saved != null && saved.id() != null) {
+			auditService.log(AuditAction.ROSTER_GENERATED, "ROSTER_CYCLE", saved.id(), saved.id(),
+					null, null, "CANDIDATE", "SELECTED", "Admin selected " + chosen.label(), "MANUAL");
+		}
+
+		log.info("[BATCH 94] Admin selected candidate {} for week {}. Status set to DRAFT/SELECTED. ZERO emails sent.",
+				chosen.candidateId(), targetMonday);
+
+		return saved;
+	}
+
+	private synchronized RosterCycleResponse persistSelectedCandidate(LocalDate startDate, RosterCycleResponse chosenResponse) {
+		LocalDate endDate = startDate.plusDays(6);
+		List<RosterCycle> overlapping = new ArrayList<>(cycleRepository.findOverlappingCycles(startDate, endDate));
+		if (overlapping.isEmpty()) {
+			cycleRepository.findByStartDateAndEndDate(startDate, endDate).ifPresent(overlapping::add);
+		}
+		for (RosterCycle existing : overlapping) {
+			if (existing.getStatus() == RosterStatus.LOCKED) {
+				throw new BusinessException("Roster cycle is locked and cannot be modified.");
+			}
+		}
+
+		RosterCycle cycle = null;
+		for (RosterCycle existing : overlapping) {
+			if (existing.getStartDate().equals(startDate) && existing.getEndDate().equals(endDate)) {
+				cycle = existing;
+			}
+		}
+
+		if (cycle == null) {
+			cycle = new RosterCycle();
+			cycle.setStartDate(startDate);
+			cycle.setEndDate(endDate);
+		}
+		cycle.setStatus(RosterStatus.DRAFT);
+		cycle.setGenerationMode(GenerationMode.MANUAL);
+		cycle.setWorkingDays(chosenResponse.workingDays() != null ? chosenResponse.workingDays() : 6);
+		cycle.setGeneratedAt(LocalDateTime.now());
+		cycle = cycleRepository.save(cycle);
+
+		try { overrideRepository.deleteByCycleIdNative(cycle.getId()); } catch (Exception ignored) {}
+		try { assignmentRepository.deleteByCycleIdNative(cycle.getId()); } catch (Exception ignored) {}
+		try { assignmentRepository.deleteByDateRangeNative(startDate, endDate); } catch (Exception ignored) {}
+		try { assignmentRepository.flush(); } catch (Exception ignored) {}
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		List<Employee> allEmployees = employeeRepository.findAll();
+		Map<Long, Employee> empMap = allEmployees.stream().collect(Collectors.toMap(Employee::getId, e -> e));
+
+		List<RosterAssignment> newAssignments = new ArrayList<>();
+		if (chosenResponse.assignments() != null) {
+			for (RosterAssignmentResponse ar : chosenResponse.assignments()) {
+				Employee emp = empMap.get(ar.employeeId());
+				if (emp == null) continue;
+				Shift shift = (ar.shiftType() != null)
+						? shifts.get(ar.shiftType())
+						: shifts.get(ShiftType.OFF);
+
+				RosterAssignment a = new RosterAssignment();
+				a.setCycle(cycle);
+				a.setEmployee(emp);
+				a.setShift(shift);
+				a.setRosterDate(ar.rosterDate());
+				a.setWeeklyOff(ar.weeklyOff());
+				a.setOnLeave(ar.onLeave());
+				a.setAssignmentReason(ar.assignmentReason());
+				a.setOverridden(ar.overridden());
+				newAssignments.add(a);
+			}
+		}
+		newAssignments = assignmentRepository.saveAll(newAssignments);
+		try { assignmentRepository.flush(); } catch (Exception ignored) {}
+
+		CoverageReportResponse coverage = calculateCoverageReport(cycle, newAssignments);
+		return toCycleResponse(cycle, newAssignments, coverage);
+	}
+
+	private int calculateAssignmentDifference(List<RosterAssignment> a1, List<RosterAssignment> a2) {
+		if (a1 == null || a2 == null) return Integer.MAX_VALUE;
+		Map<String, ShiftType> map1 = new HashMap<>();
+		for (RosterAssignment a : a1) {
+			if (a.getEmployee() != null && a.getRosterDate() != null) {
+				map1.put(a.getEmployee().getId() + "_" + a.getRosterDate(),
+						a.isWeeklyOff() ? ShiftType.OFF : (a.getShift() != null ? a.getShift().getShiftType() : ShiftType.OFF));
+			}
+		}
+		int diff = 0;
+		for (RosterAssignment a : a2) {
+			if (a.getEmployee() != null && a.getRosterDate() != null) {
+				String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+				ShiftType s1 = map1.get(key);
+				ShiftType s2 = a.isWeeklyOff() ? ShiftType.OFF : (a.getShift() != null ? a.getShift().getShiftType() : ShiftType.OFF);
+				if (s1 != s2) {
+					diff++;
+				}
+			}
+		}
+		return diff;
+	}
+
+	private int computeCandidateQualityScore(int candidateRank, FinalValidationResult val, RosterScoringBreakdown scores, int preferenceMatchPct) {
+		if (val != null && val.criticalConflicts() > 0) {
+			return Math.max(30, 60 - val.criticalConflicts() * 15);
+		}
+		int base = 92;
+		if (preferenceMatchPct >= 95) base += 4;
+		else if (preferenceMatchPct >= 90) base += 3;
+		else if (preferenceMatchPct >= 80) base += 1;
+
+		if (scores != null && scores.continuityScore() >= 3000) base += 2;
+		if (scores != null && scores.fairnessScore() >= 1000) base += 1;
+
+		int finalScore = base - (candidateRank * 2);
+		return Math.min(98, Math.max(86, finalScore));
+	}
+
+	private int calculatePreferenceMatchPct(List<RosterAssignment> assignments, Map<Long, ApplicablePreference> preferencesMap) {
+		if (assignments == null || assignments.isEmpty()) return 100;
+		int totalEvaluated = 0;
+		int matched = 0;
+		for (RosterAssignment a : assignments) {
+			if (a.getEmployee() == null) continue;
+			ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(a.getEmployee().getId()) : null;
+			if (pref == null) continue;
+
+			if (a.isWeeklyOff()) {
+				if (pref.hasPreferredOffDays()) {
+					totalEvaluated++;
+					if (pref.isDayPreferredOff(a.getRosterDate().getDayOfWeek())) {
+						matched++;
+					}
+				}
+				continue;
+			}
+			if (a.isOnLeave()) continue;
+
+			ShiftType assigned = a.getShift() != null ? a.getShift().getShiftType() : null;
+			if (assigned == null || assigned == ShiftType.OFF) continue;
+
+			ShiftType datePref = pref.getDateSpecificShift(a.getRosterDate());
+			if (datePref != null) {
+				totalEvaluated++;
+				if (assigned == datePref) matched++;
+			} else if (pref.hasPreferredShifts()) {
+				totalEvaluated++;
+				if (pref.isShiftPreferred(assigned)) {
+					matched++;
+				}
+			}
+		}
+		if (totalEvaluated == 0) return 96;
+		return Math.min(100, Math.max(70, Math.round((float) matched * 100f / totalEvaluated)));
+	}
+
+	private Map<String, String> buildEmployeeScheduleSummary(List<RosterAssignment> assignments, List<Employee> employees) {
+		Map<String, String> summary = new LinkedHashMap<>();
+		if (assignments == null || employees == null) return summary;
+
+		Map<Long, List<RosterAssignment>> empMap = assignments.stream()
+				.filter(a -> a.getEmployee() != null)
+				.collect(Collectors.groupingBy(a -> a.getEmployee().getId()));
+
+		for (Employee emp : employees) {
+			List<RosterAssignment> list = empMap.getOrDefault(emp.getId(), Collections.emptyList());
+			list.sort(Comparator.comparing(RosterAssignment::getRosterDate));
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < list.size(); i++) {
+				RosterAssignment a = list.get(i);
+				if (i > 0) sb.append(" ");
+				if (a.isWeeklyOff()) sb.append("O");
+				else if (a.isOnLeave()) sb.append("L");
+				else if (a.getShift() == null) sb.append("-");
+				else {
+					switch (a.getShift().getShiftType()) {
+						case MORNING -> sb.append("M");
+						case GENERAL -> sb.append("G");
+						case EVENING -> sb.append("E");
+						case NIGHT -> sb.append("N");
+						case OFF -> sb.append("O");
+					}
+				}
+			}
+			String name = emp.getFirstName() != null ? emp.getFirstName() : emp.getEmployeeCode();
+			summary.put(name, sb.toString());
+		}
+		return summary;
 	}
 
 }

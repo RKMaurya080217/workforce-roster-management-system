@@ -2,6 +2,8 @@ package com.weeklyroster.entity;
 
 public enum RosterStatus {
     DRAFT,
+    CANDIDATE,
+    SELECTED,
     TENTATIVE,
     GENERATED,
     PUBLISHED,
@@ -17,7 +19,9 @@ public enum RosterStatus {
     public boolean canTransitionTo(RosterStatus target) {
         if (target == null || this == target) return true;
         return switch (this) {
-            case DRAFT -> target == TENTATIVE || target == GENERATED || target == PUBLISHED || target == FINAL || target == ARCHIVED;
+            case DRAFT -> target == CANDIDATE || target == SELECTED || target == TENTATIVE || target == GENERATED || target == PUBLISHED || target == FINAL || target == ARCHIVED;
+            case CANDIDATE -> target == SELECTED || target == DRAFT || target == GENERATED || target == PUBLISHED || target == FINAL || target == ARCHIVED;
+            case SELECTED -> target == DRAFT || target == CANDIDATE || target == GENERATED || target == PUBLISHED || target == FINAL || target == ARCHIVED;
             case TENTATIVE -> target == FINAL || target == LOCKED || target == GENERATED || target == DRAFT || target == ARCHIVED;
             case GENERATED -> target == TENTATIVE || target == PUBLISHED || target == FINAL || target == DRAFT || target == ARCHIVED;
             case PUBLISHED -> target == FINAL || target == ACTIVE || target == LOCKED || target == COMPLETED || target == ARCHIVED;

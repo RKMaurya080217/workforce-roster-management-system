@@ -10,6 +10,8 @@ import com.weeklyroster.dto.response.ShiftExplanationResponse;
 import com.weeklyroster.dto.response.TodayDutyResponse;
 import com.weeklyroster.entity.GenerationMode;
 import com.weeklyroster.entity.RosterCycle;
+import com.weeklyroster.entity.RosterStatus;
+import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.service.RosterEmailService;
 import com.weeklyroster.service.RosterService;
 import jakarta.validation.Valid;
@@ -116,6 +118,52 @@ public class RosterController {
                 .body(bytes);
     }
 
+    @PostMapping(value = "/generate-candidates", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<List<com.weeklyroster.dto.response.RosterCandidateResponse>> generateCandidates(
+            @RequestParam(name = "startDate", required = false) String startDate,
+            @RequestParam(name = "workingDays", required = false, defaultValue = "6") Integer workingDays,
+            @RequestParam(name = "count", required = false, defaultValue = "5") Integer count) {
+        java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        java.time.LocalDate parsedDate = com.weeklyroster.util.DateParser.parse(startDate, defaultMonday);
+        int validWorkingDays = (workingDays != null && workingDays == 5) ? 5 : 6;
+        int validCount = (count != null && count >= 3 && count <= 5) ? count : 5;
+        return ResponseEntity.ok(rosterService.generateMultipleCandidates(parsedDate, validWorkingDays, validCount));
+    }
+
+    @GetMapping(value = "/candidates", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<List<com.weeklyroster.dto.response.RosterCandidateResponse>> getCandidates(
+            @RequestParam(name = "startDate", required = false) String startDate) {
+        java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        java.time.LocalDate parsedDate = com.weeklyroster.util.DateParser.parse(startDate, defaultMonday);
+        return ResponseEntity.ok(rosterService.getCachedCandidates(parsedDate));
+    }
+
+    @PostMapping(value = "/candidates/{candidateId}/select", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterCycleResponse> selectCandidate(
+            @PathVariable("candidateId") String candidateId,
+            @RequestParam(name = "startDate", required = false) String startDate) {
+        java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        java.time.LocalDate parsedDate = com.weeklyroster.util.DateParser.parse(startDate, defaultMonday);
+        return ResponseEntity.ok(rosterService.selectCandidate(parsedDate, candidateId));
+    }
+
+    @PostMapping(value = "/select-candidate", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterCycleResponse> selectCandidateParam(
+            @RequestParam("candidateId") String candidateId,
+            @RequestParam(name = "startDate", required = false) String startDate) {
+        java.time.LocalDate defaultMonday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        java.time.LocalDate parsedDate = com.weeklyroster.util.DateParser.parse(startDate, defaultMonday);
+        return ResponseEntity.ok(rosterService.selectCandidate(parsedDate, candidateId));
+    }
+
     @PostMapping(value = "/cycle/{id}/email", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<List<EmailDeliveryLogResponse>> sendEmail(
@@ -123,10 +171,18 @@ public class RosterController {
             @RequestBody(required = false) Map<String, String> body,
             @RequestParam(name = "adminMessage", required = false) String adminMessageParam) {
         RosterCycleResponse cycleResponse = rosterService.cycle(id);
+        if (cycleResponse.status() != RosterStatus.PUBLISHED 
+                && cycleResponse.status() != RosterStatus.FINAL 
+                && cycleResponse.status() != RosterStatus.LOCKED) {
+            throw new BusinessException("Cannot distribute roster emails: Cycle #" + id + " is in " 
+                    + cycleResponse.status() + " status. Emails can ONLY be sent after the roster is Finalized & Published.");
+        }
+
         RosterCycle cycle = new RosterCycle();
         cycle.setId(cycleResponse.id());
         cycle.setStartDate(cycleResponse.startDate());
         cycle.setEndDate(cycleResponse.endDate());
+        cycle.setStatus(cycleResponse.status());
         cycle.setGeneratedAt(cycleResponse.generatedAt());
         cycle.setGenerationMode(cycleResponse.generationMode());
 
@@ -232,14 +288,30 @@ public class RosterController {
 
     @PostMapping(value = "/cycle/{id}/finalize", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<RosterCycleResponse> finalizeCycle(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(rosterService.finalizeRoster(id));
+    public ResponseEntity<RosterCycleResponse> finalizeCycle(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestParam(name = "adminMessage", required = false) String adminMessageParam) {
+        String message = null;
+        if (body != null && body.containsKey("adminMessage")) message = body.get("adminMessage");
+        else if (body != null && body.containsKey("message")) message = body.get("message");
+        else if (adminMessageParam != null && !adminMessageParam.isBlank()) message = adminMessageParam;
+
+        return ResponseEntity.ok(rosterService.finalizeRoster(id, message));
     }
 
     @PostMapping("/cycle/{id}/publish")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<RosterCycleResponse> publishCycle(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(rosterService.publishRoster(id));
+    public ResponseEntity<RosterCycleResponse> publishCycle(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestParam(name = "adminMessage", required = false) String adminMessageParam) {
+        String message = null;
+        if (body != null && body.containsKey("adminMessage")) message = body.get("adminMessage");
+        else if (body != null && body.containsKey("message")) message = body.get("message");
+        else if (adminMessageParam != null && !adminMessageParam.isBlank()) message = adminMessageParam;
+
+        return ResponseEntity.ok(rosterService.publishRoster(id, message));
     }
 
     @PostMapping("/cycle/{id}/lock")

@@ -8965,6 +8965,7 @@ async function executeRosterGeneration(rawDate, workingDays) {
   const btn = document.getElementById("triggerGenerateBtn");
   const spinner = btn ? btn.querySelector(".spinner") : null;
   const wd = workingDays || document.getElementById("rosterWorkingDaysSelect")?.value || 6;
+  const count = document.getElementById("rosterCandidateCountSelect")?.value || 5;
 
   try {
     if (btn) btn.disabled = true;
@@ -8974,38 +8975,35 @@ async function executeRosterGeneration(rawDate, workingDays) {
     if (wd) {
       queryParam += (queryParam ? `&workingDays=${encodeURIComponent(wd)}` : `?workingDays=${encodeURIComponent(wd)}`);
     }
-    const res = await apiRequest(`/api/rosters/generate${queryParam}`, { method: "POST" });
+    if (count) {
+      queryParam += (queryParam ? `&count=${encodeURIComponent(count)}` : `?count=${encodeURIComponent(count)}`);
+    }
+
+    // BATCH 94: Multi-candidate generation endpoint
+    const candidates = await apiRequest(`/api/rosters/generate-candidates${queryParam}`, { method: "POST" });
     broadcastDataMutation("ROSTER_GENERATED");
 
-    // Optional admin message from generateRosterModal
-    const adminMsgInput = document.getElementById("rosterAdminMessageInput");
-    const adminMessage = adminMsgInput ? adminMsgInput.value.trim() : "";
-
-    // Background email distribution for generated roster
-    if (res && res.id) {
-      const emailPayload = { method: "POST", timeout: 60000 };
-      if (adminMessage) {
-        emailPayload.body = { adminMessage };
-      }
-      apiRequest(`/api/rosters/cycle/${res.id}/email`, emailPayload).catch(e => console.warn("Email distribution background notice", e));
-    }
-    if (adminMsgInput) adminMsgInput.value = "";
-
-    if (res.coverageReport && res.coverageReport.totalShortage > 0) {
-      toast(`Roster generated with ${res.coverageReport.totalShortage} coverage shortages (maximum valid coverage)`, "warning");
-    } else {
-      toast("Weekly roster generated & distributed successfully!", "success");
-    }
-
     closeModal("generateRosterModal");
-    state.selectedCycleId = res ? res.id : null;
-    if (state.activePage === "commandCenter") {
-    renderCommandCenterView(state.selectedCycleId);
-  }
-  if (state.activePage === "roster") {
-      await renderRosterView();
+
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      state.candidateRosters = candidates;
+      state.candidateStartDate = rawDate;
+      state.candidateWorkingDays = wd;
+
+      // Candidate 1 is automatically the initial working draft in DB
+      if (candidates[0].roster && candidates[0].roster.id) {
+        state.selectedCycleId = candidates[0].roster.id;
+      }
+
+      toast(`Generated ${candidates.length} candidate rosters! Compare options and select your preferred candidate. (Zero emails sent)`, "success");
+      openCandidateComparisonModal(candidates, rawDate);
     } else {
-      navigateTo("roster");
+      toast("Roster generated successfully! Review draft before publishing.", "success");
+      if (state.activePage === "roster") {
+        await renderRosterView();
+      } else {
+        navigateTo("roster");
+      }
     }
   } catch (err) {
     console.error("Roster generation error:", err);
@@ -9013,6 +9011,204 @@ async function executeRosterGeneration(rawDate, workingDays) {
   } finally {
     if (btn) btn.disabled = false;
     if (spinner) spinner.classList.add("hidden");
+  }
+}
+
+function openCandidateComparisonModal(candidates, rawDate) {
+  if (!candidates || !candidates.length) return;
+  state.candidateRosters = candidates;
+
+  const container = document.getElementById("candidateCardsContainer");
+  const matrixWrapper = document.getElementById("candidateEmployeeMatrixWrapper");
+  const previewSection = document.getElementById("candidateRosterPreviewSection");
+  if (previewSection) previewSection.classList.add("hidden");
+
+  // Render Candidate Cards
+  if (container) {
+    container.innerHTML = candidates.map((c, idx) => {
+      const isRecommended = idx === 0;
+      const scoreColor = c.qualityScore >= 93 ? "#16a34a" : (c.qualityScore >= 88 ? "#2563eb" : "#d97706");
+
+      return `
+        <div class="card candidate-card" style="border: 2px solid ${isRecommended ? 'var(--accent-primary, #2563eb)' : 'var(--border-color, #e2e8f0)'}; border-radius: 10px; padding: 16px; background: var(--bg-card); display: flex; flex-direction: column; justify-content: space-between; position: relative;">
+          ${isRecommended ? '<div style="position: absolute; top: -10px; right: 14px; background: var(--accent-primary, #2563eb); color: #fff; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; text-transform: uppercase;">Top Pick</div>' : ''}
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+              <h4 style="margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-main);">${escapeHtml(c.label)}</h4>
+              <span style="background: ${scoreColor}; color: #fff; font-size: 0.85rem; font-weight: 800; padding: 4px 10px; border-radius: 8px;">
+                ${c.qualityScore}/100
+              </span>
+            </div>
+
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 12px; line-height: 1.35;">
+              ${escapeHtml(c.diversityDescription || "Valid alternative schedule")}
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.78rem; background: rgba(0,0,0,0.03); padding: 10px; border-radius: 6px; margin-bottom: 14px;">
+              <div><strong>Preferences:</strong> <span style="color:#16a34a; font-weight:600;">${c.preferenceMatchPct}%</span></div>
+              <div><strong>Continuity:</strong> <span>${escapeHtml(c.continuityLabel)}</span></div>
+              <div><strong>Night Balance:</strong> <span>${escapeHtml(c.nightBalanceLabel)}</span></div>
+              <div><strong>Weekly Off:</strong> <span>${escapeHtml(c.weeklyOffLabel)}</span></div>
+              <div style="grid-column: span 2;">
+                <strong>Conflicts:</strong> 
+                ${c.conflictsCount === 0 ? '<span style="color:#16a34a; font-weight:700;">&#10003; 0 Hard Conflicts</span>' : `<span style="color:#dc2626; font-weight:700;">${c.conflictsCount} issues</span>`}
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: auto;">
+            <button type="button" class="btn btn-sm btn-ghost view-candidate-btn" data-candidate-id="${c.candidateId}" style="flex: 1;">
+              View Grid
+            </button>
+            <button type="button" class="btn btn-sm btn-primary select-candidate-btn" data-candidate-id="${c.candidateId}" style="flex: 1;">
+              Select &amp; Edit
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Wire up candidate buttons
+    container.querySelectorAll(".view-candidate-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-candidate-id");
+        previewCandidateRoster(id);
+      });
+    });
+
+    container.querySelectorAll(".select-candidate-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-candidate-id");
+        await handleSelectCandidate(id, rawDate);
+      });
+    });
+  }
+
+  // Render Employee Schedule Matrix
+  if (matrixWrapper && candidates[0] && candidates[0].employeeScheduleSummary) {
+    const employees = Object.keys(candidates[0].employeeScheduleSummary);
+    let matrixHtml = `
+      <table class="data-table" style="width: 100%; font-size: 0.8rem; margin: 0;">
+        <thead>
+          <tr>
+            <th style="min-width: 120px;">Employee</th>
+            ${candidates.map((c, i) => `<th>Candidate ${i + 1}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    employees.forEach(empName => {
+      matrixHtml += `<tr><td><strong>${escapeHtml(empName)}</strong></td>`;
+      candidates.forEach(c => {
+        const seq = (c.employeeScheduleSummary && c.employeeScheduleSummary[empName]) || "-";
+        const formattedBadges = seq.split(" ").map(s => {
+          let bg = "#64748b";
+          if (s === "M") bg = "#0284c7";
+          else if (s === "G") bg = "#16a34a";
+          else if (s === "E") bg = "#d97706";
+          else if (s === "N") bg = "#7c3aed";
+          else if (s === "O") bg = "#475569";
+          else if (s === "L") bg = "#ea580c";
+          else if (s === "H") bg = "#dc2626";
+          return `<span style="display:inline-block; width:18px; height:18px; line-height:18px; text-align:center; background:${bg}; color:#fff; border-radius:3px; font-weight:700; font-size:0.7rem; margin:1px;">${s}</span>`;
+        }).join("");
+        matrixHtml += `<td>${formattedBadges}</td>`;
+      });
+      matrixHtml += `</tr>`;
+    });
+
+    matrixHtml += `</tbody></table>`;
+    matrixWrapper.innerHTML = matrixHtml;
+  }
+
+  const closePreviewBtn = document.getElementById("closeCandidatePreviewBtn");
+  if (closePreviewBtn) {
+    closePreviewBtn.onclick = () => {
+      const ps = document.getElementById("candidateRosterPreviewSection");
+      if (ps) ps.classList.add("hidden");
+    };
+  }
+
+  openModal("candidateComparisonModal");
+}
+
+function previewCandidateRoster(candidateId) {
+  if (!state.candidateRosters) return;
+  const c = state.candidateRosters.find(x => x.candidateId === candidateId);
+  if (!c || !c.roster) return;
+
+  const previewSection = document.getElementById("candidateRosterPreviewSection");
+  const title = document.getElementById("previewCandidateTitle");
+  const wrapper = document.getElementById("candidatePreviewGridWrapper");
+
+  if (title) title.innerText = `${c.label} — Full Weekly Grid`;
+  if (wrapper && c.roster.assignments) {
+    const assignments = c.roster.assignments;
+    const dates = [...new Set(assignments.map(a => a.rosterDate))].sort();
+    const byEmp = {};
+    assignments.forEach(a => {
+      if (!byEmp[a.employeeName]) byEmp[a.employeeName] = {};
+      byEmp[a.employeeName][a.rosterDate] = a;
+    });
+
+    let tbl = `<table class="data-table" style="width:100%; font-size:0.8rem;"><thead><tr><th>Employee</th>`;
+    dates.forEach(d => {
+      tbl += `<th>${formatDate(d)}</th>`;
+    });
+    tbl += `</tr></thead><tbody>`;
+
+    Object.keys(byEmp).sort().forEach(empName => {
+      tbl += `<tr><td><strong>${escapeHtml(empName)}</strong></td>`;
+      dates.forEach(d => {
+        const a = byEmp[empName][d];
+        if (!a) {
+          tbl += `<td>-</td>`;
+        } else if (a.weeklyOff) {
+          tbl += `<td><span class="badge" style="background:#475569; color:#fff;">OFF</span></td>`;
+        } else if (a.onLeave) {
+          tbl += `<td><span class="badge" style="background:#ea580c; color:#fff;">LEAVE</span></td>`;
+        } else if (a.shift) {
+          let bg = "#16a34a";
+          if (a.shift.shiftType === "NIGHT") bg = "#7c3aed";
+          else if (a.shift.shiftType === "EVENING") bg = "#d97706";
+          else if (a.shift.shiftType === "MORNING") bg = "#0284c7";
+          tbl += `<td><span class="badge" style="background:${bg}; color:#fff;">${a.shift.shiftType}</span></td>`;
+        } else {
+          tbl += `<td>-</td>`;
+        }
+      });
+      tbl += `</tr>`;
+    });
+    tbl += `</tbody></table>`;
+    wrapper.innerHTML = tbl;
+  }
+
+  if (previewSection) {
+    previewSection.classList.remove("hidden");
+    previewSection.scrollIntoView({ behavior: "smooth" });
+  }
+}
+
+async function handleSelectCandidate(candidateId, rawDate) {
+  try {
+    toast(`Activating candidate #${candidateId} as working draft...`, "info");
+    const dateParam = rawDate ? `?startDate=${encodeURIComponent(rawDate)}` : "";
+    const res = await apiRequest(`/api/rosters/candidates/${encodeURIComponent(candidateId)}/select${dateParam}`, { method: "POST" });
+
+    state.selectedCycleId = res ? res.id : null;
+    closeModal("candidateComparisonModal");
+    toast(`Candidate #${candidateId} selected as your active working draft! Zero emails sent.`, "success");
+    broadcastDataMutation("ROSTER_GENERATED");
+
+    if (state.activePage === "roster") {
+      await renderRosterView();
+    } else {
+      navigateTo("roster");
+    }
+  } catch (err) {
+    console.error("Select candidate error:", err);
+    toast(err.message || "Failed to select candidate", "error");
   }
 }
 
@@ -10973,7 +11169,7 @@ async function handlePublishRoster(cycleId) {
   try {
     state.isPublishingRoster = true;
     const res = await apiRequest(`/api/rosters/cycle/${cycleId}/publish`, { method: "POST" });
-    toast(`Roster cycle #${cycleId} published successfully! Staff notified.`, "success");
+    toast(`Roster cycle #${cycleId} published successfully! Final roster email sent to all staff.`, "success");
     broadcastDataMutation("ROSTER_PUBLISHED");
     await fetchUnreadNotifCount();
     if (state.activePage === "roster") await renderRosterView();
