@@ -305,9 +305,7 @@ public class SmartCommandCenterService {
         );
 
         // 7. Admin Overrides Summary
-        List<RosterOverride> overrides = overrideRepository.findAll().stream()
-                .filter(o -> o.getAssignment() != null && o.getAssignment().getCycle() != null && o.getAssignment().getCycle().getId().equals(cycle.getId()))
-                .toList();
+        List<RosterOverride> overrides = overrideRepository.findByAssignmentCycle(cycle);
 
         List<SmartCommandCenterResponse.AdminOverrideItemDto> overrideItems = new ArrayList<>();
         for (RosterOverride o : overrides) {
@@ -351,7 +349,7 @@ public class SmartCommandCenterService {
         // 9. Recent Audit Activities
         List<SmartCommandCenterResponse.CommandCenterActivityItem> recentActivities = new ArrayList<>();
         try {
-            List<AuditLog> auditLogs = auditLogRepository.findAllByOrderByTimestampDesc();
+            List<AuditLog> auditLogs = auditLogRepository.findTop10ByOrderByTimestampDesc();
             DateTimeFormatter tf = DateTimeFormatter.ofPattern("hh:mm a");
             for (AuditLog al : auditLogs.stream().limit(6).toList()) {
                 String timeStr = al.getTimestamp() != null ? al.getTimestamp().format(tf) : "Just now";

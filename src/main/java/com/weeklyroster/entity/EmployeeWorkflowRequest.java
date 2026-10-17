@@ -6,7 +6,9 @@ import jakarta.persistence.*;
 @Table(name = "employee_requests", indexes = {
     @Index(name = "idx_er_emp", columnList = "employee_id"),
     @Index(name = "idx_er_type", columnList = "request_type"),
-    @Index(name = "idx_er_cycle", columnList = "cycle_id")
+    @Index(name = "idx_er_cycle", columnList = "cycle_id"),
+    @Index(name = "idx_er_emp_status", columnList = "employee_id, preference_status"),
+    @Index(name = "idx_er_pcr_status", columnList = "profile_status")
 })
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "request_type", discriminatorType = DiscriminatorType.STRING, length = 30)

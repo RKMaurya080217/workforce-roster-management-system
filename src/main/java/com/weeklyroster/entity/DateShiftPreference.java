@@ -5,9 +5,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "date_shift_preferences", uniqueConstraints = {
-    @UniqueConstraint(name = "uk_date_shift_pref_emp_date", columnNames = {"employee_id", "preference_date"})
-})
+@Table(name = "date_shift_preferences",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_date_shift_pref_emp_date", columnNames = {"employee_id", "preference_date"})
+    },
+    indexes = {
+        @Index(name = "idx_dsp_pref_date", columnList = "preference_date")
+    }
+)
 public class DateShiftPreference {
 
     @Id

@@ -29,4 +29,7 @@ public interface ShiftHandoverRepository extends JpaRepository<ShiftHandover, Lo
 
     @Query("SELECT h FROM ShiftHandover h JOIN FETCH h.shift JOIN FETCH h.fromEmployee LEFT JOIN FETCH h.toEmployee ORDER BY h.handoverDate DESC, h.createdAt DESC")
     List<ShiftHandover> findTop20ByOrderByHandoverDateDescCreatedAtDesc();
+
+    @Query("SELECT h FROM ShiftHandover h JOIN FETCH h.shift JOIN FETCH h.fromEmployee LEFT JOIN FETCH h.toEmployee ORDER BY h.handoverDate DESC, h.createdAt DESC")
+    List<ShiftHandover> findAllWithDetails();
 }

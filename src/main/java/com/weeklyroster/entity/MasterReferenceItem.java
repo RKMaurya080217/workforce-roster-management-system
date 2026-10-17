@@ -4,7 +4,8 @@ import jakarta.persistence.*;
 
 @Entity
 @Table(name = "master_reference_data", indexes = {
-    @Index(name = "idx_mrd_type", columnList = "item_type")
+    @Index(name = "idx_mrd_type", columnList = "item_type"),
+    @Index(name = "idx_mrd_hol_date", columnList = "holiday_date")
 })
 @Inheritance(strategy = InheritanceType.SINGLE_TABLE)
 @DiscriminatorColumn(name = "item_type", discriminatorType = DiscriminatorType.STRING, length = 30)

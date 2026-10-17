@@ -856,6 +856,11 @@ function setupFcmPushFlyoutControls() {
       showAdminTestPushModal();
     });
   }
+
+  const shiftReqForm = document.getElementById("employeeShiftRequestForm");
+  if (shiftReqForm) {
+    shiftReqForm.addEventListener("submit", handleConfirmEmployeeShiftRequest);
+  }
 }
 
 function showAdminTestPushModal() {
@@ -8689,8 +8694,11 @@ function openHolidayModal(holiday) {
   }
 
   openModal("holidayModal");
-  if (typeof handleSaveHoliday === "function") {
-    form.onsubmit = handleSaveHoliday;
+  const saveHolidayHandler = (typeof handleSaveHoliday === "function")
+    ? handleSaveHoliday
+    : (typeof window.handleSaveHoliday === "function" ? window.handleSaveHoliday : null);
+  if (saveHolidayHandler) {
+    form.onsubmit = saveHolidayHandler;
   }
 }
 
@@ -9028,8 +9036,14 @@ function openConflictWarningModal(check, rawDate, workingDays) {
 
   if (regenBtn) {
     regenBtn.onclick = async () => {
-      closeModal("conflictWarningModal");
-      await executeRosterGeneration(rawDate, workingDays);
+      if (regenBtn.disabled) return;
+      regenBtn.disabled = true;
+      try {
+        closeModal("conflictWarningModal");
+        await executeRosterGeneration(rawDate, workingDays);
+      } finally {
+        regenBtn.disabled = false;
+      }
     };
   }
 
@@ -13177,43 +13191,58 @@ function openEmployeeShiftRequestModal(assignId, date, currentShift, isWeeklyOff
 
   warnBox.classList.add("hidden");
   openModal("employeeShiftRequestModal");
+  const reqForm = document.getElementById("employeeShiftRequestForm");
+  if (reqForm) {
+    reqForm.onsubmit = handleConfirmEmployeeShiftRequest;
+  }
+}
+
+// Handler for Submitting Employee Shift Request Form
+async function handleConfirmEmployeeShiftRequest(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const assignId = document.getElementById("empReqAssignmentId")?.value;
+  const shiftVal = document.getElementById("empReqShiftSelect")?.value;
+  const reason = (document.getElementById("empReqReasonInput")?.value || "").trim();
+  const isOff = (shiftVal === "OFF");
+  const submitBtn = document.getElementById("submitEmpShiftReqBtn");
+
+  try {
+    if (submitBtn) submitBtn.disabled = true;
+    await apiRequest("/api/roster-review/request", {
+      method: "POST",
+      body: {
+        assignmentId: Number(assignId),
+        requestedShiftType: isOff ? "OFF" : shiftVal,
+        requestedWeeklyOff: isOff,
+        reason: reason
+      }
+    });
+
+    toast("Shift change request submitted to Admin successfully!", "success");
+    closeModal("employeeShiftRequestModal");
+    broadcastDataMutation("ROSTER_CHANGE_SUBMITTED");
+    renderEmployeeRosterReviewView();
+  } catch (err) {
+    toast(err.message || "Failed to submit request", "error");
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
 }
 
 // Bind Submit Employee Shift Request Form
-document.addEventListener("DOMContentLoaded", () => {
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
+    const reqForm = document.getElementById("employeeShiftRequestForm");
+    if (reqForm) {
+      reqForm.addEventListener("submit", handleConfirmEmployeeShiftRequest);
+    }
+  });
+} else {
   const reqForm = document.getElementById("employeeShiftRequestForm");
   if (reqForm) {
-    reqForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const assignId = document.getElementById("empReqAssignmentId").value;
-      const shiftVal = document.getElementById("empReqShiftSelect").value;
-      const reason = document.getElementById("empReqReasonInput").value.trim();
-      const isOff = (shiftVal === "OFF");
-      const submitBtn = document.getElementById("submitEmpShiftReqBtn");
-
-      try {
-        if (submitBtn) submitBtn.disabled = true;
-        await apiRequest("/api/roster-review/request", {
-          method: "POST",
-          body: {
-            assignmentId: Number(assignId),
-            requestedShiftType: isOff ? "OFF" : shiftVal,
-            requestedWeeklyOff: isOff,
-            reason: reason
-          }
-        });
-
-        toast("Shift change request submitted to Admin successfully!", "success");
-        closeModal("employeeShiftRequestModal");
-        broadcastDataMutation("ROSTER_CHANGE_SUBMITTED");
-        renderEmployeeRosterReviewView();
-      } catch (err) {
-        toast(err.message || "Failed to submit request", "error");
-      } finally {
-        if (submitBtn) submitBtn.disabled = false;
-      }
-    });
+    reqForm.addEventListener("submit", handleConfirmEmployeeShiftRequest);
   }
+}
 
   // Bind Cancel Request Delegation
   document.addEventListener("click", async (e) => {
@@ -13232,7 +13261,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   });
-});
 
 
 

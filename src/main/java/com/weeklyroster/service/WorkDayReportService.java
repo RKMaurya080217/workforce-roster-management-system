@@ -86,10 +86,8 @@ public class WorkDayReportService {
         }
 
         // 3. Fetch all approved leaves for all employees in date range
-        List<LeaveRequest> approvedLeaves = leaveRepository.findAll().stream()
-                .filter(l -> l.getStatus() == LeaveStatus.APPROVED)
-                .filter(l -> !l.getEndDate().isBefore(effectiveStartDate) && !l.getStartDate().isAfter(effectiveEndDate))
-                .toList();
+        List<LeaveRequest> approvedLeaves = leaveRepository.findApprovedLeavesInCycle(
+                LeaveStatus.APPROVED, effectiveStartDate, effectiveEndDate);
 
         Map<Long, List<LeaveRequest>> leavesByEmp = approvedLeaves.stream()
                 .collect(Collectors.groupingBy(l -> l.getEmployee().getId()));
@@ -254,10 +252,8 @@ public class WorkDayReportService {
         }
 
         // 3. Fetch approved leaves overlapping [monday, sunday]
-        List<LeaveRequest> approvedLeaves = leaveRepository.findAll().stream()
-                .filter(l -> l.getStatus() == LeaveStatus.APPROVED)
-                .filter(l -> !l.getEndDate().isBefore(monday) && !l.getStartDate().isAfter(sunday))
-                .toList();
+        List<LeaveRequest> approvedLeaves = leaveRepository.findApprovedLeavesInCycle(
+                LeaveStatus.APPROVED, monday, sunday);
 
         Map<Long, List<LeaveRequest>> leavesByEmp = approvedLeaves.stream()
                 .collect(Collectors.groupingBy(l -> l.getEmployee().getId()));

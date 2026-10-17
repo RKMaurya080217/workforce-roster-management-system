@@ -6,8 +6,10 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
+	@org.springframework.data.jpa.repository.Query("SELECT e FROM Employee e LEFT JOIN FETCH e.user WHERE e.active = true ORDER BY e.id ASC")
 	List<Employee> findByActiveTrueOrderByIdAsc();
 
+	@org.springframework.data.jpa.repository.Query("SELECT e FROM Employee e LEFT JOIN FETCH e.user ORDER BY e.id ASC")
 	List<Employee> findAllByOrderByIdAsc();
 
 	Optional<Employee> findByUserUsername(String username);

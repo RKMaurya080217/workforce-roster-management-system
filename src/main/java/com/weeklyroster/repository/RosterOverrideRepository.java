@@ -14,6 +14,9 @@ public interface RosterOverrideRepository extends JpaRepository<RosterOverride, 
     @Query("SELECT o FROM RosterOverride o JOIN FETCH o.assignment a WHERE a.rosterDate BETWEEN :startDate AND :endDate")
     java.util.List<RosterOverride> findByDateRange(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
 
+    @Query("SELECT o FROM RosterOverride o JOIN FETCH o.assignment a JOIN FETCH a.employee WHERE a.cycle = :cycle")
+    java.util.List<RosterOverride> findByAssignmentCycle(@Param("cycle") RosterCycle cycle);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RosterOverride o WHERE o.assignment.id IN (SELECT a.id FROM RosterAssignment a WHERE a.cycle = :cycle)")
     void deleteByAssignmentCycle(@Param("cycle") RosterCycle cycle);
