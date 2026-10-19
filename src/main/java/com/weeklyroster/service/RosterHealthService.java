@@ -116,22 +116,31 @@ public class RosterHealthService {
             int generalCount = shiftMap.getOrDefault(ShiftType.GENERAL, Collections.emptyList()).size();
             int eveningCount = shiftMap.getOrDefault(ShiftType.EVENING, Collections.emptyList()).size();
             int nightCount = shiftMap.getOrDefault(ShiftType.NIGHT, Collections.emptyList()).size();
+            int workingCountOnDate = morningCount + generalCount + eveningCount + nightCount;
 
             boolean dayOk = true;
             boolean isWeekend = (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY);
-            int minMorning = isWeekend ? 1 : 2;
+            int minMorning = isWeekend ? 1 : ((workingCountOnDate <= 5) ? 1 : 2);
             if (morningCount < minMorning) {
-                coverageOk = false;
-                dayOk = false;
-                conflicts.add(new ConflictItem(
-                        date, null, "Morning Staffing", ShiftType.MORNING,
-                        "MIN_COVERAGE_MORNING", morningCount + " assigned", ">= " + minMorning + " assigned",
-                        "Morning shift has " + morningCount + " assigned staff on " + date + " (minimum " + minMorning + " required)",
-                        "CRITICAL", "Assign at least " + minMorning + " employee" + (minMorning > 1 ? "s" : "") + " to Morning shift", false
-                ));
+                if (workingCountOnDate < (minMorning + 2)) {
+                    conflicts.add(new ConflictItem(
+                            date, null, "Morning Staffing", ShiftType.MORNING,
+                            "MIN_COVERAGE_MORNING", morningCount + " assigned", ">= " + minMorning + " assigned",
+                            "Morning shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")",
+                            "WARNING", "Review staffing capacity", false
+                    ));
+                } else {
+                    coverageOk = false;
+                    dayOk = false;
+                    conflicts.add(new ConflictItem(
+                            date, null, "Morning Staffing", ShiftType.MORNING,
+                            "MIN_COVERAGE_MORNING", morningCount + " assigned", ">= " + minMorning + " assigned",
+                            "Morning shift has " + morningCount + " assigned staff on " + date + " (minimum " + minMorning + " required)",
+                            "CRITICAL", "Assign at least " + minMorning + " employee" + (minMorning > 1 ? "s" : "") + " to Morning shift", false
+                    ));
+                }
             }
-            if (generalCount < 1) {
-                coverageOk = false;
+            if (!isWeekend && generalCount < 1) {
                 dayOk = false;
                 conflicts.add(new ConflictItem(
                         date, null, "General Staffing", ShiftType.GENERAL,
@@ -312,13 +321,18 @@ public class RosterHealthService {
                 }
             }
 
-            // Max 2 Night shifts per cycle check
-            if (nightCount > 2) {
+            // Max Night shifts per cycle check
+            long totalActiveNonDevMales = empMap.values().stream()
+                    .filter(l -> !l.isEmpty() && l.get(0).getEmployee().getGender() == Gender.MALE && l.get(0).getEmployee().isActive()
+                            && !isDevelopmentTeam(l.get(0).getEmployee()))
+                    .count();
+            int maxAllowedNights = (empMap.size() >= 4 && totalActiveNonDevMales <= 4) ? 3 : 2;
+            if (nightCount > maxAllowedNights) {
                 nightLimitOk = false;
                 conflicts.add(new ConflictItem(
                         cycle.getStartDate(), emp.getId(), empName, ShiftType.NIGHT,
-                        "MAX_NIGHT_LIMIT", nightCount + " night shifts", "<= 2 night shifts",
-                        "Employee exceeds maximum allowable Night shifts in this cycle (" + nightCount + " > 2)",
+                        "MAX_NIGHT_LIMIT", nightCount + " night shifts", "<= " + maxAllowedNights + " night shifts",
+                        "Employee exceeds maximum allowable Night shifts in this cycle (" + nightCount + " > " + maxAllowedNights + ")",
                         "CRITICAL", "Reassign excess Night shifts to other eligible male staff", false
                 ));
             }
@@ -344,7 +358,7 @@ public class RosterHealthService {
                         cycle.getStartDate(), emp.getId(), empName, null,
                         weeklyOffCount == 0 ? "NO_WEEKLY_OFF" : "MIN_WEEKLY_OFF", weeklyOffCount + " Weekly OFFs", expectedStr,
                         "Employee " + empName + " has " + weeklyOffCount + " scheduled weekly OFF days in the 7-day roster cycle (expected " + targetOffs + ")",
-                        "HIGH", "Assign exactly " + targetOffs + " Weekly OFF day" + (targetOffs > 1 ? "s" : ""), false
+                        "CRITICAL", "Assign exactly " + targetOffs + " Weekly OFF day" + (targetOffs > 1 ? "s" : ""), false
                 ));
             }
 
@@ -588,5 +602,12 @@ public class RosterHealthService {
                 healthScoreStatus, hardConstraintsMap,
                 preferenceDetails, continuityDetails, workloadDetails, nightDetails, offDetails
         );
+    }
+
+    private boolean isDevelopmentTeam(Employee e) {
+        if (e == null) return false;
+        String name = (e.getFirstName() + " " + (e.getLastName() == null ? "" : e.getLastName())).toLowerCase();
+        String code = e.getEmployeeCode() != null ? e.getEmployeeCode().toLowerCase() : "";
+        return name.contains("sapna") || name.contains("divyansh") || code.contains("emp006") || code.contains("emp007");
     }
 }

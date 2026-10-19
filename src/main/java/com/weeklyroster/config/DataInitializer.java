@@ -78,6 +78,18 @@ public class DataInitializer {
 				}
 			}
 
+			// Clean up any stray ephemeral test employees left in local database
+			employeeRepository.findAll().stream()
+					.filter(e -> (e.getEmployeeCode() != null && e.getEmployeeCode().toUpperCase().startsWith("B73LOCAL"))
+							|| "SQLite".equalsIgnoreCase(e.getFirstName())
+							|| "Tester".equalsIgnoreCase(e.getLastName()))
+					.forEach(e -> {
+						if (e.getEmployeeCode() != null) {
+							userRepository.findByUsernameIgnoreCase(e.getEmployeeCode()).ifPresent(userRepository::delete);
+						}
+						employeeRepository.delete(e);
+					});
+
 			List<SeedEmployee> employees = csvEmployeeLoader.loadEmployees();
 			for (SeedEmployee seed : employees) {
 				if (!employeeRepository.existsByEmployeeCode(seed.getEmployeeCode())) {

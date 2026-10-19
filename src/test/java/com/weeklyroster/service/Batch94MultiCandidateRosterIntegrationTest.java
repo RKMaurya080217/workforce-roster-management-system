@@ -67,6 +67,9 @@ public class Batch94MultiCandidateRosterIntegrationTest {
     @Autowired
     private ShiftRepository shiftRepository;
 
+    @Autowired
+    private com.weeklyroster.repository.UserRepository userRepository;
+
     private LocalDate testMonday;
 
     @BeforeEach
@@ -78,6 +81,17 @@ public class Batch94MultiCandidateRosterIntegrationTest {
 
         testMonday = LocalDate.of(2028, 5, 1)
                 .with(TemporalAdjusters.nextOrSame(DayOfWeek.MONDAY));
+
+        employeeRepository.findAll().stream()
+                .filter(e -> (e.getEmployeeCode() != null && e.getEmployeeCode().toUpperCase().startsWith("B73LOCAL"))
+                        || "SQLite".equalsIgnoreCase(e.getFirstName())
+                        || "Tester".equalsIgnoreCase(e.getLastName()))
+                .forEach(e -> {
+                    if (e.getEmployeeCode() != null) {
+                        userRepository.findByUsernameIgnoreCase(e.getEmployeeCode()).ifPresent(userRepository::delete);
+                    }
+                    employeeRepository.delete(e);
+                });
     }
 
     @Test
@@ -109,7 +123,7 @@ public class Batch94MultiCandidateRosterIntegrationTest {
         for (RosterCandidateResponse candidate : candidates) {
             RosterCycleResponse roster = candidate.roster();
             assertNotNull(roster);
-            assertEquals(0, candidate.conflictsCount(), "Candidate " + candidate.label() + " must have 0 critical conflicts");
+            assertEquals(0, candidate.conflictsCount(), "Candidate " + candidate.label() + " must have 0 conflicts");
 
             Map<Long, List<RosterAssignmentResponse>> byEmp = new HashMap<>();
             for (RosterAssignmentResponse a : roster.assignments()) {
