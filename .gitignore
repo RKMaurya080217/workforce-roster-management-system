@@ -3,3 +3,6 @@
 *.local
 data/*.db
 data/*.db-*
+WRMS-Client-Release/data/*.db
+WRMS-Client-Release/data/*.db-*
+WRMS-Client-Release/logs/*.log

@@ -277,6 +277,7 @@ const dom = {
     history: document.getElementById("viewHistory"),
     employeeWorkspace: document.getElementById("viewEmployeeWorkspace"),
     employeeRosterDetail: document.getElementById("viewEmployeeRosterDetail"),
+    employeePreferenceDetail: document.getElementById("viewEmployeePreferenceDetail"),
     health: document.getElementById("viewHealth"),
     audit: document.getElementById("viewAudit"),
     approvals: document.getElementById("viewApprovals"),
@@ -2104,6 +2105,9 @@ function parseRouteTarget(target) {
       
       "employeeRosterDetail": "employeeRosterDetail",
       "employee-roster": "employeeRosterDetail",
+      "employeePreferenceDetail": "employeePreferenceDetail",
+      "employee-preferences": "employeePreferenceDetail",
+      "employee-preference": "employeePreferenceDetail",
 
       "profile": "adminProfile",
       "admin/profile": "adminProfile",
@@ -2140,7 +2144,8 @@ function parseRouteTarget(target) {
       adminHolidays: "#/holiday-calendar",
       adminWorkReport: "#/work-report",
       adminWeeklyWorkSummary: "#/weekly-work-summary",
-      employeeRosterDetail: "#/employee-roster"
+      employeeRosterDetail: "#/employee-roster",
+      employeePreferenceDetail: "#/employee-preference"
     };
 
     const page = adminRoutes[clean] || "dashboard";
@@ -2415,7 +2420,8 @@ function updateTopbarTitle(pageId) {
     adminWorkReport: { title: "Employee Work-Day & Attendance Audit Report", bc: "Work-Day Report" },
     adminWeeklyWorkSummary: { title: "Weekly Employee Work Summary", bc: "Weekly Work Summary" },
     employeeWorkspace: employeeTitles[currentTab] || { title: "Staff Self-Service Workspace", bc: "My Workspace" },
-    employeeRosterDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Schedule`, bc: "Employee Roster" }
+    employeeRosterDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Schedule`, bc: "Employee Roster" },
+    employeePreferenceDetail: { title: `${state.inspectedEmployeeName || 'Employee'} - Shift Preferences`, bc: "Shift Preferences" }
   };
 
   const meta = (pageId === "employeeWorkspace" && isEmployee)
@@ -2496,6 +2502,9 @@ async function loadActiveView() {
       break;
     case "employeeWorkspace":
       await renderEmployeeWorkspaceView();
+      break;
+    case "employeePreferenceDetail":
+      await renderEmployeePreferenceDetailView();
       break;
     case "employeeRosterDetail":
       await renderEmployeeRosterDetailView();
@@ -3406,7 +3415,7 @@ function renderEmployeeTableHTML(list) {
             <td style="text-align:right;">
               <div class="row-actions" style="justify-content:flex-end; gap:6px;">
                 <button class="btn btn-secondary btn-xs" data-action="set-preference" data-id="${emp.id}" data-code="${escapeHTML(emp.employeeCode)}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="Admin configure shift preference">
-                  Pref
+                  Preference
                 </button>
                 <button class="btn btn-secondary btn-xs" data-action="view-roster" data-id="${emp.id}" data-name="${escapeHTML(emp.firstName + ' ' + (emp.lastName || ''))}" data-code="${escapeHTML(emp.employeeCode)}" data-pref="${escapeHTML(emp.shiftPreference || '')}" title="View employee details, roster and shift preference">
                   Roster
@@ -3426,6 +3435,51 @@ function renderEmployeeTableHTML(list) {
     </table>
   `;
 }
+
+function openEmployeePreference(employeeId) {
+  if (!employeeId) return;
+  const emp = (state.employees || []).find(e => String(e.id) === String(employeeId));
+  state.inspectedEmployeeId = employeeId;
+  state.inspectedEmployeeName = emp ? (emp.firstName + ' ' + (emp.lastName || '')).trim() : '';
+  state.inspectedEmployeeCode = emp ? emp.employeeCode : `EMP${employeeId}`;
+  state.inspectedEmployeePref = emp ? (emp.shiftPreference || '') : '';
+  navigateTo("employeePreferenceDetail");
+}
+
+function openEmployeeRoster(employeeId) {
+  if (!employeeId) return;
+  const emp = (state.employees || []).find(e => String(e.id) === String(employeeId));
+  state.inspectedEmployeeId = employeeId;
+  state.inspectedEmployeeName = emp ? (emp.firstName + ' ' + (emp.lastName || '')).trim() : '';
+  state.inspectedEmployeeCode = emp ? emp.employeeCode : `EMP${employeeId}`;
+  state.inspectedEmployeePref = emp ? (emp.shiftPreference || '') : '';
+  state.empRosterWeekMode = "current";
+  const todayISO = getKolkataDateString();
+  const currentWeekRange = getWeekRangeForDate(todayISO);
+  state.empRosterSelectedWeek = `${currentWeekRange.startISO}_${currentWeekRange.endISO}`;
+  state.empRosterSearchTerm = "";
+  state.empRosterStatusFilter = "ALL";
+  state.employeeRosterViewMode = "table";
+  navigateTo("employeeRosterDetail");
+}
+
+function openEmployeeEdit(employeeId) {
+  if (!employeeId) return;
+  const emp = (state.employees || []).find(e => String(e.id) === String(employeeId));
+  if (emp) {
+    openEmployeeModal(emp);
+  } else {
+    apiRequest(`/api/employees/${employeeId}`)
+      .then(fetchedEmp => {
+        if (fetchedEmp) openEmployeeModal(fetchedEmp);
+      })
+      .catch(err => toast("Failed to load employee for editing: " + err.message, "error"));
+  }
+}
+
+window.openEmployeePreference = openEmployeePreference;
+window.openEmployeeRoster = openEmployeeRoster;
+window.openEmployeeEdit = openEmployeeEdit;
 
 function bindEmployeeRowActions() {
   document.querySelectorAll("[data-action='admin-pcr-approve']").forEach(btn => {
@@ -3454,31 +3508,27 @@ function bindEmployeeRowActions() {
     });
   });
   document.querySelectorAll("[data-action='view-roster']").forEach(btn => {
-    btn.addEventListener("click", () => {
-      state.inspectedEmployeeId = btn.getAttribute("data-id");
-      state.inspectedEmployeeName = btn.getAttribute("data-name");
-      state.inspectedEmployeeCode = btn.getAttribute("data-code");
-      state.inspectedEmployeePref = btn.getAttribute("data-pref");
-      navigateTo("employeeRosterDetail");
-    });
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openEmployeeRoster(btn.getAttribute("data-id"));
+    };
   });
 
   document.querySelectorAll("[data-action='set-preference']").forEach(btn => {
-    btn.addEventListener("click", () => {
-      state.inspectedEmployeeId = btn.getAttribute("data-id");
-      state.inspectedEmployeeName = btn.getAttribute("data-name");
-      state.inspectedEmployeeCode = btn.getAttribute("data-code");
-      state.inspectedEmployeePref = btn.getAttribute("data-pref");
-      navigateTo("employeeRosterDetail");
-    });
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openEmployeePreference(btn.getAttribute("data-id"));
+    };
   });
 
   document.querySelectorAll("[data-action='edit']").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const empId = btn.getAttribute("data-id");
-      const emp = state.employees.find(e => String(e.id) === String(empId));
-      if (emp) openEmployeeModal(emp);
-    });
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openEmployeeEdit(btn.getAttribute("data-id"));
+    };
   });
 
   initAdminShiftPrefModal();
@@ -8206,18 +8256,427 @@ function renderMyRosterTableHTML(list) {
 
 
 /* ==========================================================================
-   VIEW 8: INDIVIDUAL EMPLOYEE ROSTER INSPECTOR
+   VIEW 8: INDIVIDUAL EMPLOYEE ROSTER INSPECTOR (CURRENT & WEEKLY SCHEDULE)
    ========================================================================== */
 
 async function renderEmployeeRosterDetailView() {
   const container = dom.views.employeeRosterDetail;
   const empId = state.inspectedEmployeeId;
 
-  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading details & schedule for ${state.inspectedEmployeeName || 'Employee'}...</p></div>`;
+  if (!container) return;
+
+  if (!empId) {
+    container.innerHTML = `
+      <div class="empty-state-box" style="padding:40px 20px;">
+        <div class="empty-state-icon">👥</div>
+        <h3>No employee selected</h3>
+        <p style="color:var(--text-muted); margin-bottom:16px;">Please select an employee from Employee Management to view their roster schedule.</p>
+        <button class="btn btn-primary btn-sm" onclick="navigateTo('employees')">&larr; Back to Employees</button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading roster schedule for ${escapeHTML(state.inspectedEmployeeName || 'Employee')}...</p></div>`;
 
   try {
-    const [roster, empData, prefData] = await Promise.all([
+    const [roster, empData] = await Promise.all([
       apiRequest(`/api/rosters/employee/${empId}`).catch(() => []),
+      apiRequest(`/api/employees/${empId}`).catch(() => null),
+      ensureHolidaysLoaded()
+    ]);
+
+    const employee = empData || (state.employees && state.employees.find(e => String(e.id) === String(empId))) || {
+      id: empId,
+      employeeCode: state.inspectedEmployeeCode || `EMP${empId}`,
+      firstName: state.inspectedEmployeeName || "Employee",
+      lastName: "",
+      email: "-",
+      gender: "MALE",
+      active: true
+    };
+
+    // Update state cache for topbar & breadcrumb
+    state.inspectedEmployeeName = `${employee.firstName} ${employee.lastName || ''}`.trim();
+    state.inspectedEmployeeCode = employee.employeeCode;
+    updateTopbarTitle("employeeRosterDetail");
+
+    // Week calculation & navigation logic
+    state.employeeRosterViewMode = state.employeeRosterViewMode || "table";
+    state.empRosterWeekMode = state.empRosterWeekMode || "current";
+    const viewMode = state.employeeRosterViewMode;
+    const weekMode = state.empRosterWeekMode;
+
+    const { availableWeeks, currentWeekRange, currentWeekKey, currentWeekLabel } = buildEmployeeRosterWeeks(roster);
+
+    // Determine Active Week Key
+    let activeWeekKey = currentWeekKey;
+    if (weekMode === "selected") {
+      activeWeekKey = state.empRosterSelectedWeek || currentWeekKey;
+    } else if (weekMode === "current") {
+      activeWeekKey = currentWeekKey;
+    }
+
+    let activeWeek = availableWeeks.find(w => w.key === activeWeekKey);
+    if (!activeWeek) {
+      activeWeek = {
+        key: activeWeekKey,
+        startISO: currentWeekRange.startISO,
+        endISO: currentWeekRange.endISO,
+        label: currentWeekLabel,
+        isCurrent: activeWeekKey === currentWeekKey,
+        assignments: []
+      };
+    }
+
+    const activeWeekLabel = activeWeek ? activeWeek.label : currentWeekLabel;
+    const activeWeekIsCurrent = activeWeekKey === currentWeekKey;
+
+    // Daily entries and summary for active week
+    const rawWeekDays = activeWeek ? getWeekDailyEntries(activeWeek.startISO, activeWeek.assignments) : [];
+    const displayEntries = filterEmployeeRoster(rawWeekDays);
+    const summary = calculateRosterSummary(rawWeekDays);
+
+    const hasRealAssignmentsThisWeek = activeWeek && activeWeek.assignments && activeWeek.assignments.length > 0;
+    const publishedWeeks = (availableWeeks || []).filter(w => w.assignments && w.assignments.length > 0);
+    const dropdownWeeks = availableWeeks.filter(w => (w.assignments && w.assignments.length > 0) || w.isCurrent || w.key === activeWeekKey);
+
+    container.innerHTML = `
+      <!-- 1. EMPLOYEE DETAILS & TOP ACTIONS HEADER -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h2 style="margin:0;">${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}</h2>
+            <code>${escapeHTML(employee.employeeCode)}</code>
+            <span class="status-pill ${employee.active !== false ? 'active' : 'inactive'}">
+              <span class="badge-dot"></span> ${employee.active !== false ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          <span style="font-size:0.82rem; color:var(--text-muted); margin-top:4px; display:block;">
+            Email: ${escapeHTML(employee.email || '-')} &bull; Gender: ${escapeHTML(employee.gender || 'MALE')} (${employee.gender === 'FEMALE' ? 'Day Protection' : 'All Shifts'})
+          </span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" id="detailOpenPrefBtn" title="View and edit shift preferences for this employee">
+            ⚙️ Shift Preferences
+          </button>
+          <button class="btn btn-secondary btn-sm" id="detailEditEmployeeBtn" title="Edit employee profile">
+            ✏️ Edit Employee
+          </button>
+          <button class="btn btn-ghost btn-sm" id="backToEmployeesBtn" title="Return to Employee Directory">
+            &larr; Back to Employees
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. ROSTER SCHEDULE CARD -->
+      <div class="card stack-gap">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:2px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">Employee Schedule</div>
+            <h3 style="margin:0; font-size:1.15rem; font-weight:700; color:var(--text-main);">
+              Duty Schedule &mdash; ${escapeHTML(employee.firstName + ' ' + (employee.lastName || ''))}
+            </h3>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="btn btn-secondary btn-sm" id="rosterRefreshBtn" title="Refresh Schedule" style="padding:5px 10px;">
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Week Navigation & Mode Controls Bar -->
+        <div class="roster-controls-bar">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div class="btn-group" role="group" aria-label="Roster Week View Mode">
+              <button class="btn btn-sm ${weekMode === 'current' ? 'btn-primary' : 'btn-secondary'}" id="empDetailModeCurrentWeekBtn">
+                Current Week
+              </button>
+              <button class="btn btn-sm ${weekMode === 'selected' ? 'btn-primary' : 'btn-secondary'}" id="empDetailModeSelectWeekBtn">
+                Select Week
+              </button>
+              <button class="btn btn-sm ${weekMode === 'all' ? 'btn-primary' : 'btn-secondary'}" id="empDetailModeAllRosterBtn">
+                All Weeks
+              </button>
+            </div>
+
+            ${weekMode !== 'all' ? `
+              <div class="roster-nav-controls">
+                <button class="btn btn-secondary btn-sm" id="empDetailPrevWeekBtn" title="Previous 7 Days" style="padding:4px 9px; font-weight:bold;">
+                  ‹
+                </button>
+                ${weekMode === 'selected' ? `
+                  <select id="empDetailWeekSelectDropdown" class="form-control" style="font-size:0.84rem; font-weight:600; padding:4px 8px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); color:var(--text-main); max-width:240px;">
+                    ${dropdownWeeks.map(w => `
+                      <option value="${w.key}" ${w.key === activeWeekKey ? 'selected' : ''}>
+                        ${w.label} ${w.isCurrent ? '• Current' : ''}
+                      </option>
+                    `).join('')}
+                  </select>
+                ` : `
+                  <span style="font-size:0.84rem; font-weight:700; color:var(--text-main); padding:4px 10px; background:var(--bg-card); border-radius:6px; border:1px solid var(--border-color); display:inline-flex; align-items:center; gap:6px;">
+                    <span>📅 ${activeWeekLabel}</span>
+                    ${activeWeekIsCurrent ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem; font-weight:700;">Current Week</span>' : ''}
+                  </span>
+                `}
+                <button class="btn btn-secondary btn-sm" id="empDetailNextWeekBtn" title="Next 7 Days" style="padding:4px 9px; font-weight:bold;">
+                  ›
+                </button>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Inline Summary Strip -->
+          <div class="roster-summary-inline">
+            <span class="summary-item">Working <strong style="color:var(--success, #16a34a);">${summary.working}</strong></span>
+            <span class="summary-dot">•</span>
+            <span class="summary-item">Leave <strong style="color:var(--warning, #d97706);">${summary.leave}</strong></span>
+            <span class="summary-dot">•</span>
+            <span class="summary-item">Holiday <strong style="color:#b45309;">${summary.holiday}</strong></span>
+            <span class="summary-dot">•</span>
+            <span class="summary-item">Weekly Off <strong style="color:var(--text-main);">${summary.off}</strong></span>
+          </div>
+        </div>
+
+        <!-- Filter Sub-bar with View Switcher -->
+        <div class="table-toolbar" style="background-color:var(--bg-app); padding:8px 14px; border-radius:var(--radius-md); flex-wrap:wrap; gap:10px; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div class="search-input-box" style="max-width:220px; min-width:160px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="empDetailRosterSearchInput" placeholder="Filter date or shift..." value="${escapeHTML(state.empRosterSearchTerm || '')}">
+            </div>
+
+            <div class="filter-group" style="flex-wrap:wrap; gap:6px; align-items:center;">
+              <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">Filter:</span>
+              <select id="empDetailRosterStatusFilter">
+                <option value="ALL" ${(!state.empRosterStatusFilter || state.empRosterStatusFilter === 'ALL') ? 'selected' : ''}>All Duties</option>
+                <option value="WORKING" ${state.empRosterStatusFilter === 'WORKING' ? 'selected' : ''}>Working Shifts</option>
+                <option value="OFF" ${state.empRosterStatusFilter === 'OFF' ? 'selected' : ''}>Weekly OFF</option>
+                <option value="LEAVE" ${state.empRosterStatusFilter === 'LEAVE' ? 'selected' : ''}>Approved Leave</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="filter-group" style="flex-wrap:wrap; gap:6px; align-items:center;">
+            <span style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">View:</span>
+            <div class="btn-group" role="group" aria-label="Employee Roster View Mode">
+              <button class="btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}" id="empDetailToggleTableViewBtn" title="List View">
+                📋 List
+              </button>
+              <button class="btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}" id="empDetailToggleCalendarViewBtn" title="Calendar View">
+                📅 Calendar
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule Content Area -->
+        <div id="empDetailRosterContent" style="margin-top:12px;">
+          ${(() => {
+            if (weekMode === "all") {
+              if (!publishedWeeks.length) {
+                return `
+                  <div class="empty-state-box" style="padding:40px 20px;">
+                    <div class="empty-state-icon" style="font-size:2.5rem;">📅</div>
+                    <h3>No published roster records found</h3>
+                    <p style="color:var(--text-muted); max-width:400px; margin:8px auto;">This employee does not have any published shifts in the system yet.</p>
+                  </div>
+                `;
+              }
+              return `
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                  ${publishedWeeks.map(w => {
+                    const wDays = getWeekDailyEntries(w.startISO, w.assignments);
+                    const wFiltered = filterEmployeeRoster(wDays);
+                    return `
+                      <div class="roster-week-group">
+                        <div class="roster-week-group-header">
+                          <div style="display:flex; align-items:center; gap:8px;">
+                            <span>📅 ${w.label}</span>
+                            ${w.isCurrent ? '<span class="badge" style="background:#eff6ff; color:#1d4ed8; font-size:0.7rem; font-weight:700;">Current Week</span>' : ''}
+                          </div>
+                          <span style="font-size:0.76rem; color:var(--text-muted); font-weight:600;">7 Days Scheduled</span>
+                        </div>
+                        <div class="table-wrap" style="border-top-left-radius:0; border-top-right-radius:0;">
+                          ${viewMode === 'table' ? renderMyRosterTableHTML(wFiltered) : renderEmployeeRosterCalendarHTML(wFiltered)}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `;
+            }
+
+            // Current or Selected Week
+            if (!hasRealAssignmentsThisWeek) {
+              const firstPublishedWeek = (availableWeeks || []).find(w => w.assignments && w.assignments.length > 0);
+              return `
+                <div class="empty-state-box" style="padding:40px 20px;">
+                  <div class="empty-state-icon" style="font-size:2.5rem;">📅</div>
+                  <h3 style="margin-top:10px;">${activeWeekIsCurrent ? 'No roster available for the current week.' : 'No roster available for this week.'}</h3>
+                  <p style="color:var(--text-muted); max-width:440px; margin:8px auto 16px;">
+                    Roster assignments for ${escapeHTML(employee.firstName)} have not been generated or published for ${activeWeek ? activeWeek.label : 'this period'}.
+                  </p>
+                  ${firstPublishedWeek ? `
+                    <button class="btn btn-secondary btn-sm" id="empDetailSwitchToPublishedBtn">
+                      View Published Week (${firstPublishedWeek.label})
+                    </button>
+                  ` : ''}
+                </div>
+              `;
+            }
+
+            return `
+              <div class="table-wrap">
+                ${viewMode === 'table' ? renderMyRosterTableHTML(displayEntries) : renderEmployeeRosterCalendarHTML(displayEntries)}
+              </div>
+            `;
+          })()}
+        </div>
+      </div>
+    `;
+
+    // Wire up event listeners
+    document.getElementById("backToEmployeesBtn").addEventListener("click", () => navigateTo("employees"));
+    document.getElementById("detailEditEmployeeBtn").addEventListener("click", () => openEmployeeEdit(empId));
+    document.getElementById("detailOpenPrefBtn").addEventListener("click", () => openEmployeePreference(empId));
+    document.getElementById("rosterRefreshBtn").addEventListener("click", () => renderEmployeeRosterDetailView());
+
+    const switchPublishedBtn = document.getElementById("empDetailSwitchToPublishedBtn");
+    if (switchPublishedBtn) {
+      switchPublishedBtn.addEventListener("click", () => {
+        const firstPub = (availableWeeks || []).find(w => w.assignments && w.assignments.length > 0);
+        if (firstPub) {
+          state.empRosterWeekMode = "selected";
+          state.empRosterSelectedWeek = firstPub.key;
+          renderEmployeeRosterDetailView();
+        }
+      });
+    }
+
+    const currentModeBtn = document.getElementById("empDetailModeCurrentWeekBtn");
+    if (currentModeBtn) {
+      currentModeBtn.addEventListener("click", () => {
+        state.empRosterWeekMode = "current";
+        state.empRosterSelectedWeek = currentWeekKey;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const selectModeBtn = document.getElementById("empDetailModeSelectWeekBtn");
+    if (selectModeBtn) {
+      selectModeBtn.addEventListener("click", () => {
+        state.empRosterWeekMode = "selected";
+        if (!state.empRosterSelectedWeek) state.empRosterSelectedWeek = currentWeekKey;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const allModeBtn = document.getElementById("empDetailModeAllRosterBtn");
+    if (allModeBtn) {
+      allModeBtn.addEventListener("click", () => {
+        state.empRosterWeekMode = "all";
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const prevWeekBtn = document.getElementById("empDetailPrevWeekBtn");
+    if (prevWeekBtn) {
+      prevWeekBtn.addEventListener("click", () => {
+        const currentRef = activeWeek ? activeWeek.startISO : currentWeekRange.startISO;
+        const prevDate = shiftWeekDate(currentRef, -7);
+        const prevRange = getWeekRangeForDate(prevDate);
+        state.empRosterWeekMode = "selected";
+        state.empRosterSelectedWeek = `${prevRange.startISO}_${prevRange.endISO}`;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const nextWeekBtn = document.getElementById("empDetailNextWeekBtn");
+    if (nextWeekBtn) {
+      nextWeekBtn.addEventListener("click", () => {
+        const currentRef = activeWeek ? activeWeek.startISO : currentWeekRange.startISO;
+        const nextDate = shiftWeekDate(currentRef, 7);
+        const nextRange = getWeekRangeForDate(nextDate);
+        state.empRosterWeekMode = "selected";
+        state.empRosterSelectedWeek = `${nextRange.startISO}_${nextRange.endISO}`;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const weekSelectDropdown = document.getElementById("empDetailWeekSelectDropdown");
+    if (weekSelectDropdown) {
+      weekSelectDropdown.addEventListener("change", (e) => {
+        state.empRosterWeekMode = "selected";
+        state.empRosterSelectedWeek = e.target.value;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const searchInput = document.getElementById("empDetailRosterSearchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        state.empRosterSearchTerm = e.target.value;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const statusFilter = document.getElementById("empDetailRosterStatusFilter");
+    if (statusFilter) {
+      statusFilter.addEventListener("change", (e) => {
+        state.empRosterStatusFilter = e.target.value;
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const tableToggle = document.getElementById("empDetailToggleTableViewBtn");
+    if (tableToggle) {
+      tableToggle.addEventListener("click", () => {
+        state.employeeRosterViewMode = "table";
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+    const calToggle = document.getElementById("empDetailToggleCalendarViewBtn");
+    if (calToggle) {
+      calToggle.addEventListener("click", () => {
+        state.employeeRosterViewMode = "calendar";
+        renderEmployeeRosterDetailView();
+      });
+    }
+
+  } catch (err) {
+    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee roster schedule: ${err.message}</p></div>`;
+  }
+}
+
+
+/* ==========================================================================
+   VIEW 8b: INDIVIDUAL EMPLOYEE SHIFT PREFERENCE INSPECTOR
+   ========================================================================== */
+
+async function renderEmployeePreferenceDetailView() {
+  const container = dom.views.employeePreferenceDetail;
+  const empId = state.inspectedEmployeeId;
+
+  if (!container) return;
+
+  if (!empId) {
+    container.innerHTML = `
+      <div class="empty-state-box" style="padding:40px 20px;">
+        <div class="empty-state-icon">👥</div>
+        <h3>No employee selected</h3>
+        <p style="color:var(--text-muted); margin-bottom:16px;">Please select an employee from Employee Management to configure their shift preferences.</p>
+        <button class="btn btn-primary btn-sm" onclick="navigateTo('employees')">&larr; Back to Employees</button>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift preferences for ${escapeHTML(state.inspectedEmployeeName || 'Employee')}...</p></div>`;
+
+  try {
+    const [empData, prefData] = await Promise.all([
       apiRequest(`/api/employees/${empId}`).catch(() => null),
       apiRequest(`/api/admin/preferences/employee/${empId}`).catch(() => null),
       ensureHolidaysLoaded()
@@ -8233,6 +8692,10 @@ async function renderEmployeeRosterDetailView() {
       active: true
     };
 
+    state.inspectedEmployeeName = `${employee.firstName} ${employee.lastName || ''}`.trim();
+    state.inspectedEmployeeCode = employee.employeeCode;
+    updateTopbarTitle("employeePreferenceDetail");
+
     let currentShifts = [];
     if (prefData && Array.isArray(prefData.preferredShiftList) && prefData.preferredShiftList.length > 0) {
       currentShifts = [...prefData.preferredShiftList];
@@ -8247,7 +8710,7 @@ async function renderEmployeeRosterDetailView() {
     const prefBadgeClass = formatShiftBadgeClass(currentShifts.join(", "));
 
     container.innerHTML = `
-      <!-- 1. EMPLOYEE DETAILS & NAVIGATION HEADER -->
+      <!-- 1. EMPLOYEE DETAILS & TOP ACTIONS HEADER -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
         <div>
           <div style="display:flex; align-items:center; gap:10px;">
@@ -8261,11 +8724,14 @@ async function renderEmployeeRosterDetailView() {
             Email: ${escapeHTML(employee.email || '-')} &bull; Gender: ${escapeHTML(employee.gender || 'MALE')} (${employee.gender === 'FEMALE' ? 'Day Protection' : 'All Shifts'})
           </span>
         </div>
-        <div style="display:flex; gap:10px;">
-          <button class="btn btn-secondary btn-sm" id="detailEditEmployeeBtn">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" id="prefDetailViewRosterBtn" title="View this employee's current roster schedule">
+            📅 View Roster
+          </button>
+          <button class="btn btn-secondary btn-sm" id="prefDetailEditEmployeeBtn" title="Edit employee profile">
             ✏️ Edit Employee
           </button>
-          <button class="btn btn-ghost btn-sm" id="backToEmployeesBtn">
+          <button class="btn btn-ghost btn-sm" id="prefBackToEmployeesBtn" title="Return to Employee Directory">
             &larr; Back to Employees
           </button>
         </div>
@@ -8282,12 +8748,12 @@ async function renderEmployeeRosterDetailView() {
             ${escapeHTML(prefName)}
           </span>
         </div>
-        <div class="card-body" id="detailPrefCardBody" style="padding:20px 24px;">
+        <div class="card-body" id="prefDetailCardBody" style="padding:20px 24px;">
           <!-- Dynamically populated by renderShiftPrefSection() -->
         </div>
       </div>
 
-      <!-- 2b. DATE-SPECIFIC SHIFT PREFERENCES (Batch 80) -->
+      <!-- 2b. DATE-SPECIFIC SHIFT PREFERENCES -->
       <div class="card" style="margin-bottom:24px; border-left:4px solid var(--accent, #8b5cf6);">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div>
@@ -8295,35 +8761,20 @@ async function renderEmployeeRosterDetailView() {
             <span style="font-size:0.78rem; color:var(--text-muted);">Assign explicit preferred shift on specific calendar dates for this employee</span>
           </div>
         </div>
-        <div class="card-body" id="detailDatePrefCardBody" style="padding:20px 24px;">
+        <div class="card-body" id="prefDetailDateCardBody" style="padding:20px 24px;">
           <!-- Dynamically populated by renderEmployeeDatePrefSection() -->
-        </div>
-      </div>
-
-      <!-- 3. ROSTER DUTY LOG CARD -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3>Roster &amp; Shift Schedule</h3>
-            <span style="font-size:0.78rem; color:var(--text-muted);">Historical and upcoming shift duty log</span>
-          </div>
-        </div>
-        <div class="table-wrap">
-          ${renderMyRosterTableHTML(roster)}
         </div>
       </div>
     `;
 
-    document.getElementById("backToEmployeesBtn").addEventListener("click", () => navigateTo("employees"));
-
-    document.getElementById("detailEditEmployeeBtn").addEventListener("click", () => {
-      openEmployeeModal(employee);
-    });
+    document.getElementById("prefBackToEmployeesBtn").addEventListener("click", () => navigateTo("employees"));
+    document.getElementById("prefDetailEditEmployeeBtn").addEventListener("click", () => openEmployeeEdit(empId));
+    document.getElementById("prefDetailViewRosterBtn").addEventListener("click", () => openEmployeeRoster(empId));
 
     const allAvailableShifts = ["GENERAL", "MORNING", "EVENING", "NIGHT"];
 
     function renderShiftPrefSection() {
-      const cardBody = document.getElementById("detailPrefCardBody");
+      const cardBody = document.getElementById("prefDetailCardBody");
       if (!cardBody) return;
 
       const remainingShifts = allAvailableShifts.filter(s => !currentShifts.includes(s));
@@ -8368,10 +8819,10 @@ async function renderEmployeeRosterDetailView() {
         <!-- Add Shift Control -->
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap;">
           ${remainingShifts.length > 0 ? `
-            <select id="detailAddShiftSelect" class="form-control" style="min-width:180px; padding:7px 12px; border-radius:6px; font-size:0.88rem; border:1px solid var(--border-color, #cbd5e1);">
+            <select id="prefDetailAddShiftSelect" class="form-control" style="min-width:180px; padding:7px 12px; border-radius:6px; font-size:0.88rem; border:1px solid var(--border-color, #cbd5e1);">
               ${remainingShifts.map(s => `<option value="${s}">${formatShiftName(s)}</option>`).join('')}
             </select>
-            <button type="button" class="btn btn-secondary btn-sm" id="detailAddShiftBtn" style="padding:7px 16px;">
+            <button type="button" class="btn btn-secondary btn-sm" id="prefDetailAddShiftBtn" style="padding:7px 16px;">
               + Add Shift
             </button>
           ` : `
@@ -8386,23 +8837,22 @@ async function renderEmployeeRosterDetailView() {
         <!-- Card Footer Actions -->
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-top:1px solid var(--border-color, #e2e8f0); padding-top:16px;">
           <div>
-            <button type="button" class="btn btn-ghost btn-sm" id="detailClearPrefBtn" style="color:var(--text-muted);" ${currentShifts.length === 0 ? 'disabled' : ''}>
+            <button type="button" class="btn btn-ghost btn-sm" id="prefDetailClearPrefBtn" style="color:var(--text-muted);" ${currentShifts.length === 0 ? 'disabled' : ''}>
               Clear Preferences
             </button>
           </div>
           <div>
-            <button type="button" class="btn btn-primary" id="saveDetailPrefBtn" style="padding:9px 24px;">
+            <button type="button" class="btn btn-primary" id="savePrefDetailBtn" style="padding:9px 24px;">
               Save Shift Preferences
             </button>
           </div>
         </div>
       `;
 
-      // Event listener: Add Shift
-      const addBtn = document.getElementById("detailAddShiftBtn");
+      const addBtn = document.getElementById("prefDetailAddShiftBtn");
       if (addBtn) {
         addBtn.addEventListener("click", () => {
-          const select = document.getElementById("detailAddShiftSelect");
+          const select = document.getElementById("prefDetailAddShiftSelect");
           if (select && select.value && !currentShifts.includes(select.value)) {
             currentShifts.push(select.value);
             renderShiftPrefSection();
@@ -8410,7 +8860,6 @@ async function renderEmployeeRosterDetailView() {
         });
       }
 
-      // Event listeners: Move Up
       cardBody.querySelectorAll(".pref-move-up").forEach(btn => {
         btn.addEventListener("click", () => {
           const idx = parseInt(btn.getAttribute("data-idx"), 10);
@@ -8423,7 +8872,6 @@ async function renderEmployeeRosterDetailView() {
         });
       });
 
-      // Event listeners: Move Down
       cardBody.querySelectorAll(".pref-move-down").forEach(btn => {
         btn.addEventListener("click", () => {
           const idx = parseInt(btn.getAttribute("data-idx"), 10);
@@ -8436,7 +8884,6 @@ async function renderEmployeeRosterDetailView() {
         });
       });
 
-      // Event listeners: Remove
       cardBody.querySelectorAll(".pref-remove").forEach(btn => {
         btn.addEventListener("click", () => {
           const idx = parseInt(btn.getAttribute("data-idx"), 10);
@@ -8447,8 +8894,7 @@ async function renderEmployeeRosterDetailView() {
         });
       });
 
-      // Event listener: Clear
-      const clearBtn = document.getElementById("detailClearPrefBtn");
+      const clearBtn = document.getElementById("prefDetailClearPrefBtn");
       if (clearBtn) {
         clearBtn.addEventListener("click", () => {
           currentShifts = [];
@@ -8456,11 +8902,9 @@ async function renderEmployeeRosterDetailView() {
         });
       }
 
-      // Event listener: Save Shift Preferences
-      const savePrefBtn = document.getElementById("saveDetailPrefBtn");
+      const savePrefBtn = document.getElementById("savePrefDetailBtn");
       if (savePrefBtn) {
         savePrefBtn.addEventListener("click", async () => {
-          // Validate: no duplicates, only valid shifts
           const uniqueSet = new Set(currentShifts);
           if (uniqueSet.size !== currentShifts.length) {
             toast("Duplicate shifts detected in preference list.", "error");
@@ -8512,21 +8956,21 @@ async function renderEmployeeRosterDetailView() {
     }
 
     async function renderEmployeeDatePrefSection() {
-      const cardBody = document.getElementById("detailDatePrefCardBody");
+      const cardBody = document.getElementById("prefDetailDateCardBody");
       if (!cardBody) return;
       cardBody.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;"><span class="spinner"></span> Loading date preferences...</div>`;
       try {
         const datePrefs = await apiRequest(`/api/admin/preferences/date-specific?employeeId=${empId}`).catch(() => []);
         cardBody.innerHTML = `
           <!-- Quick Add Date Preference -->
-          <form id="empDetailDatePrefForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:14px 16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:16px;">
+          <form id="prefDetailDatePrefForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:14px 16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:16px;">
             <div>
               <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Date <span class="req">*</span></label>
-              <input type="date" id="empDetailDateInput" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
+              <input type="date" id="prefDetailDateInput" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
             </div>
             <div>
               <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Shift <span class="req">*</span></label>
-              <select id="empDetailShiftSelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
+              <select id="prefDetailShiftSelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
                 <option value="MORNING">Morning (07:00 – 15:30)</option>
                 <option value="GENERAL">General (09:30 – 18:00)</option>
                 <option value="EVENING">Evening (14:00 – 22:30)</option>
@@ -8535,10 +8979,10 @@ async function renderEmployeeRosterDetailView() {
             </div>
             <div style="flex:1; min-width:180px;">
               <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
-              <input type="text" id="empDetailReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:6px 10px; font-size:0.88rem;">
+              <input type="text" id="prefDetailReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:6px 10px; font-size:0.88rem;">
             </div>
             <div>
-              <button type="submit" class="btn btn-primary btn-sm" id="empDetailSaveDatePrefBtn" style="padding:7px 16px;">
+              <button type="submit" class="btn btn-primary btn-sm" id="prefDetailSaveDatePrefBtn" style="padding:7px 16px;">
                 + Add Date Preference
               </button>
             </div>
@@ -8568,7 +9012,7 @@ async function renderEmployeeRosterDetailView() {
                     <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
                     <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
                     <td style="text-align:right;">
-                      <button type="button" class="btn btn-ghost btn-xs" data-delete-emp-date-pref="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
+                      <button type="button" class="btn btn-ghost btn-xs" data-delete-pref-date="${dp.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
                         &times; Remove
                       </button>
                     </td>
@@ -8579,14 +9023,14 @@ async function renderEmployeeRosterDetailView() {
           </div>
         `;
 
-        const form = document.getElementById("empDetailDatePrefForm");
+        const form = document.getElementById("prefDetailDatePrefForm");
         if (form) {
           form.addEventListener("submit", async (e) => {
             e.preventDefault();
-            const dateVal = document.getElementById("empDetailDateInput").value;
-            const shiftVal = document.getElementById("empDetailShiftSelect").value;
-            const reasonVal = document.getElementById("empDetailReasonInput").value;
-            const saveBtn = document.getElementById("empDetailSaveDatePrefBtn");
+            const dateVal = document.getElementById("prefDetailDateInput").value;
+            const shiftVal = document.getElementById("prefDetailShiftSelect").value;
+            const reasonVal = document.getElementById("prefDetailReasonInput").value;
+            const saveBtn = document.getElementById("prefDetailSaveDatePrefBtn");
             if (!dateVal || !shiftVal) return;
             try {
               if (saveBtn) {
@@ -8615,9 +9059,9 @@ async function renderEmployeeRosterDetailView() {
           });
         }
 
-        cardBody.querySelectorAll("[data-delete-emp-date-pref]").forEach(btn => {
+        cardBody.querySelectorAll("[data-delete-pref-date]").forEach(btn => {
           btn.addEventListener("click", async () => {
-            const id = btn.getAttribute("data-delete-emp-date-pref");
+            const id = btn.getAttribute("data-delete-pref-date");
             try {
               btn.disabled = true;
               await apiRequest(`/api/admin/preferences/date-specific/${id}`, { method: "DELETE" });
@@ -8638,7 +9082,7 @@ async function renderEmployeeRosterDetailView() {
     renderEmployeeDatePrefSection();
 
   } catch (err) {
-    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading employee details: ${err.message}</p></div>`;
+    container.innerHTML = `<div class="empty-state-box"><p style="color:var(--danger)">Error loading shift preferences: ${err.message}</p></div>`;
   }
 }
 

@@ -1,5 +1,5 @@
 ================================================================================
-          WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - CLIENT RELEASE v1.0.0
+          WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - CLIENT RELEASE v1.0.1 (Batch 101)
 ================================================================================
 
 1. OVERVIEW
@@ -33,7 +33,7 @@ Option A: Double-Click Startup (Recommended on Windows)
 
 Option B: Manual Command Line Execution
   Open PowerShell or Command Prompt in this folder and run:
-  java -Dspring.profiles.active=local -jar WRMS-Client-1.0.0.jar
+  java -Dspring.profiles.active=local -jar WRMS-Client-1.0.1.jar
 
   Then open your web browser to:
   http://localhost:8080
@@ -58,7 +58,7 @@ B. EMPLOYEE PORTAL ACCOUNTS (Schedule View, Swap Requests, Shift Preferences)
 
 5. DATA STORAGE & PERSISTENCE
 ------------------------------
-- Database File: `data/roster_local.db` (SQLite)
+- Database File: `data/wrms.db` (SQLite)
   All employees, shift definitions, roster cycles, assignments, and audit trails
   are automatically persisted inside the `data/` folder.
 - Server Logs: `logs/`

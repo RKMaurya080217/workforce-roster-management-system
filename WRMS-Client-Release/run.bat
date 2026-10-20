@@ -48,7 +48,12 @@ echo [INFO] Starting web application on http://localhost:8080 ...
 start /b cmd /c "timeout /t 6 /nobreak >nul & start http://localhost:8080"
 
 :: 5. Launch Application Jar
-java -Dspring.profiles.active=local -Dfile.encoding=UTF-8 -jar "%~dp0WRMS-Client-1.0.0.jar"
+if exist "%~dp0WRMS-Client-1.0.1.jar" (
+    set "JAR_FILE=%~dp0WRMS-Client-1.0.1.jar"
+) else (
+    set "JAR_FILE=%~dp0WRMS-Client-1.0.0.jar"
+)
+java -Dspring.profiles.active=local -Dfile.encoding=UTF-8 -jar "!JAR_FILE!"
 
 if %ERRORLEVEL% neq 0 (
     echo.
