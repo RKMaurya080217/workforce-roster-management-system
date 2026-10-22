@@ -12,6 +12,9 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -64,7 +67,7 @@ public class RosterAssignment {
 	private LocalDateTime overrideCreatedAt;
 
 	@Column(name = "manual_assignment")
-	private boolean manualAssignment = false;
+	private Boolean manualAssignment = Boolean.FALSE;
 
 	@Column(name = "assignment_source", length = 30)
 	private String assignmentSource = "AUTOMATIC";
@@ -166,7 +169,15 @@ public class RosterAssignment {
 	}
 
 	public boolean isManualAssignment() {
-		return manualAssignment;
+		return Boolean.TRUE.equals(this.manualAssignment);
+	}
+
+	public Boolean getManualAssignment() {
+		return Boolean.TRUE.equals(this.manualAssignment);
+	}
+
+	public void setManualAssignment(Boolean manualAssignment) {
+		this.manualAssignment = Boolean.TRUE.equals(manualAssignment);
 	}
 
 	public void setManualAssignment(boolean manualAssignment) {
@@ -174,10 +185,31 @@ public class RosterAssignment {
 	}
 
 	public String getAssignmentSource() {
-		return assignmentSource;
+		return assignmentSource != null ? assignmentSource : "AUTOMATIC";
 	}
 
 	public void setAssignmentSource(String assignmentSource) {
-		this.assignmentSource = assignmentSource;
+		this.assignmentSource = assignmentSource != null ? assignmentSource : "AUTOMATIC";
+	}
+
+	@PostLoad
+	protected void onPostLoad() {
+		if (this.manualAssignment == null) {
+			this.manualAssignment = Boolean.FALSE;
+		}
+		if (this.assignmentSource == null) {
+			this.assignmentSource = "AUTOMATIC";
+		}
+	}
+
+	@PrePersist
+	@PreUpdate
+	protected void onPrePersistOrUpdate() {
+		if (this.manualAssignment == null) {
+			this.manualAssignment = Boolean.FALSE;
+		}
+		if (this.assignmentSource == null) {
+			this.assignmentSource = "AUTOMATIC";
+		}
 	}
 }

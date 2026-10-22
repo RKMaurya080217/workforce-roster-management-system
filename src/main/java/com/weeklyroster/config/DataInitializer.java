@@ -212,6 +212,20 @@ public class DataInitializer {
 			System.out.println(">>> Added assignment_source column to roster_assignments <<<");
 		} catch (Exception ignored) {
 		}
+		try {
+			int updatedManual = jdbcTemplate.update("UPDATE roster_assignments SET manual_assignment = 0 WHERE manual_assignment IS NULL");
+			if (updatedManual > 0) {
+				System.out.println(">>> Repaired " + updatedManual + " NULL manual_assignment rows in roster_assignments <<<");
+			}
+		} catch (Exception ignored) {
+		}
+		try {
+			int updatedSource = jdbcTemplate.update("UPDATE roster_assignments SET assignment_source = 'AUTOMATIC' WHERE assignment_source IS NULL");
+			if (updatedSource > 0) {
+				System.out.println(">>> Repaired " + updatedSource + " NULL assignment_source rows in roster_assignments <<<");
+			}
+		} catch (Exception ignored) {
+		}
 	}
 
 	private void migrateWorkingDaysColumns(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
