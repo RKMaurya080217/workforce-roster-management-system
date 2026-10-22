@@ -246,7 +246,7 @@ public class RosterService {
 
 		int maxNightsAllowed = computeMaxNightsAllowed(employees);
 
-		// 1. Capture existing overrides before clearing so intentional admin overrides survive regeneration
+		// 1. Capture existing overrides and manual assignments before clearing so intentional admin assignments survive regeneration
 		List<RosterOverride> priorOverrides = new ArrayList<>();
 		if (overrideRepository != null) {
 			try {
@@ -258,6 +258,18 @@ public class RosterService {
 			if (ro.getAssignment() != null && ro.getAssignment().getEmployee() != null && ro.getAssignment().getRosterDate() != null) {
 				String key = ro.getAssignment().getEmployee().getId() + "_" + ro.getAssignment().getRosterDate();
 				priorOverrideMap.put(key, ro);
+			}
+		}
+
+		Map<String, RosterAssignment> priorManualAssignments = new HashMap<>();
+		List<RosterCycle> preScanOverlapping = cycleRepository.findOverlappingCycles(startDate, endDate);
+		for (RosterCycle existing : preScanOverlapping) {
+			List<RosterAssignment> existingAssignments = assignmentRepository.findByCycleId(existing.getId());
+			for (RosterAssignment ea : existingAssignments) {
+				if (ea.isManualAssignment() || ea.isOverridden()) {
+					String key = ea.getEmployee().getId() + "_" + ea.getRosterDate();
+					priorManualAssignments.put(key, ea);
+				}
 			}
 		}
 
@@ -456,12 +468,34 @@ public class RosterService {
 			rebalanceDailyCoverage(cycle, candidateAssignments, employees, shifts, preferencesMap);
 			enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap, validWorkingDays);
 
+			// BATCH 102: Strictly protect explicit manual assignments against any algorithm overwrites
+			if (!priorManualAssignments.isEmpty()) {
+				for (RosterAssignment a : candidateAssignments) {
+					String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+					RosterAssignment priorManual = priorManualAssignments.get(key);
+					if (priorManual != null) {
+						a.setManualAssignment(true);
+						a.setOverridden(true);
+						a.setAssignmentSource(priorManual.getAssignmentSource() != null ? priorManual.getAssignmentSource() : "MANUAL");
+						a.setWeeklyOff(priorManual.isWeeklyOff());
+						a.setShift(priorManual.getShift());
+						if (priorManual.getAssignmentReason() != null && !priorManual.getAssignmentReason().isBlank()) {
+							a.setAssignmentReason(priorManual.getAssignmentReason());
+						} else {
+							a.setAssignmentReason("Explicit Manual Assignment (" + (priorManual.getShift() != null ? priorManual.getShift().getShiftType() : "OFF") + ")");
+						}
+					}
+				}
+			}
+
 			if (!priorOverrideMap.isEmpty()) {
 				for (RosterAssignment a : candidateAssignments) {
 					String key = a.getEmployee().getId() + "_" + a.getRosterDate();
 					RosterOverride prior = priorOverrideMap.get(key);
 					if (prior != null) {
+						a.setManualAssignment(true);
 						a.setOverridden(true);
+						a.setAssignmentSource("MANUAL");
 						a.setWeeklyOff(prior.isWeeklyOff());
 						if (prior.isWeeklyOff()) {
 							a.setShift(shifts.get(ShiftType.OFF));
@@ -601,6 +635,26 @@ public class RosterService {
 			}
 			if (!reestablishedOverrides.isEmpty()) {
 				overrideRepository.saveAll(reestablishedOverrides);
+			}
+		}
+
+		// BATCH 102: Re-enforce explicit manual assignments on final generated roster
+		if (!priorManualAssignments.isEmpty()) {
+			for (RosterAssignment a : generated) {
+				String key = a.getEmployee().getId() + "_" + a.getRosterDate();
+				RosterAssignment priorManual = priorManualAssignments.get(key);
+				if (priorManual != null) {
+					a.setManualAssignment(true);
+					a.setOverridden(true);
+					a.setAssignmentSource(priorManual.getAssignmentSource() != null ? priorManual.getAssignmentSource() : "MANUAL");
+					a.setWeeklyOff(priorManual.isWeeklyOff());
+					a.setShift(priorManual.getShift());
+					if (priorManual.getAssignmentReason() != null && !priorManual.getAssignmentReason().isBlank()) {
+						a.setAssignmentReason(priorManual.getAssignmentReason());
+					} else {
+						a.setAssignmentReason("Explicit Manual Assignment (" + (priorManual.getShift() != null ? priorManual.getShift().getShiftType() : "OFF") + ")");
+					}
+				}
 			}
 		}
 
@@ -846,9 +900,10 @@ public class RosterService {
 	}
 
 	private void populateAssignmentReason(RosterAssignment a, ApplicablePreference pref) {
-		if (a.isOverridden()) {
-			if (a.getAssignmentReason() == null || a.getAssignmentReason().isBlank()) {
-				a.setAssignmentReason("Admin Override");
+		if (a.isManualAssignment() || a.isOverridden()) {
+			if (a.getAssignmentReason() == null || a.getAssignmentReason().isBlank() || a.getAssignmentReason().startsWith("Workforce") || a.getAssignmentReason().equals("Admin Override")) {
+				ShiftType st = a.getShift() != null ? a.getShift().getShiftType() : ShiftType.OFF;
+				a.setAssignmentReason("Explicit Manual Assignment (" + st + ")");
 			}
 			return;
 		}
@@ -873,6 +928,17 @@ public class RosterService {
 				return;
 			} else {
 				a.setAssignmentReason("Preference Conflict: " + datePref + " requested, assigned " + st + " due to operational / safety rules");
+				return;
+			}
+		}
+
+		if (pref != null && pref.hasRecurringShift(a.getRosterDate().getDayOfWeek())) {
+			ShiftType recPref = pref.getRecurringShift(a.getRosterDate().getDayOfWeek());
+			if (recPref == st) {
+				a.setAssignmentReason("Recurring Weekly Preference (" + a.getRosterDate().getDayOfWeek() + " -> " + st + ")");
+				return;
+			} else {
+				a.setAssignmentReason("Recurring Preference Conflict: " + recPref + " requested on " + a.getRosterDate().getDayOfWeek() + ", assigned " + st + " due to operational / safety rules");
 				return;
 			}
 		}
@@ -1332,7 +1398,559 @@ public class RosterService {
 		return publishRoster(cycleId, adminMessage);
 	}
 
+	// =========================================================================
+	// BATCH 102: MANUAL ROSTER BUILDER ENGINE & STRICT ASSIGNMENT ENFORCEMENT
+	// =========================================================================
+
 	@Transactional
+	public RosterCycle getOrCreateDraftCycle(LocalDate startDate, int workingDays) {
+		int validWorkingDays = (workingDays == 5) ? 5 : 6;
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+					.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		LocalDate endDate = startDate.plusDays(6);
+
+		List<RosterCycle> existing = cycleRepository.findOverlappingCycles(startDate, endDate);
+		if (!existing.isEmpty()) {
+			return existing.get(0);
+		}
+		var opt = cycleRepository.findByStartDateAndEndDate(startDate, endDate);
+		if (opt.isPresent()) {
+			return opt.get();
+		}
+
+		RosterCycle draft = new RosterCycle();
+		draft.setStartDate(startDate);
+		draft.setEndDate(endDate);
+		draft.setStatus(RosterStatus.DRAFT);
+		draft.setWorkingDays(validWorkingDays);
+		draft.setGeneratedAt(LocalDateTime.now());
+		return cycleRepository.save(draft);
+	}
+
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse getManualRosterMatrix(Long cycleId, LocalDate startDate) {
+		RosterCycle cycle = null;
+		if (cycleId != null) {
+			cycle = cycleRepository.findById(cycleId).orElse(null);
+		}
+		if (cycle == null) {
+			if (startDate == null) {
+				startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+			} else if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+				startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+			}
+			LocalDate endDate = startDate.plusDays(6);
+			List<RosterCycle> existing = cycleRepository.findOverlappingCycles(startDate, endDate);
+			if (!existing.isEmpty()) {
+				cycle = existing.get(0);
+			} else {
+				cycle = cycleRepository.findByStartDateAndEndDate(startDate, endDate).orElse(null);
+			}
+		}
+
+		if (cycle == null) {
+			if (startDate == null) {
+				startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+			} else if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+				startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+			}
+			return buildEmptyMatrixResponse(startDate, startDate.plusDays(6), 6);
+		}
+
+		return buildMatrixResponse(cycle);
+	}
+
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse buildMatrixResponse(RosterCycle cycle) {
+		LocalDate startDate = cycle.getStartDate();
+		LocalDate endDate = cycle.getEndDate();
+		List<LocalDate> dates = new ArrayList<>();
+		for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
+			dates.add(d);
+		}
+
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		List<RosterAssignment> assignments = assignmentRepository.findByCycleId(cycle.getId());
+
+		Map<Long, Map<LocalDate, RosterAssignment>> assignmentMap = new HashMap<>();
+		for (RosterAssignment a : assignments) {
+			if (a.getEmployee() != null && a.getRosterDate() != null) {
+				assignmentMap.computeIfAbsent(a.getEmployee().getId(), k -> new HashMap<>())
+						.put(a.getRosterDate(), a);
+			}
+		}
+
+		List<String> validationWarnings = new ArrayList<>();
+		int[] criticalConflicts = new int[1];
+
+		Map<LocalDate, Map<ShiftType, Long>> dailyShiftCounts = new LinkedHashMap<>();
+		Map<LocalDate, Long> dailyTotalWorking = new LinkedHashMap<>();
+		Map<LocalDate, Long> dailyTotalOff = new LinkedHashMap<>();
+
+		for (LocalDate d : dates) {
+			Map<ShiftType, Long> counts = new EnumMap<>(ShiftType.class);
+			for (ShiftType st : ShiftType.values()) {
+				counts.put(st, 0L);
+			}
+			dailyShiftCounts.put(d, counts);
+			dailyTotalWorking.put(d, 0L);
+			dailyTotalOff.put(d, 0L);
+		}
+
+		List<com.weeklyroster.dto.response.ManualRosterEmployeeRow> rows = new ArrayList<>();
+
+		for (Employee emp : employees) {
+			Map<LocalDate, RosterAssignment> empDayMap = assignmentMap.getOrDefault(emp.getId(), Collections.emptyMap());
+			Map<LocalDate, com.weeklyroster.dto.response.ManualRosterCellResponse> cellMap = new LinkedHashMap<>();
+
+			int totalWorking = 0;
+			int totalNights = 0;
+			int totalOffs = 0;
+
+			ShiftType prevShift = null;
+
+			for (LocalDate date : dates) {
+				RosterAssignment a = empDayMap.get(date);
+				boolean onLeave = isApprovedLeave(emp.getId(), date);
+				boolean isManual = a != null && (a.isManualAssignment() || a.isOverridden());
+				boolean isOff = (a != null) ? a.isWeeklyOff() || (a.getShift() != null && a.getShift().getShiftType() == ShiftType.OFF) : false;
+				ShiftType shiftType = (a != null && a.getShift() != null) ? a.getShift().getShiftType() : ShiftType.OFF;
+				String source = (a != null && a.getAssignmentSource() != null) ? a.getAssignmentSource() : (isManual ? "MANUAL" : "AUTOMATIC");
+				String reason = (a != null) ? a.getAssignmentReason() : null;
+
+				boolean hasConflict = false;
+				String conflictReason = null;
+
+				// Conflict Check 1: Approved leave conflict with assigned working shift
+				if (onLeave && !isOff && shiftType != ShiftType.OFF) {
+					hasConflict = true;
+					conflictReason = "Approved Leave conflict: Employee is on leave on this date";
+					criticalConflicts[0]++;
+					validationWarnings.add(emp.getFirstName() + " has approved leave on " + date + " but is assigned " + shiftType);
+				}
+
+				// Conflict Check 2: 12-hour rest rule violation (Night yesterday -> Morning/General today)
+				if (prevShift == ShiftType.NIGHT && !isOff && (shiftType == ShiftType.MORNING || shiftType == ShiftType.GENERAL)) {
+					hasConflict = true;
+					conflictReason = "Rest violation: 12-hour mandatory rest violated after Night shift";
+					criticalConflicts[0]++;
+					validationWarnings.add(emp.getFirstName() + " assigned " + shiftType + " immediately following Night shift on " + date.minusDays(1));
+				}
+
+				// Conflict Check 3: Female employee statutory protection
+				if (emp.getGender() == Gender.FEMALE && shiftType == ShiftType.NIGHT) {
+					hasConflict = true;
+					conflictReason = "Statutory violation: Female employee cannot be scheduled for Night shift";
+					criticalConflicts[0]++;
+					validationWarnings.add("Female statutory violation: " + emp.getFirstName() + " assigned Night shift on " + date);
+				}
+
+				if (isOff || onLeave) {
+					totalOffs++;
+					dailyTotalOff.put(date, dailyTotalOff.get(date) + 1);
+				} else {
+					totalWorking++;
+					dailyTotalWorking.put(date, dailyTotalWorking.get(date) + 1);
+					if (shiftType == ShiftType.NIGHT) totalNights++;
+				}
+
+				Map<ShiftType, Long> dayCounts = dailyShiftCounts.get(date);
+				dayCounts.put(shiftType, dayCounts.getOrDefault(shiftType, 0L) + 1);
+
+				cellMap.put(date, new com.weeklyroster.dto.response.ManualRosterCellResponse(
+						a != null ? a.getId() : null,
+						date,
+						shiftType,
+						isOff,
+						onLeave,
+						isManual,
+						a != null && a.isOverridden(),
+						source,
+						reason,
+						hasConflict,
+						conflictReason
+				));
+
+				prevShift = isOff ? ShiftType.OFF : shiftType;
+			}
+
+			rows.add(new com.weeklyroster.dto.response.ManualRosterEmployeeRow(
+					emp.getId(),
+					emp.getEmployeeCode(),
+					emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : "").trim(),
+					emp.getGender(),
+					cellMap,
+					totalWorking,
+					totalNights,
+					totalOffs
+			));
+		}
+
+		boolean isPublished = (cycle.getStatus() == RosterStatus.PUBLISHED || cycle.getStatus() == RosterStatus.FINAL || cycle.getStatus() == RosterStatus.LOCKED);
+
+		return new com.weeklyroster.dto.response.ManualRosterMatrixResponse(
+				cycle.getId(),
+				startDate,
+				endDate,
+				cycle.getStatus(),
+				cycle.getWorkingDays() != null ? cycle.getWorkingDays() : 6,
+				dates,
+				rows,
+				dailyShiftCounts,
+				dailyTotalWorking,
+				dailyTotalOff,
+				validationWarnings,
+				criticalConflicts[0],
+				isPublished
+		);
+	}
+
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse buildEmptyMatrixResponse(LocalDate startDate, LocalDate endDate, int workingDays) {
+		List<LocalDate> dates = new ArrayList<>();
+		for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
+			dates.add(d);
+		}
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		Map<LocalDate, Map<ShiftType, Long>> dailyShiftCounts = new LinkedHashMap<>();
+		Map<LocalDate, Long> dailyTotalWorking = new LinkedHashMap<>();
+		Map<LocalDate, Long> dailyTotalOff = new LinkedHashMap<>();
+
+		for (LocalDate d : dates) {
+			Map<ShiftType, Long> counts = new EnumMap<>(ShiftType.class);
+			for (ShiftType st : ShiftType.values()) {
+				counts.put(st, 0L);
+			}
+			counts.put(ShiftType.OFF, (long) employees.size());
+			dailyShiftCounts.put(d, counts);
+			dailyTotalWorking.put(d, 0L);
+			dailyTotalOff.put(d, (long) employees.size());
+		}
+
+		List<com.weeklyroster.dto.response.ManualRosterEmployeeRow> rows = new ArrayList<>();
+		for (Employee emp : employees) {
+			Map<LocalDate, com.weeklyroster.dto.response.ManualRosterCellResponse> cellMap = new LinkedHashMap<>();
+			for (LocalDate d : dates) {
+				boolean onLeave = isApprovedLeave(emp.getId(), d);
+				cellMap.put(d, new com.weeklyroster.dto.response.ManualRosterCellResponse(
+						null,
+						d,
+						ShiftType.OFF,
+						true,
+						onLeave,
+						false,
+						false,
+						"UNASSIGNED",
+						onLeave ? "Approved Leave" : "Unassigned / OFF",
+						false,
+						null
+				));
+			}
+			rows.add(new com.weeklyroster.dto.response.ManualRosterEmployeeRow(
+					emp.getId(),
+					emp.getEmployeeCode(),
+					emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : "").trim(),
+					emp.getGender(),
+					cellMap,
+					0,
+					0,
+					7
+			));
+		}
+
+		return new com.weeklyroster.dto.response.ManualRosterMatrixResponse(
+				null,
+				startDate,
+				endDate,
+				RosterStatus.DRAFT,
+				workingDays,
+				dates,
+				rows,
+				dailyShiftCounts,
+				dailyTotalWorking,
+				dailyTotalOff,
+				Collections.emptyList(),
+				0,
+				false
+		);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse saveManualAssignment(
+			com.weeklyroster.dto.request.ManualAssignmentRequest req, String adminUsername) {
+		if (req == null) throw new BusinessException("Request cannot be null");
+		if (req.employeeId() == null) throw new BusinessException("Employee ID is required");
+		if (req.date() == null) throw new BusinessException("Date is required");
+		if (req.shiftType() == null) throw new BusinessException("Shift type is required");
+
+		LocalDate date = req.date();
+		LocalDate monday = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+
+		RosterCycle cycle = null;
+		if (req.cycleId() != null) {
+			cycle = cycleRepository.findById(req.cycleId()).orElse(null);
+		}
+		if (cycle == null) {
+			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+
+		Employee employee = employeeRepository.findById(req.employeeId())
+				.orElseThrow(() -> new ResourceNotFoundException("Employee #" + req.employeeId() + " not found"));
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		boolean isOff = req.shiftType() == ShiftType.OFF || Boolean.TRUE.equals(req.weeklyOff());
+		boolean onLeave = isApprovedLeave(employee.getId(), date);
+
+		if (onLeave && !isOff && req.shiftType() != ShiftType.OFF) {
+			throw new BusinessException("Level 0 Constraint Conflict: Employee " + employee.getFirstName() + " " + employee.getLastName()
+					+ " has Approved Leave on " + date + ". Admin must resolve the leave conflict before assigning a working shift.");
+		}
+
+		List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(employee.getId(), date);
+		RosterAssignment assignment;
+		if (!existingList.isEmpty()) {
+			assignment = existingList.get(0);
+		} else {
+			assignment = new RosterAssignment();
+			assignment.setCycle(cycle);
+			assignment.setEmployee(employee);
+			assignment.setRosterDate(date);
+		}
+
+		assignment.setCycle(cycle);
+		assignment.setOnLeave(onLeave);
+		assignment.setWeeklyOff(isOff);
+		assignment.setShift(shifts.get(req.shiftType()));
+		assignment.setManualAssignment(true);
+		assignment.setOverridden(true);
+		assignment.setAssignmentSource("MANUAL");
+		String reason = req.reason() != null && !req.reason().isBlank() ? req.reason() : "Explicit Manual Assignment (" + req.shiftType() + ")";
+		assignment.setAssignmentReason(reason);
+		assignment.setOverrideReason(reason);
+		assignment.setOverrideCreatedAt(LocalDateTime.now());
+
+		assignmentRepository.save(assignment);
+
+		if (auditService != null) {
+			auditService.log(
+					AuditAction.SHIFT_OVERRIDDEN,
+					"ROSTER_ASSIGNMENT",
+					assignment.getId(),
+					cycle.getId(),
+					employee.getId(),
+					employee.getFirstName() + " " + employee.getLastName(),
+					null,
+					req.shiftType().name(),
+					"Admin manually assigned " + req.shiftType() + " to " + employee.getFirstName() + " on " + date,
+					"MANUAL"
+			);
+		}
+
+		return buildMatrixResponse(cycle);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse bulkAssignManual(
+			com.weeklyroster.dto.request.BulkManualAssignmentRequest req, String adminUsername) {
+		if (req == null || req.employeeIds() == null || req.dates() == null || req.shiftType() == null) {
+			throw new BusinessException("Invalid bulk assignment parameters");
+		}
+		if (req.dates().isEmpty()) throw new BusinessException("At least one date is required");
+
+		LocalDate firstDate = req.dates().get(0);
+		LocalDate monday = firstDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		RosterCycle cycle = null;
+		if (req.cycleId() != null) {
+			cycle = cycleRepository.findById(req.cycleId()).orElse(null);
+		}
+		if (cycle == null) {
+			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		boolean isOff = req.shiftType() == ShiftType.OFF || Boolean.TRUE.equals(req.weeklyOff());
+
+		for (Long empId : req.employeeIds()) {
+			Employee emp = employeeRepository.findById(empId).orElse(null);
+			if (emp == null || !emp.isActive()) continue;
+
+			for (LocalDate d : req.dates()) {
+				boolean onLeave = isApprovedLeave(emp.getId(), d);
+				if (onLeave && !isOff) continue;
+
+				List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(emp.getId(), d);
+				RosterAssignment assignment = !existingList.isEmpty() ? existingList.get(0) : new RosterAssignment();
+				assignment.setCycle(cycle);
+				assignment.setEmployee(emp);
+				assignment.setRosterDate(d);
+				assignment.setOnLeave(onLeave);
+				assignment.setWeeklyOff(isOff);
+				assignment.setShift(shifts.get(req.shiftType()));
+				assignment.setManualAssignment(true);
+				assignment.setOverridden(true);
+				assignment.setAssignmentSource("MANUAL");
+				String reason = req.reason() != null && !req.reason().isBlank() ? req.reason() : "Bulk Manual Assignment (" + req.shiftType() + ")";
+				assignment.setAssignmentReason(reason);
+				assignment.setOverrideReason(reason);
+				assignment.setOverrideCreatedAt(LocalDateTime.now());
+				assignmentRepository.save(assignment);
+			}
+		}
+
+		return buildMatrixResponse(cycle);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse clearManualAssignment(
+			Long cycleId, Long employeeId, LocalDate date, String adminUsername) {
+		RosterCycle cycle = (cycleId != null) ? cycleRepository.findById(cycleId).orElse(null) : null;
+		if (cycle == null && date != null) {
+			LocalDate monday = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+		if (cycle == null) throw new ResourceNotFoundException("Roster cycle not found");
+
+		List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(employeeId, date);
+		if (!existingList.isEmpty()) {
+			RosterAssignment a = existingList.get(0);
+			a.setManualAssignment(false);
+			a.setOverridden(false);
+			a.setAssignmentSource("AUTOMATIC");
+			a.setAssignmentReason("Cleared manual assignment");
+			assignmentRepository.save(a);
+		}
+
+		return buildMatrixResponse(cycle);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse copyPreviousWeek(
+			com.weeklyroster.dto.request.CopyPreviousWeekRequest req, String adminUsername) {
+		if (req == null || req.targetStartDate() == null) {
+			throw new BusinessException("Target start date is required");
+		}
+		LocalDate targetMonday = req.targetStartDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate prevMonday = targetMonday.minusWeeks(1);
+		LocalDate prevSunday = prevMonday.plusDays(6);
+
+		List<RosterCycle> prevCycles = cycleRepository.findOverlappingCycles(prevMonday, prevSunday);
+		if (prevCycles.isEmpty()) {
+			var opt = cycleRepository.findByStartDateAndEndDate(prevMonday, prevSunday);
+			if (opt.isPresent()) prevCycles.add(opt.get());
+		}
+		if (prevCycles.isEmpty()) {
+			throw new BusinessException("No roster cycle found for previous week (" + prevMonday + " to " + prevSunday + ") to copy from.");
+		}
+		RosterCycle prevCycle = prevCycles.get(0);
+		List<RosterAssignment> prevAssignments = assignmentRepository.findByCycleId(prevCycle.getId());
+		if (prevAssignments.isEmpty()) {
+			throw new BusinessException("Previous week roster cycle has no assignments to copy.");
+		}
+
+		RosterCycle targetCycle = null;
+		if (req.cycleId() != null) {
+			targetCycle = cycleRepository.findById(req.cycleId()).orElse(null);
+		}
+		if (targetCycle == null) {
+			targetCycle = getOrCreateDraftCycle(targetMonday, prevCycle.getWorkingDays() != null ? prevCycle.getWorkingDays() : 6);
+		}
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+
+		for (RosterAssignment pa : prevAssignments) {
+			Employee emp = pa.getEmployee();
+			if (emp == null || !emp.isActive()) continue;
+
+			LocalDate targetDate = pa.getRosterDate().plusWeeks(1);
+			boolean onLeave = isApprovedLeave(emp.getId(), targetDate);
+
+			List<RosterAssignment> existingTargetList = assignmentRepository.findByEmployeeIdAndRosterDate(emp.getId(), targetDate);
+			RosterAssignment ta = !existingTargetList.isEmpty() ? existingTargetList.get(0) : new RosterAssignment();
+
+			ta.setCycle(targetCycle);
+			ta.setEmployee(emp);
+			ta.setRosterDate(targetDate);
+			ta.setOnLeave(onLeave);
+			if (onLeave) {
+				ta.setWeeklyOff(false);
+				ta.setShift(shifts.get(ShiftType.OFF));
+				ta.setManualAssignment(true);
+				ta.setOverridden(true);
+				ta.setAssignmentSource("COPIED");
+				ta.setAssignmentReason("Copied from previous week - On Leave");
+			} else {
+				ta.setWeeklyOff(pa.isWeeklyOff());
+				ta.setShift(pa.getShift());
+				ta.setManualAssignment(true);
+				ta.setOverridden(true);
+				ta.setAssignmentSource("COPIED");
+				ta.setAssignmentReason("Copied from previous week (" + pa.getRosterDate() + ")");
+			}
+			assignmentRepository.save(ta);
+		}
+
+		return buildMatrixResponse(targetCycle);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse generateUnassignedOnly(
+			Long cycleId, LocalDate startDate, String adminUsername) {
+		if (startDate == null && cycleId != null) {
+			RosterCycle c = cycleRepository.findById(cycleId).orElse(null);
+			if (c != null) startDate = c.getStartDate();
+		}
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		} else if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		}
+
+		generateWeeklyRoster(startDate, GenerationMode.MANUAL);
+
+		RosterCycle updated = cycleRepository.findByStartDateAndEndDate(startDate, startDate.plusDays(6))
+				.orElseThrow(() -> new ResourceNotFoundException("Cycle not found after generation"));
+
+		return buildMatrixResponse(updated);
+	}
+
+	@Transactional
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse publishManualRoster(
+			Long cycleId, String adminUsername) {
+		RosterCycle cycle = cycleRepository.findById(cycleId)
+				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle #" + cycleId + " not found"));
+
+		com.weeklyroster.dto.response.ManualRosterMatrixResponse matrix = buildMatrixResponse(cycle);
+		if (matrix.criticalConflicts() > 0) {
+			throw new BusinessException("Cannot publish roster: " + matrix.criticalConflicts()
+					+ " critical conflicts detected. Please resolve all hard conflicts before publishing.");
+		}
+
+		cycle.setStatus(RosterStatus.PUBLISHED);
+		cycleRepository.save(cycle);
+
+		if (auditService != null) {
+			auditService.log(
+					AuditAction.ROSTER_PUBLISHED,
+					"ROSTER_CYCLE",
+					cycle.getId(),
+					cycle.getId(),
+					null,
+					null,
+					"DRAFT",
+					"PUBLISHED",
+					"Admin published manual roster for " + cycle.getStartDate() + " to " + cycle.getEndDate(),
+					"MANUAL"
+			);
+		}
+
+		return buildMatrixResponse(cycle);
+	}
+
 	public RosterCycleResponse lockRoster(Long cycleId) {
 		var auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || auth.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
@@ -3100,7 +3718,7 @@ public class RosterService {
 					LocalDate bestDonorDate = null;
 
 					for (RosterAssignment a : assignments) {
-						if (!a.getRosterDate().equals(targetDate) || !a.isWeeklyOff() || a.isOnLeave()) continue;
+						if (!a.getRosterDate().equals(targetDate) || !a.isWeeklyOff() || a.isOnLeave() || a.isManualAssignment() || a.isOverridden()) continue;
 						Employee emp = a.getEmployee();
 						if (isWk && isDevelopmentTeam(emp)) continue; // Dev team stays off on weekend
 
@@ -3127,7 +3745,7 @@ public class RosterService {
 							RosterAssignment donorAssign = assignments.stream()
 									.filter(x -> x.getEmployee().getId().equals(currentEmpId) && x.getRosterDate().equals(dDate))
 									.findFirst().orElse(null);
-							if (donorAssign == null || donorAssign.isWeeklyOff() || donorAssign.isOnLeave()) continue;
+							if (donorAssign == null || donorAssign.isWeeklyOff() || donorAssign.isOnLeave() || donorAssign.isManualAssignment() || donorAssign.isOverridden()) continue;
 							if (donorAssign.getShift() != null && donorAssign.getShift().getShiftType() == ShiftType.NIGHT) continue;
 
 							offAssign = a;
@@ -3196,6 +3814,7 @@ public class RosterService {
 					if (donors.size() <= minDonorKeep) continue;
 
 					for (RosterAssignment a : donors) {
+						if (a.isManualAssignment() || a.isOverridden()) continue;
 						Employee emp = a.getEmployee();
 						if (emp.getGender() == Gender.FEMALE) continue;
 						long totalNonDevMales = employees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive() && !isDevelopmentTeam(e)).count();
@@ -4121,7 +4740,7 @@ public class RosterService {
 				if (offList.size() < targetOffs) {
 					for (RosterAssignment cand : sortedCandidates) {
 						if (offList.size() >= targetOffs) break;
-						if (cand.isWeeklyOff()) continue;
+						if (cand.isWeeklyOff() || cand.isManualAssignment() || cand.isOverridden()) continue;
 						LocalDate cDate = cand.getRosterDate();
 						boolean isWk = (cDate.getDayOfWeek() == DayOfWeek.SATURDAY || cDate.getDayOfWeek() == DayOfWeek.SUNDAY);
 						long workingOnDay = assignments.stream()
@@ -4969,6 +5588,7 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 			List<RosterAssignment> evenings = maleList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING).toList();
 			if (evenings.size() > 3) {
 				for (RosterAssignment eveningToMove : evenings) {
+					if (eveningToMove.isManualAssignment() || eveningToMove.isOverridden()) continue;
 					long currentEve = maleList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING).count();
 					if (currentEve <= 3) break;
 					LocalDate d = eveningToMove.getRosterDate();
@@ -5587,7 +6207,8 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				employee.getFirstName() + " " + employee.getLastName(), employee.getGender(),
 				assignment.getShift().getShiftType(), assignment.isWeeklyOff(), assignment.isOnLeave(),
 				assignment.isOverridden(), assignment.getAssignmentReason(),
-				isHoliday, holidayName);
+				isHoliday, holidayName,
+				assignment.isManualAssignment(), assignment.getAssignmentSource());
 	}
 
 	// -------------------------------------------------------------------------
@@ -6439,12 +7060,15 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		rebalanceDailyCoverage(cycle, candidateAssignments, employees, shifts, preferencesMap);
 		enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap, validWorkingDays);
 
-		if (!priorOverrideMap.isEmpty()) {
+		// BATCH 102: Candidate attempt manual assignment protection
+		if (priorOverrideMap != null && !priorOverrideMap.isEmpty()) {
 			for (RosterAssignment a : candidateAssignments) {
 				String key = a.getEmployee().getId() + "_" + a.getRosterDate();
 				RosterOverride prior = priorOverrideMap.get(key);
 				if (prior != null) {
+					a.setManualAssignment(true);
 					a.setOverridden(true);
+					a.setAssignmentSource("MANUAL");
 					a.setWeeklyOff(prior.isWeeklyOff());
 					if (prior.isWeeklyOff()) {
 						a.setShift(shifts.get(ShiftType.OFF));
@@ -6496,7 +7120,29 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		Map<ShiftType, Shift> shifts = activeShiftMap();
 		int maxNightsAllowed = computeMaxNightsAllowed(employees);
 
-		Map<String, RosterOverride> priorOverrideMap = Collections.emptyMap();
+		Map<String, RosterOverride> priorOverrideMap = new HashMap<>();
+		if (overrideRepository != null) {
+			try {
+				List<RosterOverride> pos = overrideRepository.findByDateRange(startDate, endDate);
+				for (RosterOverride ro : pos) {
+					if (ro.getAssignment() != null && ro.getAssignment().getEmployee() != null && ro.getAssignment().getRosterDate() != null) {
+						priorOverrideMap.put(ro.getAssignment().getEmployee().getId() + "_" + ro.getAssignment().getRosterDate(), ro);
+					}
+				}
+			} catch (Exception ignored) {}
+		}
+		List<RosterCycle> multiOverlapping = cycleRepository.findOverlappingCycles(startDate, endDate);
+		for (RosterCycle mc : multiOverlapping) {
+			for (RosterAssignment ea : assignmentRepository.findByCycleId(mc.getId())) {
+				if (ea.isManualAssignment() || ea.isOverridden()) {
+					RosterOverride ro = new RosterOverride();
+					ro.setWeeklyOff(ea.isWeeklyOff());
+					if (ea.getShift() != null) ro.setNewShiftType(ea.getShift().getShiftType());
+					ro.setReason(ea.getAssignmentReason());
+					priorOverrideMap.put(ea.getEmployee().getId() + "_" + ea.getRosterDate(), ro);
+				}
+			}
+		}
 		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, startDate, endDate);
 		Set<String> previousFingerprints = (generationHistoryRepository != null)
 				? generationHistoryRepository.findFingerprintsByDateRange(startDate, endDate)

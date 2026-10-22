@@ -358,6 +358,69 @@ public class RosterController {
         return ResponseEntity.ok(Map.of("success", true, "message", "Roster cycle deleted successfully"));
     }
 
+    // =========================================================================
+    // BATCH 102: MANUAL ROSTER BUILDER ENDPOINTS
+    // =========================================================================
+
+    @GetMapping(value = "/manual/matrix", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> getManualMatrix(
+            @RequestParam(name = "cycleId", required = false) Long cycleId,
+            @RequestParam(name = "startDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate) {
+        return ResponseEntity.ok(rosterService.getManualRosterMatrix(cycleId, startDate));
+    }
+
+    @PostMapping(value = "/manual/assignment", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> saveManualAssignment(
+            @Valid @RequestBody com.weeklyroster.dto.request.ManualAssignmentRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.saveManualAssignment(request, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/bulk-assignment", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> bulkManualAssignment(
+            @Valid @RequestBody com.weeklyroster.dto.request.BulkManualAssignmentRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.bulkAssignManual(request, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping(value = "/manual/assignment", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> clearManualAssignment(
+            @RequestParam(name = "cycleId", required = false) Long cycleId,
+            @RequestParam(name = "employeeId") Long employeeId,
+            @RequestParam(name = "date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.clearManualAssignment(cycleId, employeeId, date, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/copy-week", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> copyPreviousWeek(
+            @Valid @RequestBody com.weeklyroster.dto.request.CopyPreviousWeekRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.copyPreviousWeek(request, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/generate-unassigned", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> generateUnassignedOnly(
+            @RequestParam(name = "cycleId", required = false) Long cycleId,
+            @RequestParam(name = "startDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.generateUnassignedOnly(cycleId, startDate, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/publish", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> publishManualRoster(
+            @RequestParam(name = "cycleId") Long cycleId,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.publishManualRoster(cycleId, auth != null ? auth.getName() : "Admin"));
+    }
+
     @PostMapping(value = "/email/test-smtp", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> testSmtpEmail(@RequestParam(name = "toEmail", required = false) String toEmail) {

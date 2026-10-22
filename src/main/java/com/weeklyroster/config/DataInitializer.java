@@ -28,6 +28,7 @@ public class DataInitializer {
 		return args -> {
 			fixSqliteAuditActionCheckConstraint(jdbcTemplate);
 			migrateWorkingDaysColumns(jdbcTemplate);
+			migrateRosterAssignmentColumns(jdbcTemplate);
 			System.out.println(">>> SEED DATA EXECUTING <<<");
 			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
 				var existingOpt = shiftRepository.findByShiftType(type);
@@ -197,6 +198,19 @@ public class DataInitializer {
 			}
 		} catch (Exception e) {
 			System.err.println("Notice: SQLite check constraint migration skipped or encountered: " + e.getMessage());
+		}
+	}
+
+		private void migrateRosterAssignmentColumns(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+		try {
+			jdbcTemplate.execute("ALTER TABLE roster_assignments ADD COLUMN manual_assignment BOOLEAN DEFAULT 0");
+			System.out.println(">>> Added manual_assignment column to roster_assignments <<<");
+		} catch (Exception ignored) {
+		}
+		try {
+			jdbcTemplate.execute("ALTER TABLE roster_assignments ADD COLUMN assignment_source VARCHAR(30) DEFAULT 'AUTOMATIC'");
+			System.out.println(">>> Added assignment_source column to roster_assignments <<<");
+		} catch (Exception ignored) {
 		}
 	}
 

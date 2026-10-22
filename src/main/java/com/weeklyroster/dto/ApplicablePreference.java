@@ -19,8 +19,35 @@ public record ApplicablePreference(
         Set<DayOfWeek> preferredWorkingDays,
         String temporaryRestrictions,
         boolean isApproved,
-        Map<LocalDate, ShiftType> dateSpecificShifts
+        Map<LocalDate, ShiftType> dateSpecificShifts,
+        Map<DayOfWeek, ShiftType> recurringWeeklyShifts
 ) {
+    public ApplicablePreference(
+            Long preferenceId,
+            Long employeeId,
+            Set<ShiftType> preferredShifts,
+            List<ShiftType> preferredShiftOrder,
+            Set<ShiftType> avoidShifts,
+            Set<DayOfWeek> preferredOffDays,
+            Set<DayOfWeek> preferredWorkingDays,
+            String temporaryRestrictions,
+            boolean isApproved,
+            Map<LocalDate, ShiftType> dateSpecificShifts) {
+        this(
+                preferenceId,
+                employeeId,
+                preferredShifts,
+                preferredShiftOrder,
+                avoidShifts,
+                preferredOffDays,
+                preferredWorkingDays,
+                temporaryRestrictions,
+                isApproved,
+                dateSpecificShifts != null ? dateSpecificShifts : Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+    }
+
     public ApplicablePreference(
             Long preferenceId,
             Long employeeId,
@@ -41,6 +68,7 @@ public record ApplicablePreference(
                 preferredWorkingDays,
                 temporaryRestrictions,
                 isApproved,
+                Collections.emptyMap(),
                 Collections.emptyMap()
         );
     }
@@ -64,6 +92,7 @@ public record ApplicablePreference(
                 preferredWorkingDays,
                 temporaryRestrictions,
                 isApproved,
+                Collections.emptyMap(),
                 Collections.emptyMap()
         );
     }
@@ -79,6 +108,7 @@ public record ApplicablePreference(
                 Collections.emptySet(),
                 null,
                 false,
+                Collections.emptyMap(),
                 Collections.emptyMap()
         );
     }
@@ -94,7 +124,27 @@ public record ApplicablePreference(
                 Collections.emptySet(),
                 null,
                 true,
-                dateShifts != null ? dateShifts : Collections.emptyMap()
+                dateShifts != null ? dateShifts : Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+    }
+
+    public static ApplicablePreference withDateAndRecurringShifts(
+            Long employeeId,
+            Map<LocalDate, ShiftType> dateShifts,
+            Map<DayOfWeek, ShiftType> recurringShifts) {
+        return new ApplicablePreference(
+                null,
+                employeeId,
+                Collections.emptySet(),
+                Collections.emptyList(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                Collections.emptySet(),
+                null,
+                true,
+                dateShifts != null ? dateShifts : Collections.emptyMap(),
+                recurringShifts != null ? recurringShifts : Collections.emptyMap()
         );
     }
 
@@ -142,5 +192,14 @@ public record ApplicablePreference(
     public ShiftType getDateSpecificShift(LocalDate date) {
         if (dateSpecificShifts == null || date == null) return null;
         return dateSpecificShifts.get(date);
+    }
+
+    public boolean hasRecurringShift(DayOfWeek dayOfWeek) {
+        return recurringWeeklyShifts != null && dayOfWeek != null && recurringWeeklyShifts.containsKey(dayOfWeek);
+    }
+
+    public ShiftType getRecurringShift(DayOfWeek dayOfWeek) {
+        if (recurringWeeklyShifts == null || dayOfWeek == null) return null;
+        return recurringWeeklyShifts.get(dayOfWeek);
     }
 }

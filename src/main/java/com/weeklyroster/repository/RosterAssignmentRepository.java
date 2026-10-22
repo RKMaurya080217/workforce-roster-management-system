@@ -50,6 +50,10 @@ public interface RosterAssignmentRepository extends JpaRepository<RosterAssignme
     @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.employee JOIN FETCH a.shift WHERE a.cycle.id = :cycleId ORDER BY a.rosterDate ASC, a.employee.id ASC")
     List<RosterAssignment> findByCycleIdOrderByRosterDateAsc(@Param("cycleId") Long cycleId);
 
+    default List<RosterAssignment> findByCycleId(Long cycleId) {
+        return findByCycleIdOrderByRosterDateAsc(cycleId);
+    }
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RosterAssignment a WHERE a.cycle = :cycle")
     void deleteByCycle(@Param("cycle") RosterCycle cycle);

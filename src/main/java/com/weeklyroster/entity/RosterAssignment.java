@@ -63,6 +63,12 @@ public class RosterAssignment {
 	@Column(name = "override_created_at")
 	private LocalDateTime overrideCreatedAt;
 
+	@Column(name = "manual_assignment")
+	private boolean manualAssignment = false;
+
+	@Column(name = "assignment_source", length = 30)
+	private String assignmentSource = "AUTOMATIC";
+
 	public Long getId() {
 		return id;
 	}
@@ -157,5 +163,21 @@ public class RosterAssignment {
 
 	public void setOverrideCreatedAt(LocalDateTime overrideCreatedAt) {
 		this.overrideCreatedAt = overrideCreatedAt;
+	}
+
+	public boolean isManualAssignment() {
+		return manualAssignment;
+	}
+
+	public void setManualAssignment(boolean manualAssignment) {
+		this.manualAssignment = manualAssignment;
+	}
+
+	public String getAssignmentSource() {
+		return assignmentSource;
+	}
+
+	public void setAssignmentSource(String assignmentSource) {
+		this.assignmentSource = assignmentSource;
 	}
 }

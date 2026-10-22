@@ -4,12 +4,15 @@ import com.weeklyroster.dto.request.AdminShiftPreferenceRequest;
 import com.weeklyroster.dto.request.BulkDateShiftPreferenceRequest;
 import com.weeklyroster.dto.request.DateShiftPreferenceRequest;
 import com.weeklyroster.dto.request.PreferenceDecisionRequest;
+import com.weeklyroster.dto.request.RecurringShiftPreferenceRequest;
 import com.weeklyroster.dto.response.DatePreferencePreviewResponse;
 import com.weeklyroster.dto.response.DateShiftPreferenceResponse;
 import com.weeklyroster.dto.response.PreferenceResponse;
+import com.weeklyroster.dto.response.RecurringShiftPreferenceResponse;
 import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.service.DateShiftPreferenceService;
 import com.weeklyroster.service.EmployeePreferenceService;
+import com.weeklyroster.service.RecurringShiftPreferenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -30,11 +33,14 @@ public class AdminPreferenceController {
 
     private final EmployeePreferenceService preferenceService;
     private final DateShiftPreferenceService dateShiftPreferenceService;
+    private final RecurringShiftPreferenceService recurringShiftPreferenceService;
 
     public AdminPreferenceController(EmployeePreferenceService preferenceService,
-                                   DateShiftPreferenceService dateShiftPreferenceService) {
+                                   DateShiftPreferenceService dateShiftPreferenceService,
+                                   RecurringShiftPreferenceService recurringShiftPreferenceService) {
         this.preferenceService = preferenceService;
         this.dateShiftPreferenceService = dateShiftPreferenceService;
+        this.recurringShiftPreferenceService = recurringShiftPreferenceService;
     }
 
     @GetMapping
@@ -141,5 +147,53 @@ public class AdminPreferenceController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam ShiftType shiftType) {
         return ResponseEntity.ok(dateShiftPreferenceService.previewPreference(employeeId, date, shiftType));
+    }
+
+    // =========================================================================
+    // BATCH 102: RECURRING WEEKLY SHIFT PREFERENCES (ADMIN CONTROLLED)
+    // =========================================================================
+
+    @GetMapping("/recurring")
+    @Operation(summary = "Get recurring weekly shift preferences")
+    public ResponseEntity<List<RecurringShiftPreferenceResponse>> getRecurringPreferences(
+            @RequestParam(required = false) Long employeeId) {
+        if (employeeId != null) {
+            return ResponseEntity.ok(recurringShiftPreferenceService.getByEmployee(employeeId));
+        }
+        return ResponseEntity.ok(recurringShiftPreferenceService.getAllActive());
+    }
+
+    @PostMapping("/recurring")
+    @Operation(summary = "Create recurring weekly shift preference")
+    public ResponseEntity<RecurringShiftPreferenceResponse> createRecurringPreference(
+            @Valid @RequestBody RecurringShiftPreferenceRequest req,
+            Authentication auth) {
+        return ResponseEntity.ok(recurringShiftPreferenceService.create(req, auth.getName()));
+    }
+
+    @PutMapping("/recurring/{id}")
+    @Operation(summary = "Update recurring weekly shift preference")
+    public ResponseEntity<RecurringShiftPreferenceResponse> updateRecurringPreference(
+            @PathVariable Long id,
+            @Valid @RequestBody RecurringShiftPreferenceRequest req,
+            Authentication auth) {
+        return ResponseEntity.ok(recurringShiftPreferenceService.update(id, req, auth.getName()));
+    }
+
+    @DeleteMapping("/recurring/{id}")
+    @Operation(summary = "Delete recurring weekly shift preference")
+    public ResponseEntity<Void> deleteRecurringPreference(
+            @PathVariable Long id,
+            Authentication auth) {
+        recurringShiftPreferenceService.delete(id, auth.getName());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/recurring/{id}/toggle")
+    @Operation(summary = "Toggle active status of recurring weekly shift preference")
+    public ResponseEntity<RecurringShiftPreferenceResponse> toggleRecurringPreference(
+            @PathVariable Long id,
+            Authentication auth) {
+        return ResponseEntity.ok(recurringShiftPreferenceService.toggleActive(id, auth.getName()));
     }
 }
