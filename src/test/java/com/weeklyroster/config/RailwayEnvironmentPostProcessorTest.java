@@ -152,6 +152,9 @@ public class RailwayEnvironmentPostProcessorTest {
     @DisplayName("9. Explicit Hibernate MySQL Dialect is configured in environment overrides")
     void testHibernateDialectConfigured() {
         ConfigurableEnvironment env = new StandardEnvironment();
+        env.getPropertySources().addFirst(new MapPropertySource("testProdProfile", Map.of(
+                "SPRING_PROFILES_ACTIVE", "prod"
+        )));
 
         RailwayEnvironmentPostProcessor processor = new RailwayEnvironmentPostProcessor();
         processor.postProcessEnvironment(env, new SpringApplication());

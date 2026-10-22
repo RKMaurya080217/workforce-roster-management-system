@@ -87,7 +87,8 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
                 || "production".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")));
 
         boolean isTest = environment.acceptsProfiles(org.springframework.core.env.Profiles.of("test"))
-                && !environment.acceptsProfiles(org.springframework.core.env.Profiles.of("local"));
+                || "test".equalsIgnoreCase(cleanValue(getFirstNonBlank(environment, "SPRING_PROFILES_ACTIVE", "spring.profiles.active")))
+                || "test".equalsIgnoreCase(System.getProperty("spring.profiles.active"));
 
         if (isRailwayOrRemote || isExplicitProd) {
             // PRODUCTION / MYSQL MODE: Preserve 100% of existing Railway MySQL configuration
@@ -182,7 +183,12 @@ public class RailwayEnvironmentPostProcessor implements EnvironmentPostProcessor
                 dataDir.mkdirs();
             }
 
-            overrides.put("spring.datasource.url", "jdbc:sqlite:data/wrms.db");
+            String customUrl = cleanValue(getFirstNonBlank(environment, "spring.datasource.url", "SPRING_DATASOURCE_URL"));
+            if (customUrl != null && !customUrl.isBlank() && !customUrl.contains("data/wrms.db")) {
+                overrides.put("spring.datasource.url", customUrl);
+            } else {
+                overrides.put("spring.datasource.url", "jdbc:sqlite:data/wrms.db");
+            }
             overrides.put("spring.datasource.driver-class-name", "org.sqlite.JDBC");
             overrides.put("spring.datasource.username", "");
             overrides.put("spring.datasource.password", "");

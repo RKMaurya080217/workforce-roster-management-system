@@ -1,5 +1,6 @@
 package com.weeklyroster.service;
 
+import com.weeklyroster.config.DatabaseWriteCoordinator;
 import com.weeklyroster.dto.VisitorStatsResponse;
 import com.weeklyroster.entity.ActiveVisitor;
 import com.weeklyroster.entity.VisitorStatistic;
@@ -7,6 +8,7 @@ import com.weeklyroster.repository.ActiveVisitorRepository;
 import com.weeklyroster.repository.VisitorStatisticRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,12 +29,21 @@ public class VisitorAnalyticsService {
 
     private final VisitorStatisticRepository statisticRepository;
     private final ActiveVisitorRepository activeVisitorRepository;
+    private final DatabaseWriteCoordinator databaseWriteCoordinator;
     private volatile Long statRecordId = null;
+
+    @Autowired
+    public VisitorAnalyticsService(VisitorStatisticRepository statisticRepository,
+                                   ActiveVisitorRepository activeVisitorRepository,
+                                   @Autowired(required = false) DatabaseWriteCoordinator databaseWriteCoordinator) {
+        this.statisticRepository = statisticRepository;
+        this.activeVisitorRepository = activeVisitorRepository;
+        this.databaseWriteCoordinator = databaseWriteCoordinator;
+    }
 
     public VisitorAnalyticsService(VisitorStatisticRepository statisticRepository,
                                    ActiveVisitorRepository activeVisitorRepository) {
-        this.statisticRepository = statisticRepository;
-        this.activeVisitorRepository = activeVisitorRepository;
+        this(statisticRepository, activeVisitorRepository, null);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -50,7 +61,9 @@ public class VisitorAnalyticsService {
             statRecordId = existing.get().getId();
         } else {
             VisitorStatistic initial = new VisitorStatistic(0L, LocalDateTime.now());
-            VisitorStatistic saved = statisticRepository.save(initial);
+            VisitorStatistic saved = (databaseWriteCoordinator != null)
+                    ? databaseWriteCoordinator.executeWrite(() -> statisticRepository.save(initial))
+                    : statisticRepository.save(initial);
             statRecordId = saved.getId();
             log.info("[VisitorAnalytics] Initialized global visitor statistics record (ID: {})", statRecordId);
         }
@@ -67,6 +80,13 @@ public class VisitorAnalyticsService {
 
     @Transactional
     public VisitorStatsResponse recordVisit(String rawVisitorId) {
+        if (databaseWriteCoordinator != null) {
+            return databaseWriteCoordinator.executeWrite(() -> doRecordVisit(rawVisitorId));
+        }
+        return doRecordVisit(rawVisitorId);
+    }
+
+    private VisitorStatsResponse doRecordVisit(String rawVisitorId) {
         String visitorId = sanitizeVisitorId(rawVisitorId);
         Long statId = ensureStatRecord();
         LocalDateTime now = LocalDateTime.now();
@@ -87,6 +107,13 @@ public class VisitorAnalyticsService {
 
     @Transactional
     public VisitorStatsResponse recordHeartbeat(String rawVisitorId) {
+        if (databaseWriteCoordinator != null) {
+            return databaseWriteCoordinator.executeWrite(() -> doRecordHeartbeat(rawVisitorId));
+        }
+        return doRecordHeartbeat(rawVisitorId);
+    }
+
+    private VisitorStatsResponse doRecordHeartbeat(String rawVisitorId) {
         String visitorId = sanitizeVisitorId(rawVisitorId);
         LocalDateTime now = LocalDateTime.now();
 
@@ -100,6 +127,13 @@ public class VisitorAnalyticsService {
 
     @Transactional
     public VisitorStatsResponse recordOffline(String rawVisitorId) {
+        if (databaseWriteCoordinator != null) {
+            return databaseWriteCoordinator.executeWrite(() -> doRecordOffline(rawVisitorId));
+        }
+        return doRecordOffline(rawVisitorId);
+    }
+
+    private VisitorStatsResponse doRecordOffline(String rawVisitorId) {
         if (rawVisitorId != null && !rawVisitorId.isBlank()) {
             String visitorId = sanitizeVisitorId(rawVisitorId);
             activeVisitorRepository.deleteByVisitorId(visitorId);
@@ -129,6 +163,14 @@ public class VisitorAnalyticsService {
     @Scheduled(fixedRate = 600000)
     @Transactional
     public void cleanupExpiredSessions() {
+        if (databaseWriteCoordinator != null) {
+            databaseWriteCoordinator.executeWriteVoid(this::doCleanupExpiredSessions);
+        } else {
+            doCleanupExpiredSessions();
+        }
+    }
+
+    private void doCleanupExpiredSessions() {
         try {
             LocalDateTime cutoff = LocalDateTime.now().minusMinutes(CLEANUP_THRESHOLD_MINUTES);
             int deleted = activeVisitorRepository.deleteExpiredVisitorsBefore(cutoff);

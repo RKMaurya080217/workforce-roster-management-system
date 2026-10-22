@@ -1,11 +1,13 @@
 package com.weeklyroster.service;
 
+import com.weeklyroster.config.DatabaseWriteCoordinator;
 import com.weeklyroster.dto.response.AuditLogResponse;
 import com.weeklyroster.entity.AuditAction;
 import com.weeklyroster.entity.AuditLog;
 import com.weeklyroster.repository.AuditLogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -21,9 +23,17 @@ public class AuditService {
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
 
     private final AuditLogRepository auditLogRepository;
+    private final DatabaseWriteCoordinator databaseWriteCoordinator;
+
+    @Autowired
+    public AuditService(AuditLogRepository auditLogRepository,
+                        @Autowired(required = false) DatabaseWriteCoordinator databaseWriteCoordinator) {
+        this.auditLogRepository = auditLogRepository;
+        this.databaseWriteCoordinator = databaseWriteCoordinator;
+    }
 
     public AuditService(AuditLogRepository auditLogRepository) {
-        this.auditLogRepository = auditLogRepository;
+        this(auditLogRepository, null);
     }
 
     @Transactional
@@ -58,7 +68,9 @@ public class AuditService {
         auditLog.setSource(source != null ? source : (actor.equalsIgnoreCase("SYSTEM") ? "SYSTEM" : "MANUAL"));
 
         try {
-            AuditLog saved = auditLogRepository.save(auditLog);
+            AuditLog saved = (databaseWriteCoordinator != null)
+                    ? databaseWriteCoordinator.executeWrite(() -> auditLogRepository.save(auditLog))
+                    : auditLogRepository.save(auditLog);
             log.info("AUDIT LOG [{}] Actor: {} Entity: {}:{} Reason: {}", action, actor, entityType, entityId, reason);
             return saved;
         } catch (Exception e) {

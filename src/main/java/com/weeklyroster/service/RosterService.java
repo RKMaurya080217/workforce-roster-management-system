@@ -112,6 +112,12 @@ public class RosterService {
 
 	private final java.util.concurrent.ConcurrentHashMap<String, List<com.weeklyroster.dto.response.RosterCandidateResponse>> candidateCache = new java.util.concurrent.ConcurrentHashMap<>();
 
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private com.weeklyroster.config.DatabaseWriteCoordinator databaseWriteCoordinator;
+
+	private final java.util.concurrent.ConcurrentHashMap<LocalDate, java.util.concurrent.CompletableFuture<RosterCycleResponse>> inFlightGenerations = new java.util.concurrent.ConcurrentHashMap<>();
+	private final java.util.concurrent.ConcurrentHashMap<LocalDate, java.util.concurrent.CompletableFuture<List<com.weeklyroster.dto.response.RosterCandidateResponse>>> inFlightCandidates = new java.util.concurrent.ConcurrentHashMap<>();
+
 	public void setShiftCapacityProperties(com.weeklyroster.config.ShiftCapacityProperties shiftCapacityProperties) {
 		this.shiftCapacityProperties = shiftCapacityProperties;
 	}
@@ -211,6 +217,55 @@ public class RosterService {
 
 	@Transactional
 	public RosterCycleResponse generateWeeklyRoster(LocalDate startDate, GenerationMode mode, int workingDays) {
+		int validWorkingDays = (workingDays == 5) ? 5 : 6;
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+					.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			throw new BusinessException("Roster cycle start date must be a Monday (received: " + startDate.getDayOfWeek() + " " + startDate + ")");
+		}
+		final LocalDate targetMonday = startDate;
+
+		// De-duplicate concurrent generation requests for the exact same week
+		java.util.concurrent.CompletableFuture<RosterCycleResponse> future = inFlightGenerations.get(targetMonday);
+		if (future != null) {
+			log.info("[RosterService] Deduplicating concurrent roster generation request for {}", targetMonday);
+			try {
+				return future.get(60, java.util.concurrent.TimeUnit.SECONDS);
+			} catch (Exception e) {
+				log.warn("[RosterService] In-flight generation wait failed for {}: {}", targetMonday, e.getMessage());
+			}
+		}
+
+		java.util.concurrent.CompletableFuture<RosterCycleResponse> myFuture = new java.util.concurrent.CompletableFuture<>();
+		java.util.concurrent.CompletableFuture<RosterCycleResponse> existing = inFlightGenerations.putIfAbsent(targetMonday, myFuture);
+		if (existing != null) {
+			try {
+				return existing.get(60, java.util.concurrent.TimeUnit.SECONDS);
+			} catch (Exception e) {
+				log.warn("[RosterService] In-flight generation wait failed for {}: {}", targetMonday, e.getMessage());
+			}
+		}
+
+		try {
+			RosterCycleResponse res = (databaseWriteCoordinator != null)
+					? databaseWriteCoordinator.executeWrite(() -> doGenerateWeeklyRoster(targetMonday, mode, validWorkingDays))
+					: doGenerateWeeklyRoster(targetMonday, mode, validWorkingDays);
+			myFuture.complete(res);
+			return res;
+		} catch (Throwable t) {
+			myFuture.completeExceptionally(t);
+			if (t instanceof RuntimeException) throw (RuntimeException) t;
+			if (t instanceof Error) throw (Error) t;
+			throw new RuntimeException(t);
+		} finally {
+			inFlightGenerations.remove(targetMonday, myFuture);
+		}
+	}
+
+	@Transactional
+	public RosterCycleResponse doGenerateWeeklyRoster(LocalDate startDate, GenerationMode mode, int workingDays) {
 		int validWorkingDays = (workingDays == 5) ? 5 : 6;
 		if (startDate == null) {
 			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
@@ -1683,6 +1738,14 @@ public class RosterService {
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse saveManualAssignment(
 			com.weeklyroster.dto.request.ManualAssignmentRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doSaveManualAssignment(req, adminUsername));
+		}
+		return doSaveManualAssignment(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doSaveManualAssignment(
+			com.weeklyroster.dto.request.ManualAssignmentRequest req, String adminUsername) {
 		if (req == null) throw new BusinessException("Request cannot be null");
 		if (req.employeeId() == null) throw new BusinessException("Employee ID is required");
 		if (req.date() == null) throw new BusinessException("Date is required");
@@ -1757,6 +1820,14 @@ public class RosterService {
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse bulkAssignManual(
 			com.weeklyroster.dto.request.BulkManualAssignmentRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doBulkAssignManual(req, adminUsername));
+		}
+		return doBulkAssignManual(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doBulkAssignManual(
+			com.weeklyroster.dto.request.BulkManualAssignmentRequest req, String adminUsername) {
 		if (req == null || req.employeeIds() == null || req.dates() == null || req.shiftType() == null) {
 			throw new BusinessException("Invalid bulk assignment parameters");
 		}
@@ -1808,6 +1879,14 @@ public class RosterService {
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse clearManualAssignment(
 			Long cycleId, Long employeeId, LocalDate date, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doClearManualAssignment(cycleId, employeeId, date, adminUsername));
+		}
+		return doClearManualAssignment(cycleId, employeeId, date, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doClearManualAssignment(
+			Long cycleId, Long employeeId, LocalDate date, String adminUsername) {
 		RosterCycle cycle = (cycleId != null) ? cycleRepository.findById(cycleId).orElse(null) : null;
 		if (cycle == null && date != null) {
 			LocalDate monday = date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
@@ -1830,6 +1909,14 @@ public class RosterService {
 
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse copyPreviousWeek(
+			com.weeklyroster.dto.request.CopyPreviousWeekRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doCopyPreviousWeek(req, adminUsername));
+		}
+		return doCopyPreviousWeek(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doCopyPreviousWeek(
 			com.weeklyroster.dto.request.CopyPreviousWeekRequest req, String adminUsername) {
 		if (req == null || req.targetStartDate() == null) {
 			throw new BusinessException("Target start date is required");
@@ -1900,6 +1987,14 @@ public class RosterService {
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse generateUnassignedOnly(
 			Long cycleId, LocalDate startDate, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doGenerateUnassignedOnly(cycleId, startDate, adminUsername));
+		}
+		return doGenerateUnassignedOnly(cycleId, startDate, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doGenerateUnassignedOnly(
+			Long cycleId, LocalDate startDate, String adminUsername) {
 		if (startDate == null && cycleId != null) {
 			RosterCycle c = cycleRepository.findById(cycleId).orElse(null);
 			if (c != null) startDate = c.getStartDate();
@@ -1920,6 +2015,14 @@ public class RosterService {
 
 	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse publishManualRoster(
+			Long cycleId, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doPublishManualRoster(cycleId, adminUsername));
+		}
+		return doPublishManualRoster(cycleId, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doPublishManualRoster(
 			Long cycleId, String adminUsername) {
 		RosterCycle cycle = cycleRepository.findById(cycleId)
 				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle #" + cycleId + " not found"));
@@ -7100,6 +7203,58 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 	@Transactional
 	public List<com.weeklyroster.dto.response.RosterCandidateResponse> generateMultipleCandidates(
 			LocalDate startDate, int workingDays, int count) {
+		int validWorkingDays = (workingDays == 5) ? 5 : 6;
+		int targetCount = Math.max(3, Math.min(5, count));
+
+		if (startDate == null) {
+			startDate = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+					.with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		if (startDate.getDayOfWeek() != java.time.DayOfWeek.MONDAY) {
+			startDate = startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		}
+		final LocalDate targetMonday = startDate;
+
+		// De-duplicate concurrent candidate generation requests for the exact same week
+		java.util.concurrent.CompletableFuture<List<com.weeklyroster.dto.response.RosterCandidateResponse>> future = inFlightCandidates.get(targetMonday);
+		if (future != null) {
+			log.info("[RosterService] Deduplicating concurrent candidate generation request for {}", targetMonday);
+			try {
+				return future.get(60, java.util.concurrent.TimeUnit.SECONDS);
+			} catch (Exception e) {
+				log.warn("[RosterService] In-flight candidate generation wait failed for {}: {}", targetMonday, e.getMessage());
+			}
+		}
+
+		java.util.concurrent.CompletableFuture<List<com.weeklyroster.dto.response.RosterCandidateResponse>> myFuture = new java.util.concurrent.CompletableFuture<>();
+		java.util.concurrent.CompletableFuture<List<com.weeklyroster.dto.response.RosterCandidateResponse>> existing = inFlightCandidates.putIfAbsent(targetMonday, myFuture);
+		if (existing != null) {
+			try {
+				return existing.get(60, java.util.concurrent.TimeUnit.SECONDS);
+			} catch (Exception e) {
+				log.warn("[RosterService] In-flight candidate generation wait failed for {}: {}", targetMonday, e.getMessage());
+			}
+		}
+
+		try {
+			List<com.weeklyroster.dto.response.RosterCandidateResponse> res = (databaseWriteCoordinator != null)
+					? databaseWriteCoordinator.executeWrite(() -> doGenerateMultipleCandidates(targetMonday, validWorkingDays, targetCount))
+					: doGenerateMultipleCandidates(targetMonday, validWorkingDays, targetCount);
+			myFuture.complete(res);
+			return res;
+		} catch (Throwable t) {
+			myFuture.completeExceptionally(t);
+			if (t instanceof RuntimeException) throw (RuntimeException) t;
+			if (t instanceof Error) throw (Error) t;
+			throw new RuntimeException(t);
+		} finally {
+			inFlightCandidates.remove(targetMonday, myFuture);
+		}
+	}
+
+	@Transactional
+	public List<com.weeklyroster.dto.response.RosterCandidateResponse> doGenerateMultipleCandidates(
+			LocalDate startDate, int workingDays, int count) {
 
 		int validWorkingDays = (workingDays == 5) ? 5 : 6;
 		int targetCount = Math.max(3, Math.min(5, count));
@@ -7326,6 +7481,14 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 	 */
 	@Transactional
 	public RosterCycleResponse selectCandidate(LocalDate startDate, String candidateId) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doSelectCandidate(startDate, candidateId));
+		}
+		return doSelectCandidate(startDate, candidateId);
+	}
+
+	@Transactional
+	public RosterCycleResponse doSelectCandidate(LocalDate startDate, String candidateId) {
 		LocalDate targetMonday = (startDate == null)
 				? LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY))
 				: (startDate.getDayOfWeek() == java.time.DayOfWeek.MONDAY ? startDate : startDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)));
@@ -7354,6 +7517,13 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 	}
 
 	private synchronized RosterCycleResponse persistSelectedCandidate(LocalDate startDate, RosterCycleResponse chosenResponse) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeWrite(() -> doPersistSelectedCandidate(startDate, chosenResponse));
+		}
+		return doPersistSelectedCandidate(startDate, chosenResponse);
+	}
+
+	private RosterCycleResponse doPersistSelectedCandidate(LocalDate startDate, RosterCycleResponse chosenResponse) {
 		LocalDate endDate = startDate.plusDays(6);
 		List<RosterCycle> overlapping = new ArrayList<>(cycleRepository.findOverlappingCycles(startDate, endDate));
 		if (overlapping.isEmpty()) {
@@ -7362,6 +7532,16 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		for (RosterCycle existing : overlapping) {
 			if (existing.getStatus() == RosterStatus.LOCKED) {
 				throw new BusinessException("Roster cycle is locked and cannot be modified.");
+			}
+		}
+
+		Map<String, RosterAssignment> priorManualAssignments = new HashMap<>();
+		for (RosterCycle existing : overlapping) {
+			List<RosterAssignment> existingAssignments = assignmentRepository.findByCycleId(existing.getId());
+			for (RosterAssignment ea : existingAssignments) {
+				if (ea.isManualAssignment() || ea.isOverridden()) {
+					priorManualAssignments.put(ea.getEmployee().getId() + "_" + ea.getRosterDate(), ea);
+				}
 			}
 		}
 
@@ -7410,6 +7590,21 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 				a.setOnLeave(ar.onLeave());
 				a.setAssignmentReason(ar.assignmentReason());
 				a.setOverridden(ar.overridden());
+
+				String key = emp.getId() + "_" + ar.rosterDate();
+				RosterAssignment priorManual = priorManualAssignments.get(key);
+				if (priorManual != null) {
+					a.setShift(priorManual.getShift());
+					a.setWeeklyOff(priorManual.isWeeklyOff());
+					a.setManualAssignment(true);
+					a.setAssignmentSource(priorManual.getAssignmentSource() != null ? priorManual.getAssignmentSource() : "MANUAL");
+					a.setAssignmentReason(priorManual.getAssignmentReason());
+					a.setOverridden(true);
+				} else {
+					a.setManualAssignment(Boolean.TRUE.equals(ar.manualAssignment()));
+					a.setAssignmentSource(ar.assignmentSource());
+				}
+
 				newAssignments.add(a);
 			}
 		}

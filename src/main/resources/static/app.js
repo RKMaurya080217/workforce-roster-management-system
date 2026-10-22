@@ -271,6 +271,7 @@ const dom = {
     dashboard: document.getElementById("viewDashboard"),
     employees: document.getElementById("viewEmployees"),
     roster: document.getElementById("viewRoster"),
+    manualRoster: document.getElementById("viewManualRoster"),
     commandCenter: document.getElementById("viewCommandCenter"),
     shifts: document.getElementById("viewShifts"),
     leaves: document.getElementById("viewLeaves"),
@@ -349,16 +350,17 @@ const ADMIN_PRIMARY_NAV = [
     id: "roster",
     groupId: "rosterGroup",
     route: "weekly-roster",
-    label: "Roster",
+    label: "Roster Management",
     icon: WRMS_ICONS.roster,
     children: [
-      { id: "roster", route: "weekly-roster", label: "Weekly Roster", icon: WRMS_ICONS.roster },
+      { id: "roster", route: "weekly-roster", label: "Automatic Roster", icon: WRMS_ICONS.roster },
+      { id: "manualRoster", route: "manual-roster", label: "Manual Roster Builder", icon: WRMS_ICONS.shifts },
+      { id: "history", route: "roster-history", label: "Published Roster / History", icon: WRMS_ICONS.history },
       { id: "commandCenter", route: "command-center", label: "Command Center", icon: WRMS_ICONS.commandCenter },
       { id: "shifts", route: "shift-capacity", label: "Shift Capacity", icon: WRMS_ICONS.shifts },
       { id: "health", route: "roster-health", label: "Roster Health", icon: WRMS_ICONS.health },
       { id: "validation", route: "conflict-validator", label: "Conflict Validator", icon: WRMS_ICONS.validation },
-      { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions },
-      { id: "history", route: "roster-history", label: "Roster History", icon: WRMS_ICONS.history }
+      { id: "rosterVersions", route: "roster-versions", label: "Roster Versions", icon: WRMS_ICONS.versions }
     ]
   },
   { id: "employees", route: "employees", label: "Employees", icon: WRMS_ICONS.employees },
@@ -1980,6 +1982,10 @@ function parseRouteTarget(target) {
       "admin/command-center": "commandCenter",
       "admin/roster": "roster",
       "admin/weekly-roster": "roster",
+      "manual-roster": "manualRoster",
+      "manual_roster": "manualRoster",
+      "manualRoster": "manualRoster",
+      "admin/manual-roster": "manualRoster",
       
       "employees": "employees",
       "admin/employees": "employees",
@@ -2126,6 +2132,7 @@ function parseRouteTarget(target) {
       commandCenter: "#/command-center",
       dashboard: "#/dashboard",
       roster: "#/weekly-roster",
+      manualRoster: "#/manual-roster",
       employees: "#/employees",
       approvals: "#/approvals",
       leaves: "#/approvals",
@@ -2404,6 +2411,7 @@ function updateTopbarTitle(pageId) {
     validation: { title: "Smart Roster Conflict Detector & Validator", bc: "Conflict Validator" },
     employees: { title: "Employee Directory & Workforce", bc: "Employees" },
     roster: { title: "Weekly Roster Schedule", bc: "Weekly Roster" },
+    manualRoster: { title: "Manual Roster Builder & Shift Matrix", bc: "Manual Roster Builder" },
     approvals: { title: "Unified Request Approvals (Profile, Leaves, Preferences)", bc: "Approvals" },
     adminPreferences: { title: "Unified Request Approvals (Shift Preferences)", bc: "Approvals" },
     adminHandovers: { title: "Shift Handover Management", bc: "Shift Handovers" },
@@ -2470,6 +2478,9 @@ async function loadActiveView() {
       break;
     case "roster":
       await renderRosterView();
+      break;
+    case "manualRoster":
+      if (typeof renderManualRosterBuilderView === "function") await renderManualRosterBuilderView();
       break;
     case "health":
       await renderHealthView();
@@ -9683,6 +9694,11 @@ function openConflictWarningModal(check, rawDate, workingDays) {
 }
 
 async function executeRosterGeneration(rawDate, workingDays) {
+  if (state.isGeneratingRoster) {
+    console.warn("Roster generation already in progress - debouncing request.");
+    return;
+  }
+  state.isGeneratingRoster = true;
   const btn = document.getElementById("triggerGenerateBtn");
   const spinner = btn ? btn.querySelector(".spinner") : null;
   const wd = workingDays || document.getElementById("rosterWorkingDaysSelect")?.value || 6;
@@ -9730,6 +9746,7 @@ async function executeRosterGeneration(rawDate, workingDays) {
     console.error("Roster generation error:", err);
     toast(err.message || "Roster generation failed", "error");
   } finally {
+    state.isGeneratingRoster = false;
     if (btn) btn.disabled = false;
     if (spinner) spinner.classList.add("hidden");
   }
