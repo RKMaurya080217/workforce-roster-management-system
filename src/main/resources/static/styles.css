@@ -6633,6 +6633,39 @@ body.sidebar-mobile-locked {
   border-left: 5px solid #10b981;
 }
 
+.roster-validation-panel.is-collapsed {
+  margin-bottom: 10px;
+}
+
+.roster-validation-panel.is-collapsed .val-panel-header {
+  border-bottom: none;
+  background: #f8fafc;
+}
+
+.roster-validation-panel.is-collapsed .val-panel-content {
+  display: none !important;
+}
+
+.val-panel-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: var(--bg-card, #ffffff);
+  color: var(--text-primary, #1e293b);
+  transition: all 0.15s ease;
+}
+
+.val-panel-toggle-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
 .val-panel-header {
   display: flex;
   align-items: center;

@@ -3937,9 +3937,10 @@ function renderValidationStatusPanel(cycle) {
   if (!isDraftOrGen && conflicts.length === 0) return '';
 
   const panelClass = critCount > 0 ? 'has-errors' : (warnCount > 0 ? 'has-warnings' : 'all-passed');
+  const isCollapsed = localStorage.getItem("wrms_val_panel_collapsed") === "true";
 
   return `
-    <div class="roster-validation-panel ${panelClass}" id="rosterValidationPanel">
+    <div class="roster-validation-panel ${panelClass} ${isCollapsed ? 'is-collapsed' : ''}" id="rosterValidationPanel">
       <div class="val-panel-header">
         <div class="val-panel-title-group">
           <h3>📋 Roster Draft — Validation Status</h3>
@@ -3955,7 +3956,16 @@ function renderValidationStatusPanel(cycle) {
           <span>Continuity: <strong>${cycle.shiftContinuityScore || 100}%</strong></span>
           <span>Working Days: <strong>${cycle.workingDays || 6} Days</strong></span>
         </div>
+        <button type="button" class="btn btn-ghost btn-sm val-panel-toggle-btn" id="toggleValPanelBtn"
+                onclick="window.toggleValidationPanelCollapse(this)"
+                aria-expanded="${!isCollapsed}"
+                aria-controls="valPanelContent"
+                title="${isCollapsed ? 'Expand Validation Panel' : 'Collapse Validation Panel'}">
+          ${isCollapsed ? '➕ Expand Details' : '➖ Collapse Details'}
+        </button>
       </div>
+
+      <div class="val-panel-content" id="valPanelContent" style="${isCollapsed ? 'display:none;' : ''}">
 
       ${conflicts.length > 0 ? `
         <div style="max-height: 240px; overflow-y: auto;">
@@ -4014,9 +4024,38 @@ function renderValidationStatusPanel(cycle) {
           </button>
         </div>
       `}
+      </div>
     </div>
   `;
 }
+
+// BATCH 106: Global toggle for validation status panel collapse/expand
+window.toggleValidationPanelCollapse = function(btn) {
+  const panel = btn ? btn.closest(".roster-validation-panel") : document.querySelector(".roster-validation-panel");
+  if (!panel) return;
+  const isCurrentlyCollapsed = panel.classList.contains("is-collapsed");
+  const nextCollapsed = !isCurrentlyCollapsed;
+
+  if (nextCollapsed) {
+    panel.classList.add("is-collapsed");
+    localStorage.setItem("wrms_val_panel_collapsed", "true");
+  } else {
+    panel.classList.remove("is-collapsed");
+    localStorage.setItem("wrms_val_panel_collapsed", "false");
+  }
+
+  // Update all toggle buttons in DOM
+  document.querySelectorAll(".val-panel-toggle-btn").forEach(toggleBtn => {
+    toggleBtn.setAttribute("aria-expanded", String(!nextCollapsed));
+    toggleBtn.setAttribute("title", nextCollapsed ? "Expand Validation Panel" : "Collapse Validation Panel");
+    toggleBtn.innerHTML = nextCollapsed ? "➕ Expand Details" : "➖ Collapse Details";
+  });
+
+  // Toggle content display
+  panel.querySelectorAll(".val-panel-content").forEach(content => {
+    content.style.display = nextCollapsed ? "none" : "";
+  });
+};
 
 // BATCH 91: Actionable issue navigation and highlighting
 function focusValidationIssue(empId, dateStr, openModalDirectly = false) {
@@ -12356,7 +12395,9 @@ async function apiRequest(endpoint, options = {}, maybeBody = undefined) {
     response = await fetch(endpoint, {
       method: (options.method || "GET").toUpperCase(),
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.body 
+        ? (typeof options.body === "string" ? options.body : JSON.stringify(options.body)) 
+        : undefined,
       signal: controller.signal
     });
   } catch (networkErr) {
@@ -14897,8 +14938,15 @@ async function renderManualRosterBuilderView() {
             </div>
 
             <div>
-              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Target Days</label>
-              <div style="display:flex; gap:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <label style="font-size:0.8rem; font-weight:700; margin:0;">Target Days</label>
+                <div style="display:inline-flex; gap:4px;">
+                  <button type="button" class="btn btn-ghost btn-xs" id="mbDaysWeekdaysBtn" style="font-size:0.72rem; padding:1px 6px;">Mon–Fri</button>
+                  <button type="button" class="btn btn-ghost btn-xs" id="mbDaysAllBtn" style="font-size:0.72rem; padding:1px 6px;">All 7 Days</button>
+                  <button type="button" class="btn btn-ghost btn-xs" id="mbDaysClearBtn" style="font-size:0.72rem; padding:1px 6px;">Clear</button>
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${dates.map((d, idx) => `
                   <label style="font-size:0.8rem; background:#fff; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:4px;">
                     <input type="checkbox" class="mb-bulk-date-cb" value="${d}" ${idx < 5 ? 'checked' : ''}>
@@ -14909,7 +14957,7 @@ async function renderManualRosterBuilderView() {
             </div>
 
             <div style="flex:1; min-width:180px;">
-              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Reason / Remark</label>
+              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Reason / Remark <small style="color:var(--text-muted);">(Optional)</small></label>
               <input type="text" id="mbBulkReasonInput" class="form-control" placeholder="Optional remark (e.g. Project Sprint)" style="width:100%; padding:6px 10px;">
             </div>
 
@@ -14923,17 +14971,8 @@ async function renderManualRosterBuilderView() {
           </div>
         </div>
 
-        <!-- Validation Alert Panel if Critical Conflicts Exist -->
-        ${criticalCount > 0 ? `
-          <div style="background:#fef2f2; border-left:4px solid #ef4444; padding:12px 20px; margin:16px 22px 0;">
-            <div style="font-weight:700; color:#b91c1c; font-size:0.9rem; margin-bottom:4px;">
-              ⚠️ ${criticalCount} Conflict(s) Detected — Resolution Required Before Publishing:
-            </div>
-            <ul style="margin:0; padding-left:20px; color:#991b1b; font-size:0.84rem;">
-              ${warningList.map(w => `<li>${escapeHTML(w)}</li>`).join('')}
-            </ul>
-          </div>
-        ` : ''}
+        <!-- BATCH 106: Collapsible Roster Draft — Validation Status Panel -->
+        ${renderManualValidationPanel(matrix)}
 
         <!-- 7-Day Matrix Table -->
         <div class="table-wrap" style="padding:16px 22px; overflow-x:auto;">
@@ -15108,6 +15147,10 @@ async function renderManualRosterBuilderView() {
       const selected = Array.from(rowCbs).filter(cb => cb.checked);
       manualBuilderState.selectedEmployees = new Set(selected.map(cb => Number(cb.value)));
       if (countSpan) countSpan.textContent = selected.length;
+      if (masterCb) {
+        masterCb.checked = (selected.length === rowCbs.length && rowCbs.length > 0);
+        masterCb.indeterminate = (selected.length > 0 && selected.length < rowCbs.length);
+      }
     }
 
     if (masterCb) {
@@ -15121,15 +15164,34 @@ async function renderManualRosterBuilderView() {
 
     document.getElementById("mbSelectAllEmpBtn").addEventListener("click", () => {
       rowCbs.forEach(cb => cb.checked = true);
-      if (masterCb) masterCb.checked = true;
       updateSelectedCount();
     });
 
     document.getElementById("mbDeselectAllEmpBtn").addEventListener("click", () => {
       rowCbs.forEach(cb => cb.checked = false);
-      if (masterCb) masterCb.checked = false;
       updateSelectedCount();
     });
+
+    // Target Days Shortcuts
+    const dateCbs = container.querySelectorAll(".mb-bulk-date-cb");
+    const mbDaysWeekdaysBtn = document.getElementById("mbDaysWeekdaysBtn");
+    if (mbDaysWeekdaysBtn) {
+      mbDaysWeekdaysBtn.addEventListener("click", () => {
+        dateCbs.forEach((cb, idx) => cb.checked = (idx < 5));
+      });
+    }
+    const mbDaysAllBtn = document.getElementById("mbDaysAllBtn");
+    if (mbDaysAllBtn) {
+      mbDaysAllBtn.addEventListener("click", () => {
+        dateCbs.forEach(cb => cb.checked = true);
+      });
+    }
+    const mbDaysClearBtn = document.getElementById("mbDaysClearBtn");
+    if (mbDaysClearBtn) {
+      mbDaysClearBtn.addEventListener("click", () => {
+        dateCbs.forEach(cb => cb.checked = false);
+      });
+    }
 
     // Apply Bulk Assignment
     document.getElementById("mbApplyBulkBtn").addEventListener("click", async () => {
@@ -15147,12 +15209,13 @@ async function renderManualRosterBuilderView() {
       const datesArr = Array.from(selectedDateCbs).map(cb => cb.value);
 
       const btn = document.getElementById("mbApplyBulkBtn");
+      const origHtml = btn.innerHTML;
       btn.disabled = true;
       btn.textContent = "Applying...";
       try {
         await apiRequest("/api/rosters/manual/bulk-assignment", {
           method: "POST",
-          body: JSON.stringify({
+          body: {
             cycleId: manualBuilderState.cycleId,
             startDate: manualBuilderState.startDate,
             employeeIds: Array.from(manualBuilderState.selectedEmployees),
@@ -15160,14 +15223,15 @@ async function renderManualRosterBuilderView() {
             shiftType: shiftType,
             weeklyOff: shiftType === "OFF",
             reason: reason
-          })
+          }
         });
-        toast(`Applied ${shiftType} to ${manualBuilderState.selectedEmployees.size} employees`, "success");
+        toast(`Applied ${shiftType} to ${manualBuilderState.selectedEmployees.size} employees across ${datesArr.length} day(s)`, "success");
         await renderManualRosterBuilderView();
       } catch (err) {
         toast(err.message || "Failed to apply bulk assignment", "error");
       } finally {
         btn.disabled = false;
+        btn.innerHTML = origHtml;
       }
     });
 
@@ -15190,10 +15254,10 @@ async function renderManualRosterBuilderView() {
       try {
         await apiRequest("/api/rosters/manual/copy-week", {
           method: "POST",
-          body: JSON.stringify({
+          body: {
             cycleId: manualBuilderState.cycleId,
             targetStartDate: manualBuilderState.startDate
-          })
+          }
         });
         toast("Copied assignments from previous week!", "success");
         await renderManualRosterBuilderView();
@@ -15311,7 +15375,7 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
       try {
         await apiRequest("/api/rosters/manual/assignment", {
           method: "POST",
-          body: JSON.stringify({
+          body: {
             cycleId: manualBuilderState.cycleId,
             startDate: manualBuilderState.startDate,
             employeeId: employeeId,
@@ -15319,7 +15383,7 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
             shiftType: shiftType,
             weeklyOff: shiftType === "OFF",
             reason: reason
-          })
+          }
         });
         toast(`Assigned ${shiftType} to ${empName} on ${formatDate(date)}`, "success");
         await renderManualRosterBuilderView();
@@ -15345,4 +15409,60 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
       }
     });
   }
+}
+
+
+// BATCH 106: Collapsible Validation Status Panel for Manual Roster Builder
+function renderManualValidationPanel(matrix) {
+  if (!matrix) return '';
+  const criticalCount = matrix.criticalConflicts || 0;
+  const warningList = matrix.validationWarnings || [];
+  const isCollapsed = localStorage.getItem("wrms_val_panel_collapsed") === "true";
+  const panelClass = criticalCount > 0 ? 'has-errors' : (warningList.length > 0 ? 'has-warnings' : 'all-passed');
+
+  return `
+    <div class="roster-validation-panel ${panelClass} ${isCollapsed ? 'is-collapsed' : ''}" id="manualRosterValPanel" style="margin:16px 22px 0;">
+      <div class="val-panel-header">
+        <div class="val-panel-title-group">
+          <h3>📋 Roster Draft — Validation Status</h3>
+          ${criticalCount > 0 
+            ? `<span class="val-badge val-badge-error">⚠️ ${criticalCount} Conflict${criticalCount > 1 ? 's' : ''} Detected • RESOLUTION REQUIRED</span>`
+            : (warningList.length > 0 
+              ? `<span class="val-badge val-badge-warning">⚠️ 0 Errors, ${warningList.length} Warning${warningList.length > 1 ? 's' : ''} • READY TO PUBLISH</span>`
+              : `<span class="val-badge val-badge-passed">✓ All Mandatory Rules Passed (0 Issues) • READY TO PUBLISH</span>`)}
+        </div>
+        <div class="val-metrics-summary">
+          <span>Status: <strong>${matrix.status || 'DRAFT'}</strong></span>
+          <span>Conflicts: <strong>${criticalCount}</strong></span>
+          <span>Warnings: <strong>${warningList.length}</strong></span>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm val-panel-toggle-btn" id="mbToggleValPanelBtn"
+                onclick="window.toggleValidationPanelCollapse(this)"
+                aria-expanded="${!isCollapsed}"
+                aria-controls="manualValPanelContent"
+                title="${isCollapsed ? 'Expand Validation Panel' : 'Collapse Validation Panel'}">
+          ${isCollapsed ? '➕ Expand Details' : '➖ Collapse Details'}
+        </button>
+      </div>
+
+      <div class="val-panel-content" id="manualValPanelContent" style="${isCollapsed ? 'display:none;' : ''}">
+        ${(criticalCount > 0 || warningList.length > 0) ? `
+          <div style="padding:14px 20px; background:#fef2f2; border-top:1px solid #fee2e2;">
+            <div style="font-weight:700; color:#b91c1c; font-size:0.88rem; margin-bottom:6px;">
+              ${criticalCount > 0 ? '⚠️ Rule Violations Requiring Resolution:' : 'ℹ️ Advisory Notices:'}
+            </div>
+            <ul style="margin:0; padding-left:22px; color:#991b1b; font-size:0.84rem; line-height:1.5;">
+              ${warningList.map(w => `<li>${escapeHTML(w)}</li>`).join('')}
+            </ul>
+          </div>
+        ` : `
+          <div style="padding: 12px 18px; font-size: 0.84rem; color: #065f46; background: #f0fdf4; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <strong>✓ All mandatory business rules are satisfied!</strong> Minimum staffing, rest intervals, and statutory protections are compliant.
+            </div>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
 }

@@ -1832,8 +1832,9 @@ public class RosterService {
 			throw new BusinessException("Invalid bulk assignment parameters");
 		}
 		if (req.dates().isEmpty()) throw new BusinessException("At least one date is required");
+		if (req.employeeIds().isEmpty()) throw new BusinessException("At least one employee is required");
 
-		LocalDate firstDate = req.dates().get(0);
+		LocalDate firstDate = (req.startDate() != null) ? req.startDate() : req.dates().get(0);
 		LocalDate monday = firstDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
 		RosterCycle cycle = null;
 		if (req.cycleId() != null) {
@@ -1842,9 +1843,15 @@ public class RosterService {
 		if (cycle == null) {
 			cycle = getOrCreateDraftCycle(monday, 6);
 		}
+		if (cycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Cannot modify assignments in a locked roster cycle");
+		}
 
 		Map<ShiftType, Shift> shifts = activeShiftMap();
 		boolean isOff = req.shiftType() == ShiftType.OFF || Boolean.TRUE.equals(req.weeklyOff());
+
+		int appliedCount = 0;
+		int skippedLeaveCount = 0;
 
 		for (Long empId : req.employeeIds()) {
 			Employee emp = employeeRepository.findById(empId).orElse(null);
@@ -1852,25 +1859,39 @@ public class RosterService {
 
 			for (LocalDate d : req.dates()) {
 				boolean onLeave = isApprovedLeave(emp.getId(), d);
-				if (onLeave && !isOff) continue;
+				if (onLeave && !isOff) {
+					skippedLeaveCount++;
+					continue;
+				}
 
 				List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(emp.getId(), d);
 				RosterAssignment assignment = !existingList.isEmpty() ? existingList.get(0) : new RosterAssignment();
+				if (existingList.size() > 1) {
+					for (int i = 1; i < existingList.size(); i++) {
+						assignmentRepository.delete(existingList.get(i));
+					}
+				}
+
 				assignment.setCycle(cycle);
 				assignment.setEmployee(emp);
 				assignment.setRosterDate(d);
 				assignment.setOnLeave(onLeave);
 				assignment.setWeeklyOff(isOff);
-				assignment.setShift(shifts.get(req.shiftType()));
+				assignment.setShift(isOff ? (shifts.get(ShiftType.OFF) != null ? shifts.get(ShiftType.OFF) : null) : shifts.get(req.shiftType()));
 				assignment.setManualAssignment(true);
 				assignment.setOverridden(true);
 				assignment.setAssignmentSource("MANUAL");
-				String reason = req.reason() != null && !req.reason().isBlank() ? req.reason() : "Bulk Manual Assignment (" + req.shiftType() + ")";
+				String reason = req.reason() != null && !req.reason().isBlank() ? req.reason().trim() : "Bulk Manual Assignment (" + req.shiftType() + ")";
 				assignment.setAssignmentReason(reason);
 				assignment.setOverrideReason(reason);
 				assignment.setOverrideCreatedAt(LocalDateTime.now());
 				assignmentRepository.save(assignment);
+				appliedCount++;
 			}
+		}
+
+		if (appliedCount == 0 && skippedLeaveCount > 0) {
+			throw new BusinessException("Cannot assign working shift: selected employee(s) have approved leave on selected date(s).");
 		}
 
 		return buildMatrixResponse(cycle);
