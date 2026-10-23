@@ -284,24 +284,16 @@ public class RosterHealthService {
                             totalTransitionsChecked++;
                             ShiftType nextType = next.getShift().getShiftType();
 
-                            // Night (ends 07:00) -> Morning (07:00) = 0h rest
-                            if (curType == ShiftType.NIGHT && nextType == ShiftType.MORNING) {
+                                                        // BATCH 109: Night shift strict rule: Every Night duty must be followed by Weekly OFF
+                            if (curType == ShiftType.NIGHT) {
                                 restOk = false;
+                                nightLimitOk = false;
                                 conflicts.add(new ConflictItem(
                                         next.getRosterDate(), emp.getId(), empName, nextType,
-                                        "REST_INTERVAL_12H", "0h rest (NIGHT -> MORNING)", ">= 12h rest",
-                                        "Night shift followed immediately by Morning shift violates 12h rest rule (0h rest)",
-                                        "CRITICAL", "Schedule a rest day or evening shift after Night duty", false
-                                ));
-                            }
-                            // Night (ends 07:00) -> General (09:30) = 2.5h rest
-                            else if (curType == ShiftType.NIGHT && nextType == ShiftType.GENERAL) {
-                                restOk = false;
-                                conflicts.add(new ConflictItem(
-                                        next.getRosterDate(), emp.getId(), empName, nextType,
-                                        "REST_INTERVAL_12H", "2.5h rest (NIGHT -> GENERAL)", ">= 12h rest",
-                                        "Night shift followed by General shift violates 12h rest rule (2.5h rest)",
-                                        "CRITICAL", "Schedule a rest day or evening shift after Night duty", false
+                                        "NIGHT_REQUIRES_NEXT_DAY_OFF", nextType.name(), "WEEKLY_OFF",
+                                        "CRIS mandatory fatigue safety rule violation: Employee " + empName + " worked NIGHT on " + d
+                                                + " but is assigned " + nextType.name() + " on the following calendar day (" + next.getRosterDate() + "). Must receive WEEKLY OFF.",
+                                        "CRITICAL", "Schedule Weekly OFF after Night duty", false
                                 ));
                             }
                             // Evening (ends 22:00) -> Morning (07:00) = 9h rest
@@ -340,15 +332,33 @@ public class RosterHealthService {
             // BATCH 92: Authoritative Weekly OFF check: expectedWeeklyOffs = 7 - workingDays (5-day: 2 offs, 6-day: 1 off)
             int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
             int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
-            boolean empOffCompliant = (weeklyOffCount == targetOffs) || (leaveCount >= 7);
-            if (weeklyOffCount > targetOffs && leaveCount < 7) {
+            long postNightOffCount = 0;
+            for (int idx = 0; idx < empAssignments.size(); idx++) {
+                RosterAssignment curA = empAssignments.get(idx);
+                if (curA.isWeeklyOff() || (curA.getShift() != null && curA.getShift().getShiftType() == ShiftType.OFF)) {
+                    if (idx > 0) {
+                        RosterAssignment prevA = empAssignments.get(idx - 1);
+                        if (!prevA.isWeeklyOff() && !prevA.isOnLeave() && prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
+                            postNightOffCount++;
+                        }
+                    } else if (assignmentRepository != null && cycle != null && cycle.getStartDate() != null && curA.getRosterDate().equals(cycle.getStartDate())) {
+                        List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), cycle.getStartDate());
+                        if (!prevWorked.isEmpty() && prevWorked.get(0).getShift() != null && prevWorked.get(0).getShift().getShiftType() == ShiftType.NIGHT) {
+                            postNightOffCount++;
+                        }
+                    }
+                }
+            }
+            int allowableMaxOffs = Math.max(targetOffs, (int) postNightOffCount);
+            boolean empOffCompliant = (weeklyOffCount >= targetOffs && weeklyOffCount <= allowableMaxOffs) || (leaveCount >= 7);
+            if (weeklyOffCount > allowableMaxOffs && leaveCount < 7) {
                 weeklyOffOk = false;
                 String datesStr = offDates.stream().map(LocalDate::toString).collect(Collectors.joining(", "));
-                String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
+                String expectedStr = "<= " + allowableMaxOffs + " Weekly OFF" + (allowableMaxOffs > 1 ? "s" : "");
                 conflicts.add(new ConflictItem(
                         cycle.getStartDate(), emp.getId(), empName, null,
                         "EXCESS_WEEKLY_OFF", weeklyOffCount + " Weekly OFFs (" + datesStr + ")", expectedStr,
-                        "Employee " + empName + " has " + weeklyOffCount + " weekly OFF assignments in cycle (expected exactly " + targetOffs + "). OFF dates: " + datesStr,
+                        "Employee " + empName + " has " + weeklyOffCount + " weekly OFF assignments in cycle (allowable max " + allowableMaxOffs + "). OFF dates: " + datesStr,
                         "CRITICAL", "Reassign excess Weekly OFF days to working shifts", false
                 ));
             } else if (weeklyOffCount < targetOffs && leaveCount < 7) {

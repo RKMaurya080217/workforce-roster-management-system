@@ -211,16 +211,16 @@ public class RosterValidatorService {
 
                 if (!curr.isWeeklyOff() && !curr.isOnLeave()) {
                     consecutiveWorkDays++;
-                    if (curr.getShift() != null && curr.getShift().getShiftType() == ShiftType.NIGHT) {
+                                        if (curr.getShift() != null && curr.getShift().getShiftType() == ShiftType.NIGHT) {
                         consecutiveNights++;
-                        if (consecutiveNights > 2) {
+                        if (consecutiveNights > 1) {
                             findings.add(new RosterValidationFinding(
                                     "CONSECUTIVE_NIGHTS",
-                                    "Excessive Consecutive Nights",
+                                    "Consecutive Night Shifts Forbidden",
                                     ValidationSeverity.ERROR,
                                     emp.getEmployeeCode(), empName, curr.getRosterDate(),
                                     empName + " assigned " + consecutiveNights + " consecutive night shifts ending on " + curr.getRosterDate(),
-                                    "Personnel must not exceed 2 consecutive night duties."
+                                    "CRIS mandatory fatigue safety rule: Every Night shift must be followed by Weekly OFF. Consecutive night shifts are forbidden."
                             ));
                         }
                     } else {
@@ -236,8 +236,20 @@ public class RosterValidatorService {
                     if (!curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift() != null &&
                             !next.isWeeklyOff() && !next.isOnLeave() && next.getShift() != null) {
 
-                        Shift s1 = curr.getShift();
+                                                Shift s1 = curr.getShift();
                         Shift s2 = next.getShift();
+
+                        // BATCH 109: Night shift must be followed by Weekly OFF
+                        if (s1.getShiftType() == ShiftType.NIGHT && s2.getShiftType() != ShiftType.OFF) {
+                            findings.add(new RosterValidationFinding(
+                                    "NIGHT_REQUIRES_NEXT_DAY_OFF",
+                                    "Night Shift Must Be Followed by Weekly OFF",
+                                    ValidationSeverity.ERROR,
+                                    emp.getEmployeeCode(), empName, next.getRosterDate(),
+                                    empName + " worked NIGHT on " + curr.getRosterDate() + " but is assigned " + s2.getShiftType().name() + " on " + next.getRosterDate() + " (must be Weekly OFF).",
+                                    "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
+                            ));
+                        }
 
                         LocalDateTime end1 = curr.getRosterDate().atTime(s1.getEndTime());
                         if (s1.isOvernight() || s1.getEndTime().isBefore(s1.getStartTime())) {

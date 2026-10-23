@@ -450,7 +450,7 @@ public class RosterService {
 			}
 		}
 
-		int maxAttempts = 35;
+		int maxAttempts = 50;
 		List<RosterAssignment> bestNonDuplicateGenerated = null;
 		List<DailyCoverageReport> bestNonDuplicateDailyReports = null;
 		int bestNonDuplicateScore = Integer.MIN_VALUE;
@@ -1326,6 +1326,30 @@ public class RosterService {
 					null, null, cycle.getStatus() != null ? cycle.getStatus().name() : "UNKNOWN", "DELETED", "Admin deleted roster cycle", "MANUAL");
 		}
 
+		// BATCH 109: Persist fingerprint of rejected/deleted roster in history so future regenerations never repeat it
+		if (generationHistoryRepository != null) {
+			try {
+				List<RosterAssignment> currentAssignments = assignmentRepository.findByCycleId(cycle.getId());
+				if (!currentAssignments.isEmpty()) {
+					String fp = computeRosterFingerprint(currentAssignments);
+					com.weeklyroster.entity.RosterGenerationHistory historyEntry = new com.weeklyroster.entity.RosterGenerationHistory(
+							cycle.getStartDate(),
+							cycle.getEndDate(),
+							fp,
+							1,
+							"REJECTED",
+							cycle.getWorkingDays() != null ? cycle.getWorkingDays() : 6,
+							0, 0, 0
+					);
+					generationHistoryRepository.save(historyEntry);
+					log.info("[BATCH 109] Stored rejected roster fingerprint {} for week {} to {}",
+							fp.substring(0, Math.min(12, fp.length())), cycle.getStartDate(), cycle.getEndDate());
+				}
+			} catch (Exception e) {
+				log.warn("[BATCH 109] Failed to record rejected roster fingerprint: {}", e.getMessage());
+			}
+		}
+
 		// Strict child-first deletion order:
 		// 1. Delete overrides on assignments belonging to this cycle
 		overrideRepository.deleteByCycleIdNative(cycle.getId());
@@ -1608,10 +1632,10 @@ public class RosterService {
 					validationWarnings.add(emp.getFirstName() + " has approved leave on " + date + " but is assigned " + shiftType);
 				}
 
-				// Conflict Check 2: 12-hour rest rule violation (Night yesterday -> Morning/General today)
-				if (prevShift == ShiftType.NIGHT && !isOff && (shiftType == ShiftType.MORNING || shiftType == ShiftType.GENERAL)) {
+								// Conflict Check 2: CRIS Strict Hard Rule - Night shift must be followed by Weekly OFF
+				if (prevShift == ShiftType.NIGHT && !isOff) {
 					hasConflict = true;
-					conflictReason = "Rest violation: 12-hour mandatory rest violated after Night shift";
+					conflictReason = "Night shift rule violation: Employee assigned " + shiftType + " on " + date + " immediately following Night shift on " + date.minusDays(1) + ". CRIS mandatory fatigue safety rule requires Weekly OFF on the following calendar day.";
 					criticalConflicts[0]++;
 					validationWarnings.add(emp.getFirstName() + " assigned " + shiftType + " immediately following Night shift on " + date.minusDays(1));
 				}
@@ -1855,9 +1879,28 @@ public class RosterService {
 		boolean isOff = req.shiftType() == ShiftType.OFF || Boolean.TRUE.equals(req.weeklyOff());
 		boolean onLeave = isApprovedLeave(employee.getId(), date);
 
-		if (onLeave && !isOff && req.shiftType() != ShiftType.OFF) {
+				if (onLeave && !isOff && req.shiftType() != ShiftType.OFF) {
 			throw new BusinessException("Level 0 Constraint Conflict: Employee " + employee.getFirstName() + " " + employee.getLastName()
 					+ " has Approved Leave on " + date + ". Admin must resolve the leave conflict before assigning a working shift.");
+		}
+
+		// BATCH 109: Night shift strict constraints in manual assignment
+		List<RosterAssignment> yesterdayList = assignmentRepository.findByEmployeeIdAndRosterDate(employee.getId(), date.minusDays(1));
+		if (!yesterdayList.isEmpty()) {
+			RosterAssignment yest = yesterdayList.get(0);
+			if (!yest.isWeeklyOff() && !yest.isOnLeave() && yest.getShift() != null && yest.getShift().getShiftType() == ShiftType.NIGHT) {
+				if (!isOff && req.shiftType() != ShiftType.OFF) {
+					throw new BusinessException("Level 0 Constraint Conflict: Employee " + employee.getFirstName() + " " + employee.getLastName()
+							+ " worked NIGHT on " + date.minusDays(1) + ". CRIS mandatory fatigue safety rule requires WEEKLY OFF on the following calendar day (" + date + ").");
+				}
+			}
+		}
+
+		if (req.shiftType() == ShiftType.NIGHT && !isOff) {
+			if (employee.getGender() == Gender.FEMALE) {
+				throw new BusinessException("Statutory Violation: Female employee " + employee.getFirstName() + " " + employee.getLastName()
+						+ " cannot be assigned to Night shift under CRIS regulations.");
+			}
 		}
 
 		List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(employee.getId(), date);
@@ -1890,8 +1933,31 @@ public class RosterService {
 		assignment.setOverrideReason(reason);
 		assignment.setOverrideCreatedAt(LocalDateTime.now());
 
-		assignmentRepository.save(assignment);
+				assignmentRepository.save(assignment);
 		assignmentRepository.flush();
+
+		// BATCH 109: Automatically ensure next day is Weekly OFF when Night is assigned
+		if (req.shiftType() == ShiftType.NIGHT && !isOff) {
+			LocalDate nextDay = date.plusDays(1);
+			List<RosterAssignment> nextList = assignmentRepository.findByEmployeeIdAndRosterDate(employee.getId(), nextDay);
+			RosterAssignment nextAssignment;
+			if (!nextList.isEmpty()) {
+				nextAssignment = nextList.get(0);
+			} else {
+				nextAssignment = new RosterAssignment();
+				nextAssignment.setCycle(cycle);
+				nextAssignment.setEmployee(employee);
+				nextAssignment.setRosterDate(nextDay);
+			}
+			if (!nextAssignment.isOnLeave()) {
+				nextAssignment.setWeeklyOff(true);
+				nextAssignment.setShift(shifts.get(ShiftType.OFF));
+				nextAssignment.setAssignmentReason("Mandatory Weekly OFF following Night shift on " + date);
+				nextAssignment.setAssignmentSource("MANUAL");
+				assignmentRepository.save(nextAssignment);
+				assignmentRepository.flush();
+			}
+		}
 
 		if (auditService != null) {
 			auditService.log(
@@ -2475,11 +2541,46 @@ public class RosterService {
 			conflicts.add(empB.getFirstName() + " has approved leave on " + req.dateB() + " and cannot take a working shift (" + propShiftB + ")");
 		}
 
-		if (empA.getGender() == Gender.FEMALE && "NIGHT".equalsIgnoreCase(propShiftA)) {
+				if (empA.getGender() == Gender.FEMALE && "NIGHT".equalsIgnoreCase(propShiftA)) {
 			conflicts.add("Statutory violation: Female employee " + empA.getFirstName() + " cannot be scheduled for Night shift");
 		}
 		if (empB.getGender() == Gender.FEMALE && "NIGHT".equalsIgnoreCase(propShiftB)) {
 			conflicts.add("Statutory violation: Female employee " + empB.getFirstName() + " cannot be scheduled for Night shift");
+		}
+
+		// BATCH 109: Night shift strict constraints in swap preview
+		if ("NIGHT".equalsIgnoreCase(propShiftA)) {
+			List<RosterAssignment> aNextList = assignmentRepository.findByEmployeeIdAndRosterDate(empA.getId(), req.dateA().plusDays(1));
+			if (!aNextList.isEmpty()) {
+				RosterAssignment aNext = aNextList.get(0);
+				if (!aNext.isWeeklyOff() && !aNext.isOnLeave() && aNext.getShift() != null && aNext.getShift().getShiftType() != ShiftType.OFF) {
+					conflicts.add(empA.getFirstName() + " would work NIGHT on " + req.dateA() + " but has a working shift on " + req.dateA().plusDays(1) + ". Night shifts require mandatory Weekly OFF on the following calendar day.");
+				}
+			}
+			List<RosterAssignment> aPrevList = assignmentRepository.findByEmployeeIdAndRosterDate(empA.getId(), req.dateA().minusDays(1));
+			if (!aPrevList.isEmpty()) {
+				RosterAssignment aPrev = aPrevList.get(0);
+				if (!aPrev.isWeeklyOff() && !aPrev.isOnLeave() && aPrev.getShift() != null && aPrev.getShift().getShiftType() == ShiftType.NIGHT) {
+					conflicts.add(empA.getFirstName() + " worked NIGHT on " + req.dateA().minusDays(1) + " and must receive Weekly OFF on " + req.dateA() + ".");
+				}
+			}
+		}
+
+		if ("NIGHT".equalsIgnoreCase(propShiftB)) {
+			List<RosterAssignment> bNextList = assignmentRepository.findByEmployeeIdAndRosterDate(empB.getId(), req.dateB().plusDays(1));
+			if (!bNextList.isEmpty()) {
+				RosterAssignment bNext = bNextList.get(0);
+				if (!bNext.isWeeklyOff() && !bNext.isOnLeave() && bNext.getShift() != null && bNext.getShift().getShiftType() != ShiftType.OFF) {
+					conflicts.add(empB.getFirstName() + " would work NIGHT on " + req.dateB() + " but has a working shift on " + req.dateB().plusDays(1) + ". Night shifts require mandatory Weekly OFF on the following calendar day.");
+				}
+			}
+			List<RosterAssignment> bPrevList = assignmentRepository.findByEmployeeIdAndRosterDate(empB.getId(), req.dateB().minusDays(1));
+			if (!bPrevList.isEmpty()) {
+				RosterAssignment bPrev = bPrevList.get(0);
+				if (!bPrev.isWeeklyOff() && !bPrev.isOnLeave() && bPrev.getShift() != null && bPrev.getShift().getShiftType() == ShiftType.NIGHT) {
+					conflicts.add(empB.getFirstName() + " worked NIGHT on " + req.dateB().minusDays(1) + " and must receive Weekly OFF on " + req.dateB() + ".");
+				}
+			}
 		}
 
 		return new com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse(
@@ -3195,7 +3296,14 @@ public class RosterService {
 			boolean onLeave = isApprovedLeave(employee.getId(), date);
 			Set<LocalDate> scheduledOffs = weeklyOffs != null ? weeklyOffs.get(employee.getId()) : null;
 			int taken = offTakenCount != null ? offTakenCount.getOrDefault(employee.getId(), 0) : 0;
-			boolean weeklyOff = !onLeave && scheduledOffs != null && scheduledOffs.contains(date) && taken < maxWeeklyOffsForEmp;
+						boolean weeklyOff = !onLeave && scheduledOffs != null && scheduledOffs.contains(date) && taken < maxWeeklyOffsForEmp;
+
+			Shift prevS = lastShiftMap.get(employee.getId());
+			LocalDate prevD = lastShiftDateMap.get(employee.getId());
+			boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
+			if (wasNightYesterday) {
+				weeklyOff = true;
+			}
 
 			if (onLeave) {
 				dayAssignments.add(newAssignment(cycle, employee, shifts.get(ShiftType.OFF), date, false, true));
@@ -3478,6 +3586,10 @@ public class RosterService {
 									if (isShriram(dEmp) && cycleNightCounts.getOrDefault(dEmp.getId(), 0) >= shriMax) continue;
 									if (isJeevan(dEmp) && cycleNightCounts.getOrDefault(dEmp.getId(), 0) >= 3) continue;
 									if (isDevelopmentTeam(dEmp)) continue;
+									Shift prevS = lastShiftMap.get(dEmp.getId());
+									LocalDate prevD = lastShiftDateMap.get(dEmp.getId());
+									boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
+									if (wasNightYesterday) continue; // CRIS Hard Rule: No consecutive night shifts
 								}
 								if (isEligible(dEmp, missingType)
 										&& hasMinimumRest(lastShiftDateMap.get(dEmp.getId()), lastShiftMap.get(dEmp.getId()), date, shifts.get(missingType))) {
@@ -3496,6 +3608,9 @@ public class RosterService {
 							}
 							if (missingType == ShiftType.NIGHT) {
 								cycleNightCounts.compute(donorAssignment.getEmployee().getId(), (k, v) -> v == null ? 1 : v + 1);
+								if (weeklyOffs != null && cycle != null && cycle.getEndDate() != null && !date.equals(cycle.getEndDate())) {
+									weeklyOffs.computeIfAbsent(donorAssignment.getEmployee().getId(), k -> new HashSet<>()).add(date.plusDays(1));
+								}
 							}
 							break;
 						}
@@ -3597,7 +3712,7 @@ public class RosterService {
 							Shift prevS = lastShiftMap.get(candidate.getId());
 							LocalDate prevD = lastShiftDateMap.get(candidate.getId());
 							boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
-							if (!wasNightYesterday && cycleNightCounts.getOrDefault(candidate.getId(), 0) >= 1) continue;
+							if (wasNightYesterday) continue; // CRIS Hard Rule: No consecutive nights
 						}
 						ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(candidate.getId()) : null;
 						if (isEligible(candidate, missingType, pref)
@@ -3839,10 +3954,20 @@ public class RosterService {
 		ShiftType shiftType = slots.get(slotIndex);
 		Shift shift = shifts.get(shiftType);
 
-		List<Employee> candidates = available.stream()
+				List<Employee> candidates = available.stream()
 				.filter(e -> !assigned.contains(e.getId()))
 				.filter(e -> isEligible(e, shiftType, preferencesMap != null ? preferencesMap.get(e.getId()) : null))
 				.filter(e -> {
+					Shift prevS = lastShiftMap.get(e.getId());
+					LocalDate prevD = lastShiftDateMap.get(e.getId());
+					boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
+					if (wasNightYesterday) {
+						return false; // CRIS Mandatory Fatigue Safety Rule: Employee worked Night yesterday, must have Weekly OFF today!
+					}
+					if (shiftType == ShiftType.NIGHT) {
+						if (e.getGender() == Gender.FEMALE) return false;
+						if (wasNightYesterday) return false;
+					}
 					if (shiftType == ShiftType.EVENING && e.getGender() == Gender.MALE) {
 						int myEve = shiftCountsMap != null && shiftCountsMap.get(e.getId()) != null
 								? shiftCountsMap.get(e.getId()).getOrDefault(ShiftType.EVENING, 0)
@@ -3925,28 +4050,8 @@ public class RosterService {
 						if (targetMaleAvailable) return false;
 					}
 
-					Shift prevS = lastShiftMap.get(e.getId());
-					LocalDate prevD = lastShiftDateMap.get(e.getId());
-					boolean wasNightYesterday = prevS != null && prevS.getShiftType() == ShiftType.NIGHT && prevD != null && prevD.equals(date.minusDays(1));
-
 					boolean nextDayIsOff = (weeklyOffs != null && weeklyOffs.containsKey(e.getId()) && weeklyOffs.get(e.getId()).contains(date.plusDays(1)));
 					boolean isCycleEnd = (cycleEndDate != null && date.equals(cycleEndDate));
-					boolean isSixDayMode = (weeklyOffs != null && weeklyOffs.containsKey(e.getId()) && weeklyOffs.get(e.getId()).size() <= 1);
-					Set<LocalDate> myOffs = weeklyOffs != null ? weeklyOffs.get(e.getId()) : null;
-					boolean twoDaysBeforeOff = myOffs != null && myOffs.contains(date.plusDays(2)) && cycleNightCounts.getOrDefault(e.getId(), 0) == 0;
-					if (isSixDayMode && !isCycleEnd) {
-						boolean nextDayOff = myOffs != null && myOffs.contains(date.plusDays(1));
-						if (!nextDayOff && !twoDaysBeforeOff) {
-							return false; // In 6-day mode, a night shift must either lead into scheduled off tomorrow or be part of a 2-night block ending in scheduled off!
-						}
-						if (!wasNightYesterday && cycleNightCounts.getOrDefault(e.getId(), 0) >= 1) {
-							return false; // In 6-day mode, cannot start a 2nd non-consecutive night block because only 1 recovery off exists
-						}
-						boolean hasUsedOffAlready = myOffs != null && myOffs.stream().anyMatch(d -> !d.isAfter(date));
-						if (hasUsedOffAlready) {
-							return false; // Already used weekly off; cannot take another recovery off tomorrow!
-						}
-					}
 
 					int empMaxN = (isRajat(e) || isSambhav(e)) ? rajatMaxNights : (isShriram(e) ? shriramMaxNights : (isTushar(e) ? 3 : maxNightsAllowed));
 					if (!nextDayIsOff && !isCycleEnd && date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.FRIDAY && date.getDayOfWeek() != DayOfWeek.THURSDAY) {
@@ -3963,7 +4068,7 @@ public class RosterService {
 									return o != null && o.getGender() == Gender.MALE && o.isActive() && !isDevelopmentTeam(o)
 											&& entry.getValue().contains(date.plusDays(1));
 								});
-						if (anotherNonDevMaleOffTomorrow && !nextDayIsOff && !twoDaysBeforeOff) {
+						if (anotherNonDevMaleOffTomorrow && !nextDayIsOff) {
 							return false; // Tomorrow is a weekday and another non-dev male is already off; 2 non-dev males off on a weekday causes severe deficit
 						}
 					}
@@ -3996,11 +4101,24 @@ public class RosterService {
 			assigned.add(candidate.getId());
 			dailyAssignments.computeIfAbsent(shiftType, k -> new ArrayList<>()).add(candidate);
 
+			boolean addedTomorrowOff = false;
+			if (shiftType == ShiftType.NIGHT && weeklyOffs != null && cycleEndDate != null && !date.equals(cycleEndDate)) {
+				LocalDate tomorrow = date.plusDays(1);
+				Set<LocalDate> empOffs = weeklyOffs.computeIfAbsent(candidate.getId(), k -> new HashSet<>());
+				if (!empOffs.contains(tomorrow)) {
+					empOffs.add(tomorrow);
+					addedTomorrowOff = true;
+				}
+			}
+
 			if (solveDay(slotIndex + 1, slots, available, allEmployees, assigned, dailyAssignments, date,
 					shifts, lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, maxNightsAllowed, totalActiveMales, weeklyOffs, cycleStartDate, cycleEndDate, preferencesMap, randomSeed, stepCounter)) {
 				return true;
 			}
 
+			if (addedTomorrowOff) {
+				weeklyOffs.get(candidate.getId()).remove(date.plusDays(1));
+			}
 			assigned.remove(candidate.getId());
 			dailyAssignments.get(shiftType).remove(candidate);
 		}
@@ -4049,6 +4167,33 @@ public class RosterService {
 				.thenComparingInt(this::weekendOffCount)
 				.thenComparing(Comparator.comparingInt(this::weekendWorkCount).reversed())
 				.thenComparing(e -> (int) ((e.getId() + randomSeed) % 17)));
+
+		// BATCH 109: Candidate employee rotation for diversity across attempts
+		List<Employee> prefMales = sortedMales.stream()
+				.filter(e -> preferencesMap != null && !preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty())
+				.toList();
+		List<Employee> nonPrefMales = new ArrayList<>(sortedMales.stream()
+				.filter(e -> preferencesMap == null || preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty())
+				.toList());
+		if (!nonPrefMales.isEmpty() && randomSeed != 0) {
+			int shiftOffset = Math.abs(randomSeed) % nonPrefMales.size();
+			Collections.rotate(nonPrefMales, shiftOffset);
+		}
+		sortedMales = new ArrayList<>(prefMales);
+		sortedMales.addAll(nonPrefMales);
+
+		List<Employee> prefFemales = sortedFemales.stream()
+				.filter(e -> preferencesMap != null && !preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty())
+				.toList();
+		List<Employee> nonPrefFemales = new ArrayList<>(sortedFemales.stream()
+				.filter(e -> preferencesMap == null || preferencesMap.getOrDefault(e.getId(), ApplicablePreference.none(e.getId())).preferredOffDays().isEmpty())
+				.toList());
+		if (!nonPrefFemales.isEmpty() && randomSeed != 0) {
+			int shiftOffset = Math.abs(randomSeed) % nonPrefFemales.size();
+			Collections.rotate(nonPrefFemales, shiftOffset);
+		}
+		sortedFemales = new ArrayList<>(prefFemales);
+		sortedFemales.addAll(nonPrefFemales);
 
 		int targetOffsPerEmployee = Math.max(1, 7 - workingDays); // 2 for 5-day, 1 for 6-day
 
@@ -4123,22 +4268,27 @@ public class RosterService {
 		LocalDate mw3 = (offRot == 0) ? d3 : (offRot == 1) ? d4 : (offRot == 2) ? d1 : d2;
 		LocalDate mw4 = (offRot == 0) ? d4 : (offRot == 1) ? d1 : (offRot == 2) ? d2 : d3;
 
-		List<LocalDate> maleOrderedTargets;
+				List<LocalDate> baseTargets;
 		if (sortedMales.size() >= 7) {
-			maleOrderedTargets = List.of(d6, d5, mw1, mw2, mw3, mw4, d0);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw1, mw2, mw3, mw4, d0));
 		} else if (sortedMales.size() == 6) {
-			maleOrderedTargets = List.of(d6, d5, mw2, mw3, mw4, mw1);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw2, mw3, mw4, mw1));
 		} else if (sortedMales.size() == 5) {
-			maleOrderedTargets = List.of(d6, d5, mw2, mw4, mw3);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw2, mw4, mw3));
 		} else if (sortedMales.size() == 4) {
-			maleOrderedTargets = List.of(d6, d5, mw2, mw4);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw2, mw4));
 		} else if (sortedMales.size() == 3) {
-			maleOrderedTargets = List.of(d6, d5, mw2);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw2));
 		} else if (sortedMales.size() == 2) {
-			maleOrderedTargets = List.of(d6, d5);
+			baseTargets = new ArrayList<>(List.of(d6, d5));
 		} else {
-			maleOrderedTargets = List.of(d6, d5, mw4, mw2, mw3, mw1, d0);
+			baseTargets = new ArrayList<>(List.of(d6, d5, mw4, mw2, mw3, mw1, d0));
 		}
+		if (randomSeed != 0 && !baseTargets.isEmpty()) {
+			int rotStep = Math.abs(randomSeed) % baseTargets.size();
+			Collections.rotate(baseTargets, rotStep);
+		}
+		List<LocalDate> maleOrderedTargets = baseTargets;
 
 		List<LocalDate> femaleOrderedTargets = (workingDays == 6 || employees.size() <= 7)
 				? List.of(d6, d5)
@@ -4856,6 +5006,17 @@ public class RosterService {
 					}
 					shiftMap.computeIfAbsent(ShiftType.NIGHT, k -> new ArrayList<>()).add(candidateToMove);
 					nCount = shiftMap.getOrDefault(ShiftType.NIGHT, Collections.emptyList()).size();
+
+					// CRIS Mandatory Fatigue Safety Rule: Night shift MUST be followed by WEEKLY OFF tomorrow
+					if (cycle != null && cycle.getEndDate() != null && !date.equals(cycle.getEndDate())) {
+						RosterAssignment nextAssign = empAssignments.getOrDefault(candidateToMove.getEmployee().getId(), Collections.emptyList()).stream()
+								.filter(x -> x.getRosterDate().equals(date.plusDays(1))).findFirst().orElse(null);
+						if (nextAssign != null && !nextAssign.isOnLeave()) {
+							nextAssign.setWeeklyOff(true);
+							nextAssign.setShift(shifts.get(ShiftType.OFF));
+							nextAssign.setAssignmentReason("Weekly OFF (Fatigue Safety: Follows Night Shift)");
+						}
+					}
 				}
 			}
 
@@ -5359,9 +5520,10 @@ public class RosterService {
 						maleAssign.setShift(nightShift);
 						nightAssign.setShift(shifts.get(donorNewShift));
 
-						if (scheduledOffs != null && nextA != null && scheduledOffs.contains(nextA.getRosterDate())) {
+						if (nextA != null && !nextA.isOnLeave() && !isCycleEnd) {
 							nextA.setWeeklyOff(true);
 							nextA.setShift(shifts.get(ShiftType.OFF));
+							nextA.setAssignmentReason("Weekly OFF (Fatigue Safety: Follows Night Shift)");
 						}
 						break;
 					}
@@ -5389,8 +5551,6 @@ public class RosterService {
 				continue;
 			}
 
-			int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - (int) leaveCount));
-
 			// 1. If employee worked NIGHT, the day immediately following ANY night shift (if not another night shift) MUST be OFF
 			Set<LocalDate> postNightOffDates = new HashSet<>();
 
@@ -5417,8 +5577,8 @@ public class RosterService {
 				RosterAssignment cur = list.get(i);
 				if (!cur.isWeeklyOff() && !cur.isOnLeave() && cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.NIGHT) {
 					if (i + 1 < list.size()) {
-						RosterAssignment next = list.get(i + 1);
-						if (!next.isOnLeave() && (next.getShift() == null || next.getShift().getShiftType() != ShiftType.NIGHT)) {
+												RosterAssignment next = list.get(i + 1);
+						if (!next.isOnLeave()) {
 							postNightOffDates.add(next.getRosterDate());
 							next.setWeeklyOff(true);
 							next.setShift(shifts.get(ShiftType.OFF));
@@ -5430,6 +5590,8 @@ public class RosterService {
 			// 2. Query offList after ensuring post-night OFF
 			List<RosterAssignment> offList = new ArrayList<>(list.stream().filter(RosterAssignment::isWeeklyOff).toList());
 			Set<LocalDate> scheduledOffs = weeklyOffs != null ? weeklyOffs.get(emp.getId()) : null;
+
+			int targetOffs = Math.max(expectedOffs, postNightOffDates.size());
 
 			// Case 1: More than targetOffs Weekly OFFs -> Convert excess OFFs to valid working shifts with 12h rest
 			if (offList.size() > targetOffs) {
@@ -5483,6 +5645,22 @@ public class RosterService {
 
 				List<RosterAssignment> excessOffs = offList.stream().filter(a -> !keepOffs.contains(a)).toList();
 				for (RosterAssignment extraOff : excessOffs) {
+					// CRIS Mandatory Fatigue Safety Rule: NEVER convert a post-night recovery off to a working shift!
+					if (postNightOffDates.contains(extraOff.getRosterDate())) {
+						continue;
+					}
+					int checkIdx = list.indexOf(extraOff);
+					RosterAssignment prevCheck = checkIdx > 0 ? list.get(checkIdx - 1) : null;
+					if (prevCheck == null && assignmentRepository != null && cycle != null && cycle.getStartDate() != null && extraOff.getRosterDate().equals(cycle.getStartDate())) {
+						List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), cycle.getStartDate());
+						if (!prevWorked.isEmpty()) {
+							prevCheck = prevWorked.get(0);
+						}
+					}
+					if (prevCheck != null && !prevCheck.isWeeklyOff() && !prevCheck.isOnLeave() && prevCheck.getShift() != null && prevCheck.getShift().getShiftType() == ShiftType.NIGHT) {
+						continue; // Strictly forbidden: Day following NIGHT must remain WEEKLY OFF!
+					}
+
 					extraOff.setWeeklyOff(false);
 					extraOff.setOnLeave(false);
 
@@ -6027,11 +6205,8 @@ private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Lo
 				score += 35000;
 			}
 
-			if (wasNightYesterday) {
-				score -= 7500;
-				if (offOffset >= 0 && dayOffset == offOffset - 1) {
-					score -= 3000;
-				}
+						if (wasNightYesterday) {
+				return 100000; // CRIS Strict Rule: Working after Night shift is forbidden
 			} else if (myCurNights == 0) {
 				// Only incentivize males to take Night if they do NOT have an explicit non-night preference
 				if (!prefersNonNight) {
@@ -6042,14 +6217,12 @@ private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Lo
 					if (isLeaveTomorrow) {
 						score -= 4500;
 					} else if (offOffset >= 0) {
-						if (dayOffset == offOffset - 2) {
-							score -= 4500;
-						} else if (dayOffset == offOffset - 1) {
-							score -= 6000; // Shift immediately before scheduled weekly off is ideal for Night!
+						if (dayOffset == offOffset - 1) {
+							score -= 8000; // Shift immediately before scheduled weekly off is ideal for Night!
 						} else if (dayOffset == 6) {
 							score -= 6000;
 						} else {
-							score += 4500;
+							score += 25000; // Not immediately before an off day: heavily penalize!
 						}
 					}
 				} else {
@@ -6070,9 +6243,9 @@ private int score(Employee employee, ShiftType shiftType, LocalDate date, Map<Lo
 		}
 	}
 
-	// 5. Controlled Non-Deterministic Tie-Breaking (Part H #24)
-	int tieBreaker = (int) (((employee.getId() * 37L + randomSeed * 79L + (date != null ? date.getDayOfMonth() * 17L : 0)) % 100L));
-	score += tieBreaker;
+		// 5. Controlled Non-Deterministic Tie-Breaking & Attempt Diversity Exploration
+	int attemptPerturbation = (int) (((employee.getId() * 313L + randomSeed * 7919L + (date != null ? date.getDayOfMonth() * 17L : 0)) % 2001L) - 1000L);
+	score += attemptPerturbation;
 
 	return score;
 }
@@ -7690,7 +7863,7 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 						}
 					}
 
-					if (prevWorking != null) {
+										if (prevWorking != null) {
 						if (!hasMinimumRest(prevWorking.getRosterDate(), prevWorking.getShift(), d, curr.getShift())) {
 							restOk = false;
 							Duration rest = calculateRestDuration(prevWorking.getRosterDate(), prevWorking.getShift(), d, curr.getShift());
@@ -7698,6 +7871,27 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 						}
 					}
 					prevWorking = curr;
+				}
+
+				// BATCH 109: Strict Hard Rule: Every NIGHT shift must be followed by WEEKLY OFF on the following calendar day
+				if (!curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift() != null && curr.getShift().getShiftType() == ShiftType.NIGHT) {
+					int currIdx = empAssignments.indexOf(curr);
+					if (currIdx < empAssignments.size() - 1) {
+						RosterAssignment nextAssign = empAssignments.get(currIdx + 1);
+						boolean nextIsOff = nextAssign.isWeeklyOff() || (nextAssign.getShift() != null && nextAssign.getShift().getShiftType() == ShiftType.OFF);
+						if (!nextIsOff) {
+							coverageOk = false;
+							restOk = false;
+							ShiftType nextSt = (nextAssign.getShift() != null) ? nextAssign.getShift().getShiftType() : ShiftType.GENERAL;
+							conflicts.add(new ConflictItem(
+									nextAssign.getRosterDate(), empId, empName, nextSt,
+									"NIGHT_REQUIRES_NEXT_DAY_OFF", nextSt.name(), "WEEKLY_OFF",
+									"CRIS mandatory fatigue safety rule violation: Employee " + empName + " worked NIGHT on " + d
+											+ " but is assigned " + nextSt.name() + " on the following calendar day (" + nextAssign.getRosterDate() + "). Must receive WEEKLY OFF.",
+									"CRITICAL", "Assign Weekly OFF on " + nextAssign.getRosterDate(), false
+							));
+						}
+					}
 				}
 
 				if (curr.isOverridden()) {
@@ -7712,12 +7906,36 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 
 			int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
 			int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
-			if (offCount != targetOffs && leaveCount < 7) {
-				String rule = offCount > targetOffs ? "EXCESS_WEEKLY_OFF" : (offCount == 0 ? "NO_WEEKLY_OFF" : "MIN_WEEKLY_OFF");
+			long postNightOffCount = 0;
+			for (int idx = 0; idx < empAssignments.size(); idx++) {
+				RosterAssignment curA = empAssignments.get(idx);
+				if (curA.isWeeklyOff() || (curA.getShift() != null && curA.getShift().getShiftType() == ShiftType.OFF)) {
+					if (idx > 0) {
+						RosterAssignment prevA = empAssignments.get(idx - 1);
+						if (!prevA.isWeeklyOff() && !prevA.isOnLeave() && prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
+							postNightOffCount++;
+						}
+					} else if (assignmentRepository != null && cycle != null && cycle.getStartDate() != null && curA.getRosterDate().equals(cycle.getStartDate())) {
+						List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), cycle.getStartDate());
+						if (!prevWorked.isEmpty() && prevWorked.get(0).getShift() != null && prevWorked.get(0).getShift().getShiftType() == ShiftType.NIGHT) {
+							postNightOffCount++;
+						}
+					}
+				}
+			}
+			int allowableMaxOffs = Math.max(targetOffs, (int) postNightOffCount);
+			if (offCount < targetOffs && leaveCount < 7) {
+				String rule = (offCount == 0 ? "NO_WEEKLY_OFF" : "MIN_WEEKLY_OFF");
 				String severity = "CRITICAL";
 				String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
 				String scheduleStr = empAssignments.stream().map(a -> a.getRosterDate() + ":" + (a.isWeeklyOff() ? "OFF" : (a.getShift() != null ? a.getShift().getShiftType().name() : "NULL"))).collect(Collectors.joining(", "));
 				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, null, rule, offCount + " Weekly OFFs", expectedStr, "Employee " + empName + " has " + offCount + " weekly OFF assignments in cycle (expected exactly " + targetOffs + ") [" + scheduleStr + "]", severity, "Ensure exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : ""), false));
+			} else if (offCount > allowableMaxOffs && leaveCount < 7) {
+				String rule = "EXCESS_WEEKLY_OFF";
+				String severity = "CRITICAL";
+				String expectedStr = "<= " + allowableMaxOffs + " Weekly OFFs";
+				String scheduleStr = empAssignments.stream().map(a -> a.getRosterDate() + ":" + (a.isWeeklyOff() ? "OFF" : (a.getShift() != null ? a.getShift().getShiftType().name() : "NULL"))).collect(Collectors.joining(", "));
+				conflicts.add(new ConflictItem(cycle.getStartDate(), empId, empName, null, rule, offCount + " Weekly OFFs", expectedStr, "Employee " + empName + " has " + offCount + " weekly OFF assignments in cycle (allowable max " + allowableMaxOffs + ") [" + scheduleStr + "]", severity, "Reassign excess Weekly OFF days to working shifts", false));
 			}
 
 			if (emp.getGender() == Gender.MALE && emp.isActive() && leaveCount < 7 && !isDevelopmentTeam(emp)) {
