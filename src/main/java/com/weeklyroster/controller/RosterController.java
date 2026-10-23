@@ -404,6 +404,74 @@ public class RosterController {
         return ResponseEntity.ok(rosterService.copyPreviousWeek(request, auth != null ? auth.getName() : "Admin"));
     }
 
+    @PostMapping(value = "/manual/copy-week/preview", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.CopyWeekPreviewResponse> previewCopyWeek(
+            @Valid @RequestBody com.weeklyroster.dto.request.CopyPreviousWeekRequest request) {
+        return ResponseEntity.ok(rosterService.previewCopyWeek(request));
+    }
+
+    @PostMapping(value = "/manual/clear/preview", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ClearRosterPreviewResponse> previewClearRoster(
+            @Valid @RequestBody com.weeklyroster.dto.request.ClearManualRosterRequest request) {
+        return ResponseEntity.ok(rosterService.previewClearRoster(request));
+    }
+
+    @PostMapping(value = "/manual/clear", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> clearManualRoster(
+            @Valid @RequestBody com.weeklyroster.dto.request.ClearManualRosterRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.clearManualRoster(request, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/swap/preview", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse> previewShiftSwap(
+            @Valid @RequestBody com.weeklyroster.dto.request.ManualShiftSwapRequest request) {
+        return ResponseEntity.ok(rosterService.previewShiftSwap(request));
+    }
+
+    @PostMapping(value = "/manual/swap", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> swapManualShifts(
+            @Valid @RequestBody com.weeklyroster.dto.request.ManualShiftSwapRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.swapManualShifts(request, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @PostMapping(value = "/manual/undo", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.UndoOperationResponse> undoLastManualOperation(
+            @RequestParam(name = "cycleId") Long cycleId,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.undoLastManualOperation(cycleId, auth != null ? auth.getName() : "Admin"));
+    }
+
+    @GetMapping(value = "/manual/undo/status", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<java.util.Map<String, Object>> getUndoStatus(
+            @RequestParam(name = "cycleId") Long cycleId) {
+        return ResponseEntity.ok(rosterService.getUndoStatus(cycleId));
+    }
+
+    @GetMapping(value = "/manual/compare", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.WeekComparisonResponse> compareWeeks(
+            @RequestParam(name = "weekA") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate weekA,
+            @RequestParam(name = "weekB") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate weekB) {
+        return ResponseEntity.ok(rosterService.compareWeeks(weekA, weekB));
+    }
+
+    @PostMapping(value = "/manual/auto-save", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> autoSaveDraft(
+            @Valid @RequestBody com.weeklyroster.dto.request.AutoSaveDraftRequest request,
+            org.springframework.security.core.Authentication auth) {
+        return ResponseEntity.ok(rosterService.autoSaveDraft(request, auth != null ? auth.getName() : "Admin"));
+    }
+
     @PostMapping(value = "/manual/generate-unassigned", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<com.weeklyroster.dto.response.ManualRosterMatrixResponse> generateUnassignedOnly(

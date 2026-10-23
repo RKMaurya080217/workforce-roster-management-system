@@ -2,9 +2,13 @@ package com.weeklyroster.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -15,7 +19,8 @@ import java.util.function.Supplier;
  * SQLite WAL mode allows concurrent readers, but strictly forbids upgrading a deferred read transaction
  * to a write if another transaction committed concurrently.
  * 
- * For SQLite environments, this coordinator serializes write operations across application threads.
+ * For SQLite environments, this coordinator serializes write operations across application threads
+ * and guarantees transactions start strictly AFTER acquiring the single-writer lock.
  * For MySQL (production environments), operations execute directly with zero locking overhead.
  */
 @Component
@@ -28,6 +33,9 @@ public class DatabaseWriteCoordinator {
 
     @Value("${spring.datasource.url:}")
     private String datasourceUrl;
+
+    @Autowired(required = false)
+    private PlatformTransactionManager transactionManager;
 
     public boolean isSqlite() {
         return datasourceUrl != null && datasourceUrl.contains("sqlite");
@@ -73,6 +81,34 @@ public class DatabaseWriteCoordinator {
             }
         }
         throw new CannotAcquireLockException("Exceeded maximum write retry attempts");
+    }
+
+    /**
+     * Executes a transactional write operation.
+     * On SQLite, the single-writer lock is acquired FIRST, and a new transaction
+     * is opened ONLY AFTER the lock is held. This prevents SQLITE_BUSY_SNAPSHOT completely.
+     */
+    public <T> T executeTransactionalWrite(Supplier<T> writeAction) {
+        if (!isSqlite() || transactionManager == null) {
+            if (transactionManager != null) {
+                TransactionTemplate template = new TransactionTemplate(transactionManager);
+                return template.execute(status -> writeAction.get());
+            }
+            return writeAction.get();
+        }
+
+        return executeWrite(() -> {
+            TransactionTemplate template = new TransactionTemplate(transactionManager);
+            template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            return template.execute(status -> writeAction.get());
+        });
+    }
+
+    public void executeTransactionalWriteVoid(Runnable writeAction) {
+        executeTransactionalWrite(() -> {
+            writeAction.run();
+            return null;
+        });
     }
 
     public void executeWrite(Runnable writeAction) {

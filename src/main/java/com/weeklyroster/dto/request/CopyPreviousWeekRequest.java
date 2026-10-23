@@ -5,5 +5,13 @@ import java.time.LocalDate;
 
 public record CopyPreviousWeekRequest(
         Long cycleId,
-        @NotNull LocalDate targetStartDate
-) {}
+        @NotNull LocalDate targetStartDate,
+        LocalDate sourceStartDate,
+        Boolean includeWeeklyOff,
+        Boolean overwriteExistingManual,
+        Boolean previewOnly
+) {
+    public CopyPreviousWeekRequest(Long cycleId, LocalDate targetStartDate) {
+        this(cycleId, targetStartDate, null, true, false, false);
+    }
+}

@@ -19,6 +19,19 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.weeklyroster.entity.ManualRosterOperation;
+import com.weeklyroster.repository.ManualRosterOperationRepository;
+import com.weeklyroster.dto.request.CopyPreviousWeekRequest;
+import com.weeklyroster.dto.request.ClearManualRosterRequest;
+import com.weeklyroster.dto.request.ManualShiftSwapRequest;
+import com.weeklyroster.dto.request.AutoSaveDraftRequest;
+import com.weeklyroster.dto.response.CopyWeekPreviewResponse;
+import com.weeklyroster.dto.response.ClearRosterPreviewResponse;
+import com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse;
+import com.weeklyroster.dto.response.WeekComparisonResponse;
+import com.weeklyroster.dto.response.UndoOperationResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,6 +127,12 @@ public class RosterService {
 
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private com.weeklyroster.config.DatabaseWriteCoordinator databaseWriteCoordinator;
+
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private ManualRosterOperationRepository manualRosterOperationRepository;
+
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private ObjectMapper objectMapper;
 
 	private final java.util.concurrent.ConcurrentHashMap<LocalDate, java.util.concurrent.CompletableFuture<RosterCycleResponse>> inFlightGenerations = new java.util.concurrent.ConcurrentHashMap<>();
 	private final java.util.concurrent.ConcurrentHashMap<LocalDate, java.util.concurrent.CompletableFuture<List<com.weeklyroster.dto.response.RosterCandidateResponse>>> inFlightCandidates = new java.util.concurrent.ConcurrentHashMap<>();
@@ -1735,11 +1754,75 @@ public class RosterService {
 		);
 	}
 
-	@Transactional
+	public static class AssignmentSnapshotItem {
+		public Long assignmentId;
+		public Long employeeId;
+		public String rosterDate;
+		public ShiftType shiftType;
+		public boolean weeklyOff;
+		public boolean onLeave;
+		public boolean manualAssignment;
+		public boolean overridden;
+		public String assignmentSource;
+		public String assignmentReason;
+		public String overrideReason;
+		public boolean existed;
+
+		public AssignmentSnapshotItem() {}
+
+		public static AssignmentSnapshotItem from(RosterAssignment a, Long employeeId, LocalDate date) {
+			AssignmentSnapshotItem item = new AssignmentSnapshotItem();
+			item.employeeId = employeeId;
+			item.rosterDate = (date != null) ? date.toString() : null;
+			if (a != null && a.getId() != null) {
+				item.assignmentId = a.getId();
+				item.shiftType = (a.getShift() != null) ? a.getShift().getShiftType() : ShiftType.OFF;
+				item.weeklyOff = a.isWeeklyOff();
+				item.onLeave = a.isOnLeave();
+				item.manualAssignment = a.isManualAssignment();
+				item.overridden = a.isOverridden();
+				item.assignmentSource = a.getAssignmentSource();
+				item.assignmentReason = a.getAssignmentReason();
+				item.overrideReason = a.getOverrideReason();
+				item.existed = true;
+			} else {
+				item.existed = false;
+				item.shiftType = ShiftType.OFF;
+				item.weeklyOff = true;
+				item.assignmentSource = "AUTOMATIC";
+			}
+			return item;
+		}
+	}
+
+	private ObjectMapper getObjectMapper() {
+		if (this.objectMapper != null) {
+			return this.objectMapper;
+		}
+		ObjectMapper mapper = new ObjectMapper();
+		mapper.findAndRegisterModules();
+		return mapper;
+	}
+
+	private void recordManualOperation(Long cycleId, String operationType, String description,
+	                                   String adminUsername, List<AssignmentSnapshotItem> snapshots) {
+		if (manualRosterOperationRepository == null || snapshots == null || snapshots.isEmpty()) {
+			return;
+		}
+		try {
+			String json = getObjectMapper().writeValueAsString(snapshots);
+			ManualRosterOperation op = new ManualRosterOperation(
+					cycleId, operationType, description, adminUsername, json);
+			manualRosterOperationRepository.save(op);
+		} catch (Exception e) {
+			log.warn("Failed to record manual roster operation snapshot: {}", e.getMessage());
+		}
+	}
+
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse saveManualAssignment(
 			com.weeklyroster.dto.request.ManualAssignmentRequest req, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doSaveManualAssignment(req, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doSaveManualAssignment(req, adminUsername));
 		}
 		return doSaveManualAssignment(req, adminUsername);
 	}
@@ -1760,6 +1843,9 @@ public class RosterService {
 		}
 		if (cycle == null) {
 			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+		if (cycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Cannot modify assignments in a locked roster cycle");
 		}
 
 		Employee employee = employeeRepository.findById(req.employeeId())
@@ -1785,10 +1871,17 @@ public class RosterService {
 			assignment.setRosterDate(date);
 		}
 
+		// Snapshot prior state for Durable Undo
+		AssignmentSnapshotItem snapshot = AssignmentSnapshotItem.from(
+				assignment.getId() != null ? assignment : null, employee.getId(), date);
+		recordManualOperation(cycle.getId(), "SINGLE_ASSIGN",
+				"Assigned " + req.shiftType() + " to " + employee.getFirstName() + " on " + date,
+				adminUsername, List.of(snapshot));
+
 		assignment.setCycle(cycle);
 		assignment.setOnLeave(onLeave);
 		assignment.setWeeklyOff(isOff);
-		assignment.setShift(shifts.get(req.shiftType()));
+		assignment.setShift(isOff ? (shifts.get(ShiftType.OFF) != null ? shifts.get(ShiftType.OFF) : null) : shifts.get(req.shiftType()));
 		assignment.setManualAssignment(true);
 		assignment.setOverridden(true);
 		assignment.setAssignmentSource("MANUAL");
@@ -1798,6 +1891,7 @@ public class RosterService {
 		assignment.setOverrideCreatedAt(LocalDateTime.now());
 
 		assignmentRepository.save(assignment);
+		assignmentRepository.flush();
 
 		if (auditService != null) {
 			auditService.log(
@@ -1817,11 +1911,10 @@ public class RosterService {
 		return buildMatrixResponse(cycle);
 	}
 
-	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse bulkAssignManual(
 			com.weeklyroster.dto.request.BulkManualAssignmentRequest req, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doBulkAssignManual(req, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doBulkAssignManual(req, adminUsername));
 		}
 		return doBulkAssignManual(req, adminUsername);
 	}
@@ -1849,6 +1942,19 @@ public class RosterService {
 
 		Map<ShiftType, Shift> shifts = activeShiftMap();
 		boolean isOff = req.shiftType() == ShiftType.OFF || Boolean.TRUE.equals(req.weeklyOff());
+
+		// Record snapshots for Durable Undo before mutations
+		List<AssignmentSnapshotItem> snapshots = new ArrayList<>();
+		for (Long empId : req.employeeIds()) {
+			for (LocalDate d : req.dates()) {
+				List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(empId, d);
+				RosterAssignment existing = !existingList.isEmpty() ? existingList.get(0) : null;
+				snapshots.add(AssignmentSnapshotItem.from(existing, empId, d));
+			}
+		}
+		recordManualOperation(cycle.getId(), "BULK_ASSIGN",
+				"Bulk assigned " + req.shiftType() + " to " + req.employeeIds().size() + " employee(s) across " + req.dates().size() + " date(s)",
+				adminUsername, snapshots);
 
 		int appliedCount = 0;
 		int skippedLeaveCount = 0;
@@ -1894,14 +2000,14 @@ public class RosterService {
 			throw new BusinessException("Cannot assign working shift: selected employee(s) have approved leave on selected date(s).");
 		}
 
+		assignmentRepository.flush();
 		return buildMatrixResponse(cycle);
 	}
 
-	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse clearManualAssignment(
 			Long cycleId, Long employeeId, LocalDate date, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doClearManualAssignment(cycleId, employeeId, date, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doClearManualAssignment(cycleId, employeeId, date, adminUsername));
 		}
 		return doClearManualAssignment(cycleId, employeeId, date, adminUsername);
 	}
@@ -1918,21 +2024,115 @@ public class RosterService {
 		List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(employeeId, date);
 		if (!existingList.isEmpty()) {
 			RosterAssignment a = existingList.get(0);
+			AssignmentSnapshotItem snapshot = AssignmentSnapshotItem.from(a, employeeId, date);
+			recordManualOperation(cycle.getId(), "CLEAR",
+					"Cleared manual assignment for employee #" + employeeId + " on " + date,
+					adminUsername, List.of(snapshot));
+
 			a.setManualAssignment(false);
 			a.setOverridden(false);
 			a.setAssignmentSource("AUTOMATIC");
 			a.setAssignmentReason("Cleared manual assignment");
 			assignmentRepository.save(a);
+			assignmentRepository.flush();
 		}
 
 		return buildMatrixResponse(cycle);
 	}
 
-	@Transactional
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.CopyWeekPreviewResponse previewCopyWeek(
+			com.weeklyroster.dto.request.CopyPreviousWeekRequest req) {
+		if (req == null || req.targetStartDate() == null) {
+			throw new BusinessException("Target start date is required");
+		}
+		LocalDate targetMonday = req.targetStartDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate targetSunday = targetMonday.plusDays(6);
+		LocalDate sourceMonday = (req.sourceStartDate() != null)
+				? req.sourceStartDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+				: targetMonday.minusWeeks(1);
+		LocalDate sourceSunday = sourceMonday.plusDays(6);
+
+		List<RosterCycle> sourceCycles = cycleRepository.findOverlappingCycles(sourceMonday, sourceSunday);
+		if (sourceCycles.isEmpty()) {
+			var opt = cycleRepository.findByStartDateAndEndDate(sourceMonday, sourceSunday);
+			if (opt.isPresent()) sourceCycles.add(opt.get());
+		}
+		if (sourceCycles.isEmpty()) {
+			return new com.weeklyroster.dto.response.CopyWeekPreviewResponse(
+					sourceMonday, sourceSunday, targetMonday, targetSunday,
+					0, 0, 0, 0, 1,
+					List.of("No roster cycle found for source week (" + sourceMonday + " to " + sourceSunday + ") to copy from."),
+					false
+			);
+		}
+
+		RosterCycle sourceCycle = sourceCycles.get(0);
+		List<RosterAssignment> sourceAssignments = assignmentRepository.findByCycleId(sourceCycle.getId());
+		if (sourceAssignments.isEmpty()) {
+			return new com.weeklyroster.dto.response.CopyWeekPreviewResponse(
+					sourceMonday, sourceSunday, targetMonday, targetSunday,
+					0, 0, 0, 0, 1,
+					List.of("Source week roster cycle has no assignments to copy."),
+					false
+			);
+		}
+
+		List<RosterAssignment> targetExisting = assignmentRepository.findByDateRange(targetMonday, targetSunday);
+		Map<String, RosterAssignment> targetMap = new HashMap<>();
+		for (RosterAssignment ta : targetExisting) {
+			if (ta.getEmployee() != null && ta.getRosterDate() != null) {
+				targetMap.put(ta.getEmployee().getId() + "_" + ta.getRosterDate(), ta);
+			}
+		}
+
+		boolean includeOff = req.includeWeeklyOff() == null || req.includeWeeklyOff();
+		boolean overwriteManual = Boolean.TRUE.equals(req.overwriteExistingManual());
+
+		Set<Long> affectedEmployees = new HashSet<>();
+		Set<LocalDate> affectedDates = new HashSet<>();
+		List<String> conflicts = new ArrayList<>();
+		int totalToCopy = 0;
+		int protectedManualCount = 0;
+		long dayDiff = java.time.temporal.ChronoUnit.DAYS.between(sourceMonday, targetMonday);
+
+		for (RosterAssignment sa : sourceAssignments) {
+			if (sa.getEmployee() == null || !sa.getEmployee().isActive()) continue;
+			LocalDate targetDate = sa.getRosterDate().plusDays(dayDiff);
+			if (targetDate.isBefore(targetMonday) || targetDate.isAfter(targetSunday)) continue;
+
+			if (!includeOff && sa.isWeeklyOff()) continue;
+
+			String key = sa.getEmployee().getId() + "_" + targetDate;
+			RosterAssignment existing = targetMap.get(key);
+			if (existing != null && (existing.isManualAssignment() || existing.isOverridden()) && !overwriteManual) {
+				protectedManualCount++;
+				conflicts.add("Preserving manual assignment for " + sa.getEmployee().getFirstName() + " on " + targetDate);
+				continue;
+			}
+
+			boolean onLeave = isApprovedLeave(sa.getEmployee().getId(), targetDate);
+			if (onLeave && !sa.isWeeklyOff()) {
+				conflicts.add(sa.getEmployee().getFirstName() + " has approved leave on " + targetDate + " (will be set to Leave/OFF)");
+			}
+
+			affectedEmployees.add(sa.getEmployee().getId());
+			affectedDates.add(targetDate);
+			totalToCopy++;
+		}
+
+		boolean canApply = totalToCopy > 0;
+		return new com.weeklyroster.dto.response.CopyWeekPreviewResponse(
+				sourceMonday, sourceSunday, targetMonday, targetSunday,
+				totalToCopy, affectedEmployees.size(), affectedDates.size(),
+				protectedManualCount, conflicts.size(), conflicts, canApply
+		);
+	}
+
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse copyPreviousWeek(
 			com.weeklyroster.dto.request.CopyPreviousWeekRequest req, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doCopyPreviousWeek(req, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doCopyPreviousWeek(req, adminUsername));
 		}
 		return doCopyPreviousWeek(req, adminUsername);
 	}
@@ -1943,21 +2143,24 @@ public class RosterService {
 			throw new BusinessException("Target start date is required");
 		}
 		LocalDate targetMonday = req.targetStartDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
-		LocalDate prevMonday = targetMonday.minusWeeks(1);
-		LocalDate prevSunday = prevMonday.plusDays(6);
+		LocalDate targetSunday = targetMonday.plusDays(6);
+		LocalDate sourceMonday = (req.sourceStartDate() != null)
+				? req.sourceStartDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+				: targetMonday.minusWeeks(1);
+		LocalDate sourceSunday = sourceMonday.plusDays(6);
 
-		List<RosterCycle> prevCycles = cycleRepository.findOverlappingCycles(prevMonday, prevSunday);
-		if (prevCycles.isEmpty()) {
-			var opt = cycleRepository.findByStartDateAndEndDate(prevMonday, prevSunday);
-			if (opt.isPresent()) prevCycles.add(opt.get());
+		List<RosterCycle> sourceCycles = cycleRepository.findOverlappingCycles(sourceMonday, sourceSunday);
+		if (sourceCycles.isEmpty()) {
+			var opt = cycleRepository.findByStartDateAndEndDate(sourceMonday, sourceSunday);
+			if (opt.isPresent()) sourceCycles.add(opt.get());
 		}
-		if (prevCycles.isEmpty()) {
-			throw new BusinessException("No roster cycle found for previous week (" + prevMonday + " to " + prevSunday + ") to copy from.");
+		if (sourceCycles.isEmpty()) {
+			throw new BusinessException("No roster cycle found for source week (" + sourceMonday + " to " + sourceSunday + ") to copy from.");
 		}
-		RosterCycle prevCycle = prevCycles.get(0);
-		List<RosterAssignment> prevAssignments = assignmentRepository.findByCycleId(prevCycle.getId());
-		if (prevAssignments.isEmpty()) {
-			throw new BusinessException("Previous week roster cycle has no assignments to copy.");
+		RosterCycle sourceCycle = sourceCycles.get(0);
+		List<RosterAssignment> sourceAssignments = assignmentRepository.findByCycleId(sourceCycle.getId());
+		if (sourceAssignments.isEmpty()) {
+			throw new BusinessException("Source week roster cycle has no assignments to copy.");
 		}
 
 		RosterCycle targetCycle = null;
@@ -1965,20 +2168,53 @@ public class RosterService {
 			targetCycle = cycleRepository.findById(req.cycleId()).orElse(null);
 		}
 		if (targetCycle == null) {
-			targetCycle = getOrCreateDraftCycle(targetMonday, prevCycle.getWorkingDays() != null ? prevCycle.getWorkingDays() : 6);
+			targetCycle = getOrCreateDraftCycle(targetMonday, sourceCycle.getWorkingDays() != null ? sourceCycle.getWorkingDays() : 6);
+		}
+		if (targetCycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Target roster cycle is locked and cannot be modified.");
 		}
 
 		Map<ShiftType, Shift> shifts = activeShiftMap();
+		boolean includeOff = req.includeWeeklyOff() == null || req.includeWeeklyOff();
+		boolean overwriteManual = Boolean.TRUE.equals(req.overwriteExistingManual());
+		long dayDiff = java.time.temporal.ChronoUnit.DAYS.between(sourceMonday, targetMonday);
 
-		for (RosterAssignment pa : prevAssignments) {
-			Employee emp = pa.getEmployee();
+		// Record snapshots of affected target assignments for Durable Undo
+		List<AssignmentSnapshotItem> snapshots = new ArrayList<>();
+		for (RosterAssignment sa : sourceAssignments) {
+			if (sa.getEmployee() == null || !sa.getEmployee().isActive()) continue;
+			LocalDate targetDate = sa.getRosterDate().plusDays(dayDiff);
+			if (targetDate.isBefore(targetMonday) || targetDate.isAfter(targetSunday)) continue;
+			if (!includeOff && sa.isWeeklyOff()) continue;
+
+			List<RosterAssignment> existingTargetList = assignmentRepository.findByEmployeeIdAndRosterDate(sa.getEmployee().getId(), targetDate);
+			RosterAssignment existingTarget = !existingTargetList.isEmpty() ? existingTargetList.get(0) : null;
+			if (existingTarget != null && (existingTarget.isManualAssignment() || existingTarget.isOverridden()) && !overwriteManual) {
+				continue; // Preserved
+			}
+			snapshots.add(AssignmentSnapshotItem.from(existingTarget, sa.getEmployee().getId(), targetDate));
+		}
+		recordManualOperation(targetCycle.getId(), "COPY_WEEK",
+				"Copied assignments from week " + sourceMonday + " to " + targetMonday + " (includeOff=" + includeOff + ", overwriteManual=" + overwriteManual + ")",
+				adminUsername, snapshots);
+
+		for (RosterAssignment sa : sourceAssignments) {
+			Employee emp = sa.getEmployee();
 			if (emp == null || !emp.isActive()) continue;
 
-			LocalDate targetDate = pa.getRosterDate().plusWeeks(1);
-			boolean onLeave = isApprovedLeave(emp.getId(), targetDate);
+			LocalDate targetDate = sa.getRosterDate().plusDays(dayDiff);
+			if (targetDate.isBefore(targetMonday) || targetDate.isAfter(targetSunday)) continue;
+
+			if (!includeOff && sa.isWeeklyOff()) continue;
 
 			List<RosterAssignment> existingTargetList = assignmentRepository.findByEmployeeIdAndRosterDate(emp.getId(), targetDate);
 			RosterAssignment ta = !existingTargetList.isEmpty() ? existingTargetList.get(0) : new RosterAssignment();
+
+			if (ta.getId() != null && (ta.isManualAssignment() || ta.isOverridden()) && !overwriteManual) {
+				continue; // Preserve protected manual assignment
+			}
+
+			boolean onLeave = isApprovedLeave(emp.getId(), targetDate);
 
 			ta.setCycle(targetCycle);
 			ta.setEmployee(emp);
@@ -1990,26 +2226,567 @@ public class RosterService {
 				ta.setManualAssignment(true);
 				ta.setOverridden(true);
 				ta.setAssignmentSource("COPIED");
-				ta.setAssignmentReason("Copied from previous week - On Leave");
+				ta.setAssignmentReason("Copied from " + sa.getRosterDate() + " - On Leave");
 			} else {
-				ta.setWeeklyOff(pa.isWeeklyOff());
-				ta.setShift(pa.getShift());
+				ta.setWeeklyOff(sa.isWeeklyOff());
+				ta.setShift(sa.getShift());
 				ta.setManualAssignment(true);
 				ta.setOverridden(true);
 				ta.setAssignmentSource("COPIED");
-				ta.setAssignmentReason("Copied from previous week (" + pa.getRosterDate() + ")");
+				ta.setAssignmentReason("Copied from previous week (" + sa.getRosterDate() + ")");
 			}
 			assignmentRepository.save(ta);
 		}
 
+		assignmentRepository.flush();
 		return buildMatrixResponse(targetCycle);
 	}
 
-	@Transactional
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.ClearRosterPreviewResponse previewClearRoster(
+			com.weeklyroster.dto.request.ClearManualRosterRequest req) {
+		if (req == null || req.mode() == null) {
+			throw new BusinessException("Clear mode is required");
+		}
+		LocalDate monday = (req.startDate() != null)
+				? req.startDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+				: LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate sunday = monday.plusDays(6);
+
+		List<LocalDate> targetDates = new ArrayList<>();
+		List<Long> targetEmpIds = new ArrayList<>();
+
+		String mode = req.mode().trim().toUpperCase();
+		switch (mode) {
+			case "ENTIRE_WEEK" -> {
+				for (LocalDate d = monday; !d.isAfter(sunday); d = d.plusDays(1)) targetDates.add(d);
+				targetEmpIds = employeeRepository.findByActiveTrueOrderByIdAsc().stream().map(Employee::getId).toList();
+			}
+			case "SELECTED_EMPLOYEES" -> {
+				for (LocalDate d = monday; !d.isAfter(sunday); d = d.plusDays(1)) targetDates.add(d);
+				if (req.employeeIds() != null) targetEmpIds.addAll(req.employeeIds());
+			}
+			case "SELECTED_DATES" -> {
+				if (req.dates() != null) targetDates.addAll(req.dates());
+				targetEmpIds = employeeRepository.findByActiveTrueOrderByIdAsc().stream().map(Employee::getId).toList();
+			}
+			case "SELECTED_CELLS" -> {
+				// Handled individually
+			}
+			default -> throw new BusinessException("Unsupported clear mode: " + req.mode());
+		}
+
+		int affectedCount = 0;
+		Set<Long> affectedEmpSet = new HashSet<>();
+		Set<LocalDate> affectedDateSet = new HashSet<>();
+		List<String> sample = new ArrayList<>();
+
+		if ("SELECTED_CELLS".equals(mode)) {
+			if (req.cells() != null) {
+				for (var cell : req.cells()) {
+					if (cell.employeeId() != null && cell.date() != null) {
+						affectedCount++;
+						affectedEmpSet.add(cell.employeeId());
+						affectedDateSet.add(cell.date());
+						if (sample.size() < 5) {
+							sample.add("Emp #" + cell.employeeId() + " on " + cell.date());
+						}
+					}
+				}
+			}
+		} else {
+			for (Long empId : targetEmpIds) {
+				for (LocalDate d : targetDates) {
+					affectedCount++;
+					affectedEmpSet.add(empId);
+					affectedDateSet.add(d);
+					if (sample.size() < 5) {
+						sample.add("Emp #" + empId + " on " + d);
+					}
+				}
+			}
+		}
+
+		String summary = switch (mode) {
+			case "ENTIRE_WEEK" -> "Clear all " + affectedCount + " assignments across the entire week (" + monday + " to " + sunday + ").";
+			case "SELECTED_EMPLOYEES" -> "Clear " + affectedCount + " assignments for " + affectedEmpSet.size() + " selected employee(s).";
+			case "SELECTED_DATES" -> "Clear " + affectedCount + " assignments across " + affectedDateSet.size() + " selected date(s).";
+			case "SELECTED_CELLS" -> "Clear " + affectedCount + " individually selected assignment cells.";
+			default -> "Clear roster assignments.";
+		};
+
+		String warning = "All affected cells will be cleared to OFF / Unassigned. Explicit manual locks will be reset. This action can be undone via Undo.";
+		return new com.weeklyroster.dto.response.ClearRosterPreviewResponse(
+				mode, affectedCount, affectedEmpSet.size(), affectedDateSet.size(),
+				summary, warning, sample, affectedCount > 0
+		);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse clearManualRoster(
+			com.weeklyroster.dto.request.ClearManualRosterRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doClearManualRoster(req, adminUsername));
+		}
+		return doClearManualRoster(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doClearManualRoster(
+			com.weeklyroster.dto.request.ClearManualRosterRequest req, String adminUsername) {
+		if (req == null || req.mode() == null) {
+			throw new BusinessException("Clear mode is required");
+		}
+		LocalDate monday = (req.startDate() != null)
+				? req.startDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+				: LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).with(java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate sunday = monday.plusDays(6);
+
+		RosterCycle cycle = null;
+		if (req.cycleId() != null) {
+			cycle = cycleRepository.findById(req.cycleId()).orElse(null);
+		}
+		if (cycle == null) {
+			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+		if (cycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Cannot clear assignments in a locked roster cycle");
+		}
+
+		String mode = req.mode().trim().toUpperCase();
+		List<com.weeklyroster.dto.request.ClearManualRosterRequest.CellCoordinate> targetCells = new ArrayList<>();
+
+		switch (mode) {
+			case "ENTIRE_WEEK" -> {
+				List<Employee> activeEmps = employeeRepository.findByActiveTrueOrderByIdAsc();
+				for (Employee e : activeEmps) {
+					for (LocalDate d = monday; !d.isAfter(sunday); d = d.plusDays(1)) {
+						targetCells.add(new com.weeklyroster.dto.request.ClearManualRosterRequest.CellCoordinate(e.getId(), d));
+					}
+				}
+			}
+			case "SELECTED_EMPLOYEES" -> {
+				if (req.employeeIds() != null) {
+					for (Long empId : req.employeeIds()) {
+						for (LocalDate d = monday; !d.isAfter(sunday); d = d.plusDays(1)) {
+							targetCells.add(new com.weeklyroster.dto.request.ClearManualRosterRequest.CellCoordinate(empId, d));
+						}
+					}
+				}
+			}
+			case "SELECTED_DATES" -> {
+				if (req.dates() != null) {
+					List<Employee> activeEmps = employeeRepository.findByActiveTrueOrderByIdAsc();
+					for (Employee e : activeEmps) {
+						for (LocalDate d : req.dates()) {
+							targetCells.add(new com.weeklyroster.dto.request.ClearManualRosterRequest.CellCoordinate(e.getId(), d));
+						}
+					}
+				}
+			}
+			case "SELECTED_CELLS" -> {
+				if (req.cells() != null) {
+					targetCells.addAll(req.cells());
+				}
+			}
+			default -> throw new BusinessException("Unsupported clear mode: " + req.mode());
+		}
+
+		if (targetCells.isEmpty()) {
+			throw new BusinessException("No cells selected to clear");
+		}
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+
+		// Record snapshot for durable undo
+		List<AssignmentSnapshotItem> snapshots = new ArrayList<>();
+		for (var cell : targetCells) {
+			List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(cell.employeeId(), cell.date());
+			RosterAssignment existing = !existingList.isEmpty() ? existingList.get(0) : null;
+			snapshots.add(AssignmentSnapshotItem.from(existing, cell.employeeId(), cell.date()));
+		}
+		recordManualOperation(cycle.getId(), "CLEAR",
+				"Cleared " + targetCells.size() + " assignments (Mode: " + mode + ")",
+				adminUsername, snapshots);
+
+		for (var cell : targetCells) {
+			List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(cell.employeeId(), cell.date());
+			if (existingList.isEmpty()) continue;
+			for (RosterAssignment a : existingList) {
+				boolean onLeave = isApprovedLeave(cell.employeeId(), cell.date());
+				if (onLeave) {
+					a.setOnLeave(true);
+					a.setWeeklyOff(false);
+					a.setShift(shifts.get(ShiftType.OFF));
+					a.setManualAssignment(false);
+					a.setOverridden(false);
+					a.setAssignmentSource("AUTOMATIC");
+					a.setAssignmentReason("Cleared - Leave preserved");
+				} else {
+					a.setOnLeave(false);
+					a.setWeeklyOff(true);
+					a.setShift(shifts.get(ShiftType.OFF));
+					a.setManualAssignment(false);
+					a.setOverridden(false);
+					a.setAssignmentSource("CLEARED");
+					a.setAssignmentReason("Cleared by Admin");
+				}
+				assignmentRepository.save(a);
+			}
+		}
+
+		assignmentRepository.flush();
+		return buildMatrixResponse(cycle);
+	}
+
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse previewShiftSwap(
+			com.weeklyroster.dto.request.ManualShiftSwapRequest req) {
+		if (req == null || req.employeeAId() == null || req.employeeBId() == null || req.dateA() == null || req.dateB() == null) {
+			throw new BusinessException("Both employees and dates are required for shift swap");
+		}
+		Employee empA = employeeRepository.findById(req.employeeAId())
+				.orElseThrow(() -> new ResourceNotFoundException("Employee A #" + req.employeeAId() + " not found"));
+		Employee empB = employeeRepository.findById(req.employeeBId())
+				.orElseThrow(() -> new ResourceNotFoundException("Employee B #" + req.employeeBId() + " not found"));
+
+		List<RosterAssignment> listA = assignmentRepository.findByEmployeeIdAndRosterDate(empA.getId(), req.dateA());
+		RosterAssignment assignA = !listA.isEmpty() ? listA.get(0) : null;
+		List<RosterAssignment> listB = assignmentRepository.findByEmployeeIdAndRosterDate(empB.getId(), req.dateB());
+		RosterAssignment assignB = !listB.isEmpty() ? listB.get(0) : null;
+
+		String origShiftA = (assignA != null && assignA.getShift() != null) ? assignA.getShift().getShiftType().name() : "OFF";
+		boolean origOffA = assignA == null || assignA.isWeeklyOff();
+		String origShiftB = (assignB != null && assignB.getShift() != null) ? assignB.getShift().getShiftType().name() : "OFF";
+		boolean origOffB = assignB == null || assignB.isWeeklyOff();
+
+		// Proposed: A gets B's shift, B gets A's shift
+		String propShiftA = origShiftB;
+		boolean propOffA = origOffB;
+		String propShiftB = origShiftA;
+		boolean propOffB = origOffA;
+
+		List<String> conflicts = new ArrayList<>();
+		boolean onLeaveA = isApprovedLeave(empA.getId(), req.dateA());
+		boolean onLeaveB = isApprovedLeave(empB.getId(), req.dateB());
+
+		if (onLeaveA && !propOffA) {
+			conflicts.add(empA.getFirstName() + " has approved leave on " + req.dateA() + " and cannot take a working shift (" + propShiftA + ")");
+		}
+		if (onLeaveB && !propOffB) {
+			conflicts.add(empB.getFirstName() + " has approved leave on " + req.dateB() + " and cannot take a working shift (" + propShiftB + ")");
+		}
+
+		if (empA.getGender() == Gender.FEMALE && "NIGHT".equalsIgnoreCase(propShiftA)) {
+			conflicts.add("Statutory violation: Female employee " + empA.getFirstName() + " cannot be scheduled for Night shift");
+		}
+		if (empB.getGender() == Gender.FEMALE && "NIGHT".equalsIgnoreCase(propShiftB)) {
+			conflicts.add("Statutory violation: Female employee " + empB.getFirstName() + " cannot be scheduled for Night shift");
+		}
+
+		return new com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse(
+				empA.getId(), empA.getFirstName() + " " + (empA.getLastName() != null ? empA.getLastName() : "").trim(),
+				req.dateA(), origShiftA, propShiftA, origOffA, propOffA,
+				empB.getId(), empB.getFirstName() + " " + (empB.getLastName() != null ? empB.getLastName() : "").trim(),
+				req.dateB(), origShiftB, propShiftB, origOffB, propOffB,
+				conflicts.size(), conflicts, conflicts.isEmpty() || Boolean.TRUE.equals(req.allowManualOverride())
+		);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse swapManualShifts(
+			com.weeklyroster.dto.request.ManualShiftSwapRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doSwapManualShifts(req, adminUsername));
+		}
+		return doSwapManualShifts(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doSwapManualShifts(
+			com.weeklyroster.dto.request.ManualShiftSwapRequest req, String adminUsername) {
+		var preview = previewShiftSwap(req);
+		if (!preview.canApply()) {
+			throw new BusinessException("Cannot swap shifts due to constraints: " + String.join("; ", preview.conflicts()));
+		}
+
+		LocalDate monday = req.dateA().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		RosterCycle cycle = (req.cycleId() != null)
+				? cycleRepository.findById(req.cycleId()).orElse(null)
+				: getOrCreateDraftCycle(monday, 6);
+		if (cycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Cannot modify assignments in a locked roster cycle");
+		}
+
+		Employee empA = employeeRepository.findById(req.employeeAId())
+				.orElseThrow(() -> new ResourceNotFoundException("Employee A not found"));
+		Employee empB = employeeRepository.findById(req.employeeBId())
+				.orElseThrow(() -> new ResourceNotFoundException("Employee B not found"));
+
+		List<RosterAssignment> listA = assignmentRepository.findByEmployeeIdAndRosterDate(empA.getId(), req.dateA());
+		RosterAssignment assignA = !listA.isEmpty() ? listA.get(0) : new RosterAssignment();
+		List<RosterAssignment> listB = assignmentRepository.findByEmployeeIdAndRosterDate(empB.getId(), req.dateB());
+		RosterAssignment assignB = !listB.isEmpty() ? listB.get(0) : new RosterAssignment();
+
+		// Record snapshots for Durable Undo
+		List<AssignmentSnapshotItem> snapshots = List.of(
+				AssignmentSnapshotItem.from(assignA.getId() != null ? assignA : null, empA.getId(), req.dateA()),
+				AssignmentSnapshotItem.from(assignB.getId() != null ? assignB : null, empB.getId(), req.dateB())
+		);
+		recordManualOperation(cycle.getId(), "SHIFT_SWAP",
+				"Swapped shifts: " + empA.getFirstName() + " (" + req.dateA() + ") <-> " + empB.getFirstName() + " (" + req.dateB() + ")",
+				adminUsername, snapshots);
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+
+		Shift oldShiftA = assignA.getShift();
+		boolean oldOffA = assignA.isWeeklyOff();
+		Shift oldShiftB = assignB.getShift();
+		boolean oldOffB = assignB.isWeeklyOff();
+
+		assignA.setCycle(cycle);
+		assignA.setEmployee(empA);
+		assignA.setRosterDate(req.dateA());
+		assignA.setWeeklyOff(oldOffB);
+		assignA.setShift(oldShiftB != null ? oldShiftB : shifts.get(ShiftType.OFF));
+		assignA.setManualAssignment(true);
+		assignA.setOverridden(true);
+		assignA.setAssignmentSource("SWAPPED");
+		assignA.setAssignmentReason("Swapped with " + empB.getFirstName());
+		assignmentRepository.save(assignA);
+
+		assignB.setCycle(cycle);
+		assignB.setEmployee(empB);
+		assignB.setRosterDate(req.dateB());
+		assignB.setWeeklyOff(oldOffA);
+		assignB.setShift(oldShiftA != null ? oldShiftA : shifts.get(ShiftType.OFF));
+		assignB.setManualAssignment(true);
+		assignB.setOverridden(true);
+		assignB.setAssignmentSource("SWAPPED");
+		assignB.setAssignmentReason("Swapped with " + empA.getFirstName());
+		assignmentRepository.save(assignB);
+
+		assignmentRepository.flush();
+		return buildMatrixResponse(cycle);
+	}
+
+	public com.weeklyroster.dto.response.UndoOperationResponse undoLastManualOperation(
+			Long cycleId, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doUndoLastManualOperation(cycleId, adminUsername));
+		}
+		return doUndoLastManualOperation(cycleId, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.UndoOperationResponse doUndoLastManualOperation(
+			Long cycleId, String adminUsername) {
+		if (cycleId == null) throw new BusinessException("Cycle ID is required for undo");
+		RosterCycle cycle = cycleRepository.findById(cycleId)
+				.orElseThrow(() -> new ResourceNotFoundException("Cycle #" + cycleId + " not found"));
+		if (cycle.getStatus() == RosterStatus.LOCKED) {
+			throw new BusinessException("Cannot undo operations in a locked roster cycle");
+		}
+
+		if (manualRosterOperationRepository == null) {
+			throw new BusinessException("Operation history repository not available");
+		}
+
+		ManualRosterOperation op = manualRosterOperationRepository
+				.findFirstByCycleIdAndUndoneFalseOrderByCreatedAtDesc(cycleId)
+				.orElseThrow(() -> new BusinessException("No manual operations available to undo for this roster cycle."));
+
+		List<AssignmentSnapshotItem> items;
+		try {
+			items = getObjectMapper().readValue(op.getSnapshotJson(), new TypeReference<List<AssignmentSnapshotItem>>() {});
+		} catch (Exception e) {
+			throw new BusinessException("Failed to restore operation snapshot: " + e.getMessage());
+		}
+
+		Map<ShiftType, Shift> shifts = activeShiftMap();
+		int restoredCount = 0;
+
+		for (AssignmentSnapshotItem item : items) {
+			LocalDate date = LocalDate.parse(item.rosterDate);
+			List<RosterAssignment> existingList = assignmentRepository.findByEmployeeIdAndRosterDate(item.employeeId, date);
+
+			if (!item.existed) {
+				// Record did not exist prior to this operation — remove it
+				if (!existingList.isEmpty()) {
+					assignmentRepository.deleteAll(existingList);
+				}
+				restoredCount++;
+			} else {
+				// Restore prior state
+				RosterAssignment a = !existingList.isEmpty() ? existingList.get(0) : new RosterAssignment();
+				Employee emp = employeeRepository.findById(item.employeeId).orElse(null);
+				if (emp == null) continue;
+
+				a.setCycle(cycle);
+				a.setEmployee(emp);
+				a.setRosterDate(date);
+				a.setWeeklyOff(item.weeklyOff);
+				a.setOnLeave(item.onLeave);
+				a.setShift(item.shiftType != null ? shifts.get(item.shiftType) : shifts.get(ShiftType.OFF));
+				a.setManualAssignment(item.manualAssignment);
+				a.setOverridden(item.overridden);
+				a.setAssignmentSource(item.assignmentSource != null ? item.assignmentSource : "AUTOMATIC");
+				a.setAssignmentReason(item.assignmentReason);
+				a.setOverrideReason(item.overrideReason);
+				assignmentRepository.save(a);
+				restoredCount++;
+			}
+		}
+
+		op.setUndone(true);
+		op.setUndoneAt(LocalDateTime.now());
+		manualRosterOperationRepository.save(op);
+		assignmentRepository.flush();
+
+		return new com.weeklyroster.dto.response.UndoOperationResponse(
+				op.getId(), op.getOperationType(), op.getDescription(), restoredCount, buildMatrixResponse(cycle)
+		);
+	}
+
+	@Transactional(readOnly = true)
+	public Map<String, Object> getUndoStatus(Long cycleId) {
+		if (cycleId == null || manualRosterOperationRepository == null) {
+			return Map.of("canUndo", false, "undoCount", 0);
+		}
+		var opt = manualRosterOperationRepository.findFirstByCycleIdAndUndoneFalseOrderByCreatedAtDesc(cycleId);
+		long count = manualRosterOperationRepository.countByCycleIdAndUndoneFalse(cycleId);
+		if (opt.isEmpty()) {
+			return Map.of("canUndo", false, "undoCount", 0);
+		}
+		ManualRosterOperation op = opt.get();
+		Map<String, Object> res = new LinkedHashMap<>();
+		res.put("canUndo", true);
+		res.put("undoCount", count);
+		res.put("lastOperationId", op.getId());
+		res.put("lastOperationType", op.getOperationType());
+		res.put("lastOperationDescription", op.getDescription());
+		res.put("lastOperatedAt", op.getCreatedAt().toString());
+		return res;
+	}
+
+	@Transactional(readOnly = true)
+	public com.weeklyroster.dto.response.WeekComparisonResponse compareWeeks(LocalDate weekA, LocalDate weekB) {
+		if (weekA == null) weekA = LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+		if (weekB == null) weekB = weekA.plusWeeks(1);
+
+		LocalDate startA = weekA.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate endA = startA.plusDays(6);
+		LocalDate startB = weekB.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		LocalDate endB = startB.plusDays(6);
+
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		List<RosterAssignment> assignmentsA = assignmentRepository.findByDateRange(startA, endA);
+		List<RosterAssignment> assignmentsB = assignmentRepository.findByDateRange(startB, endB);
+
+		Map<Long, Map<Integer, RosterAssignment>> mapA = new HashMap<>();
+		for (RosterAssignment a : assignmentsA) {
+			if (a.getEmployee() != null && a.getRosterDate() != null) {
+				int dayIdx = a.getRosterDate().getDayOfWeek().getValue();
+				mapA.computeIfAbsent(a.getEmployee().getId(), k -> new HashMap<>()).put(dayIdx, a);
+			}
+		}
+		Map<Long, Map<Integer, RosterAssignment>> mapB = new HashMap<>();
+		for (RosterAssignment b : assignmentsB) {
+			if (b.getEmployee() != null && b.getRosterDate() != null) {
+				int dayIdx = b.getRosterDate().getDayOfWeek().getValue();
+				mapB.computeIfAbsent(b.getEmployee().getId(), k -> new HashMap<>()).put(dayIdx, b);
+			}
+		}
+
+		String[] dayNames = {"", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"};
+		List<com.weeklyroster.dto.response.WeekComparisonResponse.EmployeeComparisonRow> rows = new ArrayList<>();
+		int totalDiffs = 0;
+		int shiftChanges = 0;
+		int offChanges = 0;
+		int manualFlagsChanges = 0;
+
+		for (Employee emp : employees) {
+			Map<Integer, RosterAssignment> empA = mapA.getOrDefault(emp.getId(), Collections.emptyMap());
+			Map<Integer, RosterAssignment> empB = mapB.getOrDefault(emp.getId(), Collections.emptyMap());
+			Map<Integer, com.weeklyroster.dto.response.WeekComparisonResponse.DayComparisonCell> dayCells = new LinkedHashMap<>();
+
+			for (int d = 1; d <= 7; d++) {
+				RosterAssignment a = empA.get(d);
+				RosterAssignment b = empB.get(d);
+
+				String shiftA = (a != null && a.getShift() != null) ? a.getShift().getShiftType().name() : (a != null && a.isWeeklyOff() ? "OFF" : "NONE");
+				boolean isOffA = a != null && a.isWeeklyOff();
+				boolean isManA = a != null && a.isManualAssignment();
+
+				String shiftB = (b != null && b.getShift() != null) ? b.getShift().getShiftType().name() : (b != null && b.isWeeklyOff() ? "OFF" : "NONE");
+				boolean isOffB = b != null && b.isWeeklyOff();
+				boolean isManB = b != null && b.isManualAssignment();
+
+				boolean hasDiff = !shiftA.equals(shiftB) || isOffA != isOffB || isManA != isManB;
+				String diffDesc = null;
+				if (hasDiff) {
+					totalDiffs++;
+					if (isOffA != isOffB) {
+						offChanges++;
+						diffDesc = isOffA ? "OFF in A -> Working in B" : "Working in A -> OFF in B";
+					} else if (!shiftA.equals(shiftB)) {
+						shiftChanges++;
+						diffDesc = shiftA + " -> " + shiftB;
+					} else if (isManA != isManB) {
+						manualFlagsChanges++;
+						diffDesc = isManA ? "Manual in A -> Auto in B" : "Auto in A -> Manual in B";
+					}
+				}
+
+				dayCells.put(d, new com.weeklyroster.dto.response.WeekComparisonResponse.DayComparisonCell(
+						dayNames[d], shiftA, isOffA, isManA, shiftB, isOffB, isManB, hasDiff, diffDesc
+				));
+			}
+
+			rows.add(new com.weeklyroster.dto.response.WeekComparisonResponse.EmployeeComparisonRow(
+					emp.getId(), emp.getEmployeeCode(), emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : "").trim(),
+					dayCells
+			));
+		}
+
+		List<String> summaryNotes = new ArrayList<>();
+		summaryNotes.add("Comparing Week " + startA + " to " + endA + " with Week " + startB + " to " + endB);
+		summaryNotes.add("Total differences detected: " + totalDiffs + " (Shift: " + shiftChanges + ", Weekly OFF: " + offChanges + ", Manual Flags: " + manualFlagsChanges + ")");
+
+		return new com.weeklyroster.dto.response.WeekComparisonResponse(
+				startA, endA, startB, endB,
+				totalDiffs, shiftChanges, offChanges, manualFlagsChanges,
+				rows, summaryNotes
+		);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse autoSaveDraft(
+			com.weeklyroster.dto.request.AutoSaveDraftRequest req, String adminUsername) {
+		if (databaseWriteCoordinator != null) {
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doAutoSaveDraft(req, adminUsername));
+		}
+		return doAutoSaveDraft(req, adminUsername);
+	}
+
+	public com.weeklyroster.dto.response.ManualRosterMatrixResponse doAutoSaveDraft(
+			com.weeklyroster.dto.request.AutoSaveDraftRequest req, String adminUsername) {
+		if (req == null || req.startDate() == null) {
+			throw new BusinessException("Start date is required for draft auto-save");
+		}
+		LocalDate monday = req.startDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+		RosterCycle cycle = (req.cycleId() != null)
+				? cycleRepository.findById(req.cycleId()).orElse(null)
+				: null;
+		if (cycle == null) {
+			cycle = getOrCreateDraftCycle(monday, 6);
+		}
+		if (cycle.getStatus() != RosterStatus.PUBLISHED && cycle.getStatus() != RosterStatus.LOCKED) {
+			cycle.setStatus(RosterStatus.DRAFT);
+			cycle.setGeneratedAt(LocalDateTime.now());
+			cycleRepository.save(cycle);
+		}
+		return buildMatrixResponse(cycle);
+	}
+
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse generateUnassignedOnly(
 			Long cycleId, LocalDate startDate, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doGenerateUnassignedOnly(cycleId, startDate, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doGenerateUnassignedOnly(cycleId, startDate, adminUsername));
 		}
 		return doGenerateUnassignedOnly(cycleId, startDate, adminUsername);
 	}
@@ -2034,11 +2811,10 @@ public class RosterService {
 		return buildMatrixResponse(updated);
 	}
 
-	@Transactional
 	public com.weeklyroster.dto.response.ManualRosterMatrixResponse publishManualRoster(
 			Long cycleId, String adminUsername) {
 		if (databaseWriteCoordinator != null) {
-			return databaseWriteCoordinator.executeWrite(() -> doPublishManualRoster(cycleId, adminUsername));
+			return databaseWriteCoordinator.executeTransactionalWrite(() -> doPublishManualRoster(cycleId, adminUsername));
 		}
 		return doPublishManualRoster(cycleId, adminUsername);
 	}

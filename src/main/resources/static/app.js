@@ -14828,7 +14828,9 @@ let manualBuilderState = {
   matrixData: null,
   showBulkDrawer: false,
   selectedEmployees: new Set(),
-  selectedDates: new Set()
+  selectedDates: new Set(),
+  focusedCell: null,
+  undoStatus: { canUndo: false, undoCount: 0 }
 };
 
 function getMondayOfDate(d) {
@@ -14837,6 +14839,52 @@ function getMondayOfDate(d) {
   const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   date.setDate(diff);
   return date.toISOString().split('T')[0];
+}
+
+function setAutoSaveStatus(status) {
+  const el = document.getElementById("mbAutoSaveStatus");
+  if (!el) return;
+  if (status === 'saving') {
+    el.className = "badge badge-sync-saving";
+    el.innerHTML = "🟡 Saving Draft...";
+  } else if (status === 'saved') {
+    el.className = "badge badge-sync-saved";
+    el.innerHTML = "🟢 Draft Saved";
+  } else if (status === 'error') {
+    el.className = "badge badge-sync-error";
+    el.innerHTML = "🔴 Sync Failed";
+  }
+}
+
+async function refreshUndoStatus() {
+  const btn = document.getElementById("mbUndoBtn");
+  if (!btn) return;
+  if (!manualBuilderState.cycleId) {
+    btn.disabled = true;
+    btn.classList.add("btn-disabled-quiet");
+    btn.innerHTML = "↶ Undo";
+    btn.title = "No cycle loaded";
+    return;
+  }
+  try {
+    const res = await apiRequest(`/api/rosters/manual/undo/status?cycleId=${manualBuilderState.cycleId}`);
+    if (res && res.canUndo) {
+      btn.disabled = false;
+      btn.classList.remove("btn-disabled-quiet");
+      const shortDesc = res.lastOperationType ? res.lastOperationType.replace('_', ' ') : 'Action';
+      btn.innerHTML = `↶ Undo (${shortDesc})`;
+      btn.title = `${res.lastOperationDescription || 'Undo'} (${res.undoCount} operation(s) available)`;
+    } else {
+      btn.disabled = true;
+      btn.classList.add("btn-disabled-quiet");
+      btn.innerHTML = "↶ Undo";
+      btn.title = "No operations to undo";
+    }
+  } catch (e) {
+    console.warn("Could not fetch undo status:", e);
+    btn.disabled = true;
+    btn.classList.add("btn-disabled-quiet");
+  }
 }
 
 async function renderManualRosterBuilderView() {
@@ -14878,6 +14926,9 @@ async function renderManualRosterBuilderView() {
               <span class="roster-lifecycle-badge ${matrix.status === 'PUBLISHED' ? 'badge-published' : 'badge-draft'}">
                 ${matrix.status || 'DRAFT'}
               </span>
+              <span id="mbAutoSaveStatus" class="badge badge-sync-saved" style="font-weight:600; font-size:0.75rem; padding:4px 8px; border-radius:12px;">
+                🟢 Draft Saved
+              </span>
               ${criticalCount > 0 ? `
                 <span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:4px 10px; border-radius:12px;">
                   ⚠️ ${criticalCount} Conflict${criticalCount > 1 ? 's' : ''}
@@ -14901,11 +14952,23 @@ async function renderManualRosterBuilderView() {
               <button class="btn btn-secondary btn-sm" id="mbNextWeekBtn" title="Next Week" style="border-radius:0; border:none; padding:6px 12px;">Next Week &rarr;</button>
             </div>
 
-            <button class="btn btn-secondary btn-sm" id="mbToggleBulkBtn" style="font-weight:600;">
-              ⚡ Bulk Assign Tool
+            <button class="btn btn-secondary btn-sm btn-disabled-quiet" id="mbUndoBtn" title="Undo last manual operation" style="font-weight:700;">
+              ↶ Undo
             </button>
-            <button class="btn btn-secondary btn-sm" id="mbCopyPrevWeekBtn" title="Copy previous week roster assignments">
-              📋 Copy Prev Week
+            <button class="btn btn-secondary btn-sm" id="mbToggleBulkBtn" style="font-weight:600;">
+              ⚡ Bulk Assign
+            </button>
+            <button class="btn btn-secondary btn-sm" id="mbCopyPrevWeekBtn" title="Copy assignments from another week with conflict preview">
+              📋 Copy Roster...
+            </button>
+            <button class="btn btn-secondary btn-sm" id="mbSwapShiftsBtn" title="Swap assignments between two employees with safety validation">
+              🔄 Shift Swap...
+            </button>
+            <button class="btn btn-secondary btn-sm" id="mbClearRosterBtn" title="Clear roster assignments (Entire week, Selected employees, Dates, or Cells)" style="color:#b91c1c;">
+              🗑️ Clear...
+            </button>
+            <button class="btn btn-secondary btn-sm" id="mbCompareWeeksBtn" title="Compare two weeks side-by-side with difference highlights">
+              🔍 Compare...
             </button>
             <button class="btn btn-secondary btn-sm" id="mbFillUnassignedBtn" title="Auto-fill unassigned cells without modifying manual locks" style="color:var(--primary);">
               🪄 Fill Unassigned
@@ -14976,7 +15039,7 @@ async function renderManualRosterBuilderView() {
 
         <!-- 7-Day Matrix Table -->
         <div class="table-wrap" style="padding:16px 22px; overflow-x:auto;">
-          <table class="data-table" style="min-width:980px; border-collapse:collapse; font-size:0.88rem;">
+          <table class="data-table" id="mbMatrixTable" style="min-width:980px; border-collapse:collapse; font-size:0.88rem;">
             <thead>
               <tr style="background:#f8fafc; border-bottom:2px solid var(--border-color, #e2e8f0);">
                 <th style="width:40px; text-align:center;">
@@ -14984,7 +15047,6 @@ async function renderManualRosterBuilderView() {
                 </th>
                 <th style="min-width:180px; padding:10px 14px;">Employee</th>
                 ${dates.map((d, idx) => {
-                  const dObj = new Date(d);
                   const isWeekend = (idx === 5 || idx === 6);
                   return `
                     <th style="text-align:center; min-width:115px; padding:10px 8px; ${isWeekend ? 'background:#f1f5f9;' : ''}">
@@ -15002,7 +15064,7 @@ async function renderManualRosterBuilderView() {
               </tr>
             </thead>
             <tbody>
-              ${matrix.rows.map(row => `
+              ${matrix.rows.map((row, rowIdx) => `
                 <tr style="border-bottom:1px solid #f1f5f9;">
                   <td style="text-align:center;">
                     <input type="checkbox" class="mb-emp-row-cb" value="${row.employeeId}">
@@ -15048,17 +15110,21 @@ async function renderManualRosterBuilderView() {
                     return `
                       <td style="text-align:center; padding:6px 4px; ${isWeekend ? 'background:#fafaf9;' : ''} ${isConflict ? 'background:#fef2f2;' : ''}">
                         <div class="mb-matrix-cell ${isConflict ? 'has-conflict' : ''}"
+                             tabindex="0"
+                             data-emp-idx="${rowIdx}"
+                             data-date-idx="${dIdx}"
                              data-emp-id="${row.employeeId}"
                              data-date="${d}"
                              data-current-shift="${shift}"
                              data-is-manual="${isManual}"
                              style="cursor:pointer; display:inline-block; width:100%; padding:6px 4px; border-radius:6px; transition:all 0.15s; border:${isConflict ? '2px solid #ef4444' : isManual ? '1px solid #3b82f6' : '1px solid transparent'}; background:${isManual ? '#eff6ff' : 'transparent'};"
-                             title="${isConflict ? escapeHTML(cell.conflictReason) : isManual ? '🔒 Manually locked assignment' : 'Click to change shift'}">
+                             title="${isConflict ? escapeHTML(cell.conflictReason) : isManual ? '🔒 Manually locked assignment' : 'Click or press Enter to edit'}">
                           <span class="badge ${badgeClass}" style="font-size:0.75rem; padding:3px 7px; display:inline-flex; align-items:center; gap:3px;">
                             ${isManual ? '<span style="font-size:0.7rem;">🔒</span>' : ''}
                             ${shiftLabel}
                           </span>
                           ${cell.assignmentSource === 'COPIED' ? '<div style="font-size:0.65rem; color:#6366f1;">📋 Copied</div>' : ''}
+                          ${cell.assignmentSource === 'SWAPPED' ? '<div style="font-size:0.65rem; color:#0284c7;">🔄 Swapped</div>' : ''}
                           ${isConflict ? '<div style="font-size:0.65rem; color:#dc2626; font-weight:700;">⚠️ Conflict</div>' : ''}
                         </div>
                       </td>
@@ -15109,6 +15175,9 @@ async function renderManualRosterBuilderView() {
       </div>
     `;
 
+    // Refresh live Undo button status
+    await refreshUndoStatus();
+
     // Hook up week navigation
     document.getElementById("mbPrevWeekBtn").addEventListener("click", () => {
       const cur = new Date(manualBuilderState.startDate);
@@ -15132,10 +15201,50 @@ async function renderManualRosterBuilderView() {
       renderManualRosterBuilderView();
     });
 
+    // Undo Button Handler
+    const undoBtn = document.getElementById("mbUndoBtn");
+    if (undoBtn) {
+      undoBtn.addEventListener("click", async () => {
+        if (!manualBuilderState.cycleId) return;
+        setAutoSaveStatus('saving');
+        try {
+          const res = await apiRequest(`/api/rosters/manual/undo?cycleId=${manualBuilderState.cycleId}`, {
+            method: "POST"
+          });
+          toast(`Undone: ${res.description || res.operationType}`, "success");
+          setAutoSaveStatus('saved');
+          await renderManualRosterBuilderView();
+        } catch (err) {
+          setAutoSaveStatus('error');
+          toast(err.message || "Failed to undo operation", "error");
+        }
+      });
+    }
+
     // Toggle Bulk Drawer
     document.getElementById("mbToggleBulkBtn").addEventListener("click", () => {
       manualBuilderState.showBulkDrawer = !manualBuilderState.showBulkDrawer;
       document.getElementById("mbBulkDrawer").style.display = manualBuilderState.showBulkDrawer ? "block" : "none";
+    });
+
+    // Copy Roster Modal Trigger
+    document.getElementById("mbCopyPrevWeekBtn").addEventListener("click", () => {
+      openCopyRosterModal();
+    });
+
+    // Clear Roster Modal Trigger
+    document.getElementById("mbClearRosterBtn").addEventListener("click", () => {
+      openClearRosterModal();
+    });
+
+    // Shift Swap Modal Trigger
+    document.getElementById("mbSwapShiftsBtn").addEventListener("click", () => {
+      openShiftSwapModal();
+    });
+
+    // Compare Weeks Modal Trigger
+    document.getElementById("mbCompareWeeksBtn").addEventListener("click", () => {
+      openWeekComparisonModal();
     });
 
     // Bulk Checkbox handlers
@@ -15212,6 +15321,7 @@ async function renderManualRosterBuilderView() {
       const origHtml = btn.innerHTML;
       btn.disabled = true;
       btn.textContent = "Applying...";
+      setAutoSaveStatus('saving');
       try {
         await apiRequest("/api/rosters/manual/bulk-assignment", {
           method: "POST",
@@ -15226,8 +15336,10 @@ async function renderManualRosterBuilderView() {
           }
         });
         toast(`Applied ${shiftType} to ${manualBuilderState.selectedEmployees.size} employees across ${datesArr.length} day(s)`, "success");
+        setAutoSaveStatus('saved');
         await renderManualRosterBuilderView();
       } catch (err) {
+        setAutoSaveStatus('error');
         toast(err.message || "Failed to apply bulk assignment", "error");
       } finally {
         btn.disabled = false;
@@ -15235,47 +15347,73 @@ async function renderManualRosterBuilderView() {
       }
     });
 
-    // Single-Cell Click -> Quick Shift Selection Popover
-    container.querySelectorAll(".mb-matrix-cell").forEach(cellEl => {
+    // Single-Cell Click & Keyboard Navigation
+    const allCells = Array.from(container.querySelectorAll(".mb-matrix-cell"));
+    allCells.forEach(cellEl => {
       cellEl.addEventListener("click", (e) => {
         e.stopPropagation();
-        const empId = Number(cellEl.getAttribute("data-emp-id"));
-        const date = cellEl.getAttribute("data-date");
-        const currentShift = cellEl.getAttribute("data-current-shift");
-        const isManual = cellEl.getAttribute("data-is-manual") === "true";
+        focusAndOpenCell(cellEl);
+      });
 
-        openCellShiftModal(empId, date, currentShift, isManual);
+      cellEl.addEventListener("focus", () => {
+        allCells.forEach(c => c.classList.remove("focused"));
+        cellEl.classList.add("focused");
+        manualBuilderState.focusedCell = {
+          empId: Number(cellEl.getAttribute("data-emp-id")),
+          date: cellEl.getAttribute("data-date"),
+          empIdx: Number(cellEl.getAttribute("data-emp-idx")),
+          dateIdx: Number(cellEl.getAttribute("data-date-idx"))
+        };
+      });
+
+      cellEl.addEventListener("keydown", (e) => {
+        const empIdx = Number(cellEl.getAttribute("data-emp-idx"));
+        const dateIdx = Number(cellEl.getAttribute("data-date-idx"));
+
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          focusAndOpenCell(cellEl);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const target = container.querySelector(`.mb-matrix-cell[data-emp-idx="${empIdx - 1}"][data-date-idx="${dateIdx}"]`);
+          if (target) target.focus();
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const target = container.querySelector(`.mb-matrix-cell[data-emp-idx="${empIdx + 1}"][data-date-idx="${dateIdx}"]`);
+          if (target) target.focus();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          const target = container.querySelector(`.mb-matrix-cell[data-emp-idx="${empIdx}"][data-date-idx="${dateIdx - 1}"]`);
+          if (target) target.focus();
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          const target = container.querySelector(`.mb-matrix-cell[data-emp-idx="${empIdx}"][data-date-idx="${dateIdx + 1}"]`);
+          if (target) target.focus();
+        }
       });
     });
 
-    // Copy Prev Week
-    document.getElementById("mbCopyPrevWeekBtn").addEventListener("click", async () => {
-      if (!confirm(`Copy previous week roster pattern into week ${manualBuilderState.startDate}?`)) return;
-      try {
-        await apiRequest("/api/rosters/manual/copy-week", {
-          method: "POST",
-          body: {
-            cycleId: manualBuilderState.cycleId,
-            targetStartDate: manualBuilderState.startDate
-          }
-        });
-        toast("Copied assignments from previous week!", "success");
-        await renderManualRosterBuilderView();
-      } catch (err) {
-        toast(err.message || "Failed to copy previous week", "error");
-      }
-    });
+    function focusAndOpenCell(cellEl) {
+      const empId = Number(cellEl.getAttribute("data-emp-id"));
+      const date = cellEl.getAttribute("data-date");
+      const currentShift = cellEl.getAttribute("data-current-shift");
+      const isManual = cellEl.getAttribute("data-is-manual") === "true";
+      openCellShiftModal(empId, date, currentShift, isManual);
+    }
 
     // Fill Unassigned Only
     document.getElementById("mbFillUnassignedBtn").addEventListener("click", async () => {
       try {
         toast("Running generation for unassigned cells...", "info");
+        setAutoSaveStatus('saving');
         await apiRequest(`/api/rosters/manual/generate-unassigned?cycleId=${manualBuilderState.cycleId || ''}&startDate=${manualBuilderState.startDate}`, {
           method: "POST"
         });
         toast("Successfully filled unassigned shifts while strictly preserving manual locks!", "success");
+        setAutoSaveStatus('saved');
         await renderManualRosterBuilderView();
       } catch (err) {
+        setAutoSaveStatus('error');
         toast(err.message || "Failed to fill unassigned shifts", "error");
       }
     });
@@ -15306,6 +15444,596 @@ async function renderManualRosterBuilderView() {
   }
 }
 
+// =============================================================================
+// MODAL: COPY PREVIOUS ROSTER (WITH PREVIEW & SAFETY LOCKS)
+// =============================================================================
+function openCopyRosterModal() {
+  const existing = document.getElementById("mbCopyModal");
+  if (existing) existing.remove();
+
+  const curMonday = new Date(manualBuilderState.startDate);
+  const prevMondayObj = new Date(curMonday);
+  prevMondayObj.setDate(prevMondayObj.getDate() - 7);
+  const defaultSource = prevMondayObj.toISOString().split('T')[0];
+
+  const modalHtml = `
+    <div class="modal active" id="mbCopyModal" style="display:flex; z-index:9999;">
+      <div class="modal-backdrop" onclick="document.getElementById('mbCopyModal').remove()"></div>
+      <div class="modal-content" style="max-width:540px; border-radius:8px;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
+          <h3 style="margin:0; font-size:1.15rem;">📋 Copy Week Roster Pattern</h3>
+          <button class="modal-close" onclick="document.getElementById('mbCopyModal').remove()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:18px;">
+          <div style="margin-bottom:14px;">
+            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">Source Week Monday</label>
+            <input type="date" id="mbCopySourceInput" class="form-control" value="${defaultSource}" style="width:100%; font-weight:600;">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">Target Week Monday</label>
+            <input type="date" id="mbCopyTargetInput" class="form-control" value="${manualBuilderState.startDate}" readonly style="width:100%; font-weight:600; background:#f1f5f9;">
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+            <label style="font-size:0.82rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="mbCopyIncludeOff" checked>
+              <span>Include Weekly OFF shifts (O)</span>
+            </label>
+            <label style="font-size:0.82rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="checkbox" id="mbCopyOverwriteManual">
+              <span style="color:#b91c1c; font-weight:600;">Overwrite existing manual locked shifts (🔒)</span>
+            </label>
+          </div>
+
+          <div id="mbCopyPreviewContainer" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px; margin-bottom:16px;">
+            <!-- Rendered Preview -->
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="mbCopyPreviewBtn">
+              🔍 Preview Copy
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mbCopyModal').remove()">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="mbCopyApplyBtn" disabled style="background:#059669; border-color:#047857;">
+                Apply Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  const previewBtn = document.getElementById("mbCopyPreviewBtn");
+  const applyBtn = document.getElementById("mbCopyApplyBtn");
+  const previewBox = document.getElementById("mbCopyPreviewContainer");
+
+  previewBtn.addEventListener("click", async () => {
+    previewBtn.disabled = true;
+    previewBtn.textContent = "Checking...";
+    try {
+      const srcDate = getMondayOfDate(document.getElementById("mbCopySourceInput").value);
+      const res = await apiRequest("/api/rosters/manual/copy-week/preview", {
+        method: "POST",
+        body: {
+          cycleId: manualBuilderState.cycleId,
+          targetStartDate: manualBuilderState.startDate,
+          sourceStartDate: srcDate,
+          includeWeeklyOff: document.getElementById("mbCopyIncludeOff").checked,
+          overwriteExistingManual: document.getElementById("mbCopyOverwriteManual").checked
+        }
+      });
+
+      previewBox.style.display = "block";
+      previewBox.innerHTML = `
+        <div style="font-size:0.85rem; font-weight:700; margin-bottom:6px; color:#1e293b;">Copy Preview Summary:</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:0.8rem; margin-bottom:8px;">
+          <div>Assignments to Copy: <strong>${res.totalAssignmentsToCopy}</strong></div>
+          <div>Affected Employees: <strong>${res.affectedEmployeesCount}</strong></div>
+          <div>Protected Manual Locks: <strong style="color:#2563eb;">${res.protectedManualCount}</strong></div>
+          <div>Conflict / Leave Notices: <strong style="color:${res.conflictCount > 0 ? '#b91c1c' : '#059669'};">${res.conflictCount}</strong></div>
+        </div>
+        ${res.conflicts && res.conflicts.length > 0 ? `
+          <ul style="margin:4px 0 0; padding-left:18px; font-size:0.75rem; color:#b91c1c; line-height:1.4;">
+            ${res.conflicts.map(c => `<li>${escapeHTML(c)}</li>`).join('')}
+          </ul>
+        ` : ''}
+      `;
+      applyBtn.disabled = !res.canApply;
+    } catch (err) {
+      toast(err.message || "Failed to preview copy", "error");
+    } finally {
+      previewBtn.disabled = false;
+      previewBtn.textContent = "🔍 Preview Copy";
+    }
+  });
+
+  applyBtn.addEventListener("click", async () => {
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Copying...";
+    setAutoSaveStatus('saving');
+    try {
+      const srcDate = getMondayOfDate(document.getElementById("mbCopySourceInput").value);
+      await apiRequest("/api/rosters/manual/copy-week", {
+        method: "POST",
+        body: {
+          cycleId: manualBuilderState.cycleId,
+          targetStartDate: manualBuilderState.startDate,
+          sourceStartDate: srcDate,
+          includeWeeklyOff: document.getElementById("mbCopyIncludeOff").checked,
+          overwriteExistingManual: document.getElementById("mbCopyOverwriteManual").checked
+        }
+      });
+      document.getElementById("mbCopyModal").remove();
+      toast("Successfully copied roster pattern!", "success");
+      setAutoSaveStatus('saved');
+      await renderManualRosterBuilderView();
+    } catch (err) {
+      setAutoSaveStatus('error');
+      toast(err.message || "Failed to apply copy", "error");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Apply Copy";
+    }
+  });
+}
+
+// =============================================================================
+// MODAL: CLEAR ROSTER (4 MODES)
+// =============================================================================
+function openClearRosterModal() {
+  const existing = document.getElementById("mbClearModal");
+  if (existing) existing.remove();
+
+  const matrix = manualBuilderState.matrixData;
+  const employees = (matrix && matrix.rows) ? matrix.rows : [];
+  const dates = (matrix && matrix.dates) ? matrix.dates : [];
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  const modalHtml = `
+    <div class="modal active" id="mbClearModal" style="display:flex; z-index:9999;">
+      <div class="modal-backdrop" onclick="document.getElementById('mbClearModal').remove()"></div>
+      <div class="modal-content" style="max-width:540px; border-radius:8px;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
+          <h3 style="margin:0; font-size:1.15rem; color:#b91c1c;">🗑️ Clear Roster Assignments</h3>
+          <button class="modal-close" onclick="document.getElementById('mbClearModal').remove()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:18px;">
+          <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:8px;">Select Clear Scope:</label>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mbClearMode" value="ENTIRE_WEEK" checked>
+              <strong>Mode A: Entire Week</strong> &mdash; Clear all shifts across the whole week
+            </label>
+            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mbClearMode" value="SELECTED_EMPLOYEES">
+              <strong>Mode B: Selected Employees</strong> &mdash; Clear full week for specific employees
+            </label>
+            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mbClearMode" value="SELECTED_DATES">
+              <strong>Mode C: Selected Dates</strong> &mdash; Clear all employees on specific weekdays
+            </label>
+            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="mbClearMode" value="SELECTED_CELLS">
+              <strong>Mode D: Active Focused Cell</strong> &mdash; Clear currently focused assignment
+            </label>
+          </div>
+
+          <!-- Sub-options: Selected Employees -->
+          <div id="mbClearEmpsSection" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
+            <div style="font-size:0.78rem; font-weight:700; margin-bottom:6px;">Select Employees to Clear:</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+              ${employees.map(emp => `
+                <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+                  <input type="checkbox" class="mb-clear-emp-cb" value="${emp.employeeId}" ${manualBuilderState.selectedEmployees.has(emp.employeeId) ? 'checked' : ''}>
+                  <span>${escapeHTML(emp.employeeName)}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Sub-options: Selected Dates -->
+          <div id="mbClearDatesSection" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px; margin-bottom:14px;">
+            <div style="font-size:0.78rem; font-weight:700; margin-bottom:6px;">Select Dates to Clear:</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              ${dates.map((d, idx) => `
+                <label style="font-size:0.8rem; background:#fff; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                  <input type="checkbox" class="mb-clear-date-cb" value="${d}">
+                  ${dayNames[idx]} (${formatDate(d)})
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <div id="mbClearPreviewContainer" style="display:none; background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:12px; margin-bottom:16px;">
+            <!-- Rendered Preview -->
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="mbClearPreviewBtn">
+              🔍 Preview Clear
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mbClearModal').remove()">Cancel</button>
+              <button type="button" class="btn btn-danger btn-sm" id="mbClearApplyBtn" disabled style="background:#dc2626; border-color:#b91c1c;">
+                Execute Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  const radios = document.querySelectorAll("input[name='mbClearMode']");
+  const empsSec = document.getElementById("mbClearEmpsSection");
+  const datesSec = document.getElementById("mbClearDatesSection");
+  const previewBox = document.getElementById("mbClearPreviewContainer");
+  const previewBtn = document.getElementById("mbClearPreviewBtn");
+  const applyBtn = document.getElementById("mbClearApplyBtn");
+
+  radios.forEach(r => {
+    r.addEventListener("change", () => {
+      empsSec.style.display = (r.value === "SELECTED_EMPLOYEES" && r.checked) ? "block" : "none";
+      datesSec.style.display = (r.value === "SELECTED_DATES" && r.checked) ? "block" : "none";
+      previewBox.style.display = "none";
+      applyBtn.disabled = true;
+    });
+  });
+
+  function getClearPayload() {
+    const mode = document.querySelector("input[name='mbClearMode']:checked").value;
+    const payload = {
+      cycleId: manualBuilderState.cycleId,
+      startDate: manualBuilderState.startDate,
+      mode: mode
+    };
+    if (mode === "SELECTED_EMPLOYEES") {
+      const checkedEmps = Array.from(document.querySelectorAll(".mb-clear-emp-cb:checked")).map(cb => Number(cb.value));
+      payload.employeeIds = checkedEmps;
+    } else if (mode === "SELECTED_DATES") {
+      const checkedDates = Array.from(document.querySelectorAll(".mb-clear-date-cb:checked")).map(cb => cb.value);
+      payload.dates = checkedDates;
+    } else if (mode === "SELECTED_CELLS") {
+      if (manualBuilderState.focusedCell) {
+        payload.cells = [{ employeeId: manualBuilderState.focusedCell.empId, date: manualBuilderState.focusedCell.date }];
+      } else {
+        payload.cells = [];
+      }
+    }
+    return payload;
+  }
+
+  previewBtn.addEventListener("click", async () => {
+    const payload = getClearPayload();
+    previewBtn.disabled = true;
+    previewBtn.textContent = "Calculating...";
+    try {
+      const res = await apiRequest("/api/rosters/manual/clear/preview", {
+        method: "POST",
+        body: payload
+      });
+
+      previewBox.style.display = "block";
+      previewBox.innerHTML = `
+        <div style="font-size:0.85rem; font-weight:700; color:#991b1b; margin-bottom:4px;">⚠️ Impact Preview:</div>
+        <p style="font-size:0.82rem; margin:0 0 6px; color:#b91c1c;">${escapeHTML(res.summary)}</p>
+        <div style="font-size:0.78rem; color:#7f1d1d; line-height:1.4;">${escapeHTML(res.warningMessage)}</div>
+        <div style="margin-top:6px; font-size:0.75rem; font-weight:700; color:#1e293b;">
+          Total Affected Assignments: <strong>${res.affectedAssignmentsCount}</strong>
+        </div>
+      `;
+      applyBtn.disabled = !res.canApply;
+    } catch (err) {
+      toast(err.message || "Failed to preview clear", "error");
+    } finally {
+      previewBtn.disabled = false;
+      previewBtn.textContent = "🔍 Preview Clear";
+    }
+  });
+
+  applyBtn.addEventListener("click", async () => {
+    const payload = getClearPayload();
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Clearing...";
+    setAutoSaveStatus('saving');
+    try {
+      await apiRequest("/api/rosters/manual/clear", {
+        method: "POST",
+        body: payload
+      });
+      document.getElementById("mbClearModal").remove();
+      toast("Assignments cleared successfully!", "success");
+      setAutoSaveStatus('saved');
+      await renderManualRosterBuilderView();
+    } catch (err) {
+      setAutoSaveStatus('error');
+      toast(err.message || "Failed to clear assignments", "error");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Execute Clear";
+    }
+  });
+}
+
+// =============================================================================
+// MODAL: SHIFT SWAP (WITH CONFLICT & STATUTORY VALIDATION)
+// =============================================================================
+function openShiftSwapModal() {
+  const existing = document.getElementById("mbSwapModal");
+  if (existing) existing.remove();
+
+  const matrix = manualBuilderState.matrixData;
+  const employees = (matrix && matrix.rows) ? matrix.rows : [];
+  const dates = (matrix && matrix.dates) ? matrix.dates : [];
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  const focused = manualBuilderState.focusedCell;
+  const initEmpA = focused ? focused.empId : (employees.length > 0 ? employees[0].employeeId : '');
+  const initDateA = focused ? focused.date : (dates.length > 0 ? dates[0] : '');
+
+  const initEmpB = (employees.length > 1) ? employees[1].employeeId : initEmpA;
+  const initDateB = (dates.length > 1) ? dates[1] : initDateA;
+
+  const modalHtml = `
+    <div class="modal active" id="mbSwapModal" style="display:flex; z-index:9999;">
+      <div class="modal-backdrop" onclick="document.getElementById('mbSwapModal').remove()"></div>
+      <div class="modal-content" style="max-width:560px; border-radius:8px;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
+          <h3 style="margin:0; font-size:1.15rem;">🔄 Shift Swap with Validation</h3>
+          <button class="modal-close" onclick="document.getElementById('mbSwapModal').remove()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:18px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
+            <!-- Employee A -->
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px;">
+              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b;">Employee A</h4>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Employee</label>
+              <select id="mbSwapEmpA" class="form-control" style="font-size:0.82rem; padding:4px 8px; margin-bottom:8px;">
+                ${employees.map(e => `<option value="${e.employeeId}" ${e.employeeId === initEmpA ? 'selected' : ''}>${escapeHTML(e.employeeName)}</option>`).join('')}
+              </select>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Date</label>
+              <select id="mbSwapDateA" class="form-control" style="font-size:0.82rem; padding:4px 8px;">
+                ${dates.map((d, idx) => `<option value="${d}" ${d === initDateA ? 'selected' : ''}>${dayNames[idx]} (${formatDate(d)})</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- Employee B -->
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px;">
+              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b;">Employee B</h4>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Employee</label>
+              <select id="mbSwapEmpB" class="form-control" style="font-size:0.82rem; padding:4px 8px; margin-bottom:8px;">
+                ${employees.map(e => `<option value="${e.employeeId}" ${e.employeeId === initEmpB ? 'selected' : ''}>${escapeHTML(e.employeeName)}</option>`).join('')}
+              </select>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Date</label>
+              <select id="mbSwapDateB" class="form-control" style="font-size:0.82rem; padding:4px 8px;">
+                ${dates.map((d, idx) => `<option value="${d}" ${d === initDateB ? 'selected' : ''}>${dayNames[idx]} (${formatDate(d)})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div id="mbSwapPreviewContainer" style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px; margin-bottom:14px;">
+            <!-- Rendered Preview -->
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <button type="button" class="btn btn-secondary btn-sm" id="mbSwapPreviewBtn">
+              🔍 Validate Swap
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mbSwapModal').remove()">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="mbSwapApplyBtn" disabled>
+                Confirm Swap
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  const previewBtn = document.getElementById("mbSwapPreviewBtn");
+  const applyBtn = document.getElementById("mbSwapApplyBtn");
+  const previewBox = document.getElementById("mbSwapPreviewContainer");
+
+  function getSwapPayload() {
+    return {
+      cycleId: manualBuilderState.cycleId,
+      employeeAId: Number(document.getElementById("mbSwapEmpA").value),
+      dateA: document.getElementById("mbSwapDateA").value,
+      employeeBId: Number(document.getElementById("mbSwapEmpB").value),
+      dateB: document.getElementById("mbSwapDateB").value,
+      allowManualOverride: false
+    };
+  }
+
+  previewBtn.addEventListener("click", async () => {
+    const payload = getSwapPayload();
+    if (payload.employeeAId === payload.employeeBId && payload.dateA === payload.dateB) {
+      toast("Please select two distinct assignments to swap", "warning");
+      return;
+    }
+    previewBtn.disabled = true;
+    previewBtn.textContent = "Checking...";
+    try {
+      const res = await apiRequest("/api/rosters/manual/swap/preview", {
+        method: "POST",
+        body: payload
+      });
+
+      previewBox.style.display = "block";
+      const hasConflicts = res.conflicts && res.conflicts.length > 0;
+      previewBox.style.background = hasConflicts ? "#fef2f2" : "#f0fdf4";
+      previewBox.style.borderColor = hasConflicts ? "#fecaca" : "#bbf7d0";
+
+      previewBox.innerHTML = `
+        <div style="font-size:0.85rem; font-weight:700; margin-bottom:6px; color:${hasConflicts ? '#991b1b' : '#166534'};">
+          ${hasConflicts ? '⚠️ Validation Issues Detected:' : '✓ Swap Valid & Compliant:'}
+        </div>
+        <div style="font-size:0.8rem; line-height:1.4; color:#1e293b; margin-bottom:6px;">
+          <div><strong>${escapeHTML(res.employeeAName)}:</strong> ${res.originalShiftA} &rarr; <strong>${res.proposedShiftA}</strong> (${formatDate(res.dateA)})</div>
+          <div><strong>${escapeHTML(res.employeeBName)}:</strong> ${res.originalShiftB} &rarr; <strong>${res.proposedShiftB}</strong> (${formatDate(res.dateB)})</div>
+        </div>
+        ${hasConflicts ? `
+          <ul style="margin:4px 0 0; padding-left:18px; font-size:0.75rem; color:#b91c1c; line-height:1.4;">
+            ${res.conflicts.map(c => `<li>${escapeHTML(c)}</li>`).join('')}
+          </ul>
+        ` : ''}
+      `;
+      applyBtn.disabled = !res.canApply;
+    } catch (err) {
+      toast(err.message || "Failed to validate swap", "error");
+    } finally {
+      previewBtn.disabled = false;
+      previewBtn.textContent = "🔍 Validate Swap";
+    }
+  });
+
+  applyBtn.addEventListener("click", async () => {
+    const payload = getSwapPayload();
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Swapping...";
+    setAutoSaveStatus('saving');
+    try {
+      await apiRequest("/api/rosters/manual/swap", {
+        method: "POST",
+        body: payload
+      });
+      document.getElementById("mbSwapModal").remove();
+      toast("Shifts swapped successfully!", "success");
+      setAutoSaveStatus('saved');
+      await renderManualRosterBuilderView();
+    } catch (err) {
+      setAutoSaveStatus('error');
+      toast(err.message || "Failed to swap shifts", "error");
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Confirm Swap";
+    }
+  });
+}
+
+// =============================================================================
+// MODAL: COMPARE TWO WEEKS (READ-ONLY SIDE-BY-SIDE DIFF)
+// =============================================================================
+function openWeekComparisonModal() {
+  const existing = document.getElementById("mbCompareModal");
+  if (existing) existing.remove();
+
+  const curMonday = new Date(manualBuilderState.startDate);
+  const prevMondayObj = new Date(curMonday);
+  prevMondayObj.setDate(prevMondayObj.getDate() - 7);
+  const defaultPrev = prevMondayObj.toISOString().split('T')[0];
+
+  const modalHtml = `
+    <div class="modal active" id="mbCompareModal" style="display:flex; z-index:9999;">
+      <div class="modal-backdrop" onclick="document.getElementById('mbCompareModal').remove()"></div>
+      <div class="modal-content" style="max-width:920px; border-radius:8px;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
+          <h3 style="margin:0; font-size:1.15rem;">🔍 Compare Roster Weeks</h3>
+          <button class="modal-close" onclick="document.getElementById('mbCompareModal').remove()">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:18px;">
+          <div style="display:flex; gap:16px; align-items:flex-end; margin-bottom:16px;">
+            <div>
+              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Week A (Baseline)</label>
+              <input type="date" id="mbCompWeekA" class="form-control" value="${defaultPrev}" style="font-weight:600; font-size:0.85rem;">
+            </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Week B (Comparison Target)</label>
+              <input type="date" id="mbCompWeekB" class="form-control" value="${manualBuilderState.startDate}" style="font-weight:600; font-size:0.85rem;">
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" id="mbCompRunBtn" style="padding:7px 16px;">
+              Compare Weeks
+            </button>
+          </div>
+
+          <div id="mbCompResultsContainer">
+            <div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.88rem;">
+              Select two Mondays above and click "Compare Weeks" to view schedule differences.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  document.getElementById("mbCompRunBtn").addEventListener("click", async () => {
+    const weekA = getMondayOfDate(document.getElementById("mbCompWeekA").value);
+    const weekB = getMondayOfDate(document.getElementById("mbCompWeekB").value);
+    const container = document.getElementById("mbCompResultsContainer");
+    container.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner"></div><p>Calculating schedule differences...</p></div>`;
+
+    try {
+      const data = await apiRequest(`/api/rosters/manual/compare?weekA=${weekA}&weekB=${weekB}`);
+      const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+      container.innerHTML = `
+        <div style="display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+          <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700; padding:4px 10px;">
+            Total Differences: ${data.totalDifferences}
+          </span>
+          <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700; padding:4px 10px;">
+            Shift Changes: ${data.shiftChangesCount}
+          </span>
+          <span class="badge" style="background:#f3e8ff; color:#7e22ce; font-weight:700; padding:4px 10px;">
+            OFF Changes: ${data.offChangesCount}
+          </span>
+          <span class="badge" style="background:#dcfce7; color:#15803d; font-weight:700; padding:4px 10px;">
+            Manual Flags: ${data.manualFlagsChangesCount}
+          </span>
+        </div>
+
+        <div style="max-height:360px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px;">
+          <table class="data-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
+                <th style="padding:8px 10px; text-align:left;">Employee</th>
+                ${dayNames.map(d => `<th style="text-align:center; padding:8px 4px; min-width:85px;">${d}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${data.rows.map(row => `
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:8px 10px; font-weight:700;">
+                    ${escapeHTML(row.employeeName)}
+                  </td>
+                  ${[1,2,3,4,5,6,7].map(d => {
+                    const cell = row.dayComparisons[d] || {};
+                    const hasDiff = cell.hasDifference;
+                    return `
+                      <td style="text-align:center; padding:6px 2px; ${hasDiff ? 'background:#fffbeb;' : ''}">
+                        ${hasDiff ? `
+                          <div style="font-size:0.7rem; font-weight:700; color:#b45309;">
+                            ${escapeHTML(cell.shiftA)} &rarr; ${escapeHTML(cell.shiftB)}
+                          </div>
+                          <div style="font-size:0.65rem; color:#92400e;">
+                            ${escapeHTML(cell.diffDescription || 'Changed')}
+                          </div>
+                        ` : `
+                          <div style="font-size:0.75rem; color:#64748b;">
+                            ${escapeHTML(cell.shiftA)}
+                          </div>
+                        `}
+                      </td>
+                    `;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      container.innerHTML = `<p style="color:#ef4444;">Failed to compare weeks: ${escapeHTML(err.message)}</p>`;
+    }
+  });
+}
+
+// =============================================================================
+// MODAL: SINGLE CELL SHIFT ASSIGNMENT
+// =============================================================================
 function openCellShiftModal(employeeId, date, currentShift, isManual) {
   const existingModal = document.getElementById("mbCellShiftModal");
   if (existingModal) existingModal.remove();
@@ -15372,6 +16100,7 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
       const reason = document.getElementById("mbCellReasonInput").value.trim() || null;
       document.getElementById("mbCellShiftModal").remove();
 
+      setAutoSaveStatus('saving');
       try {
         await apiRequest("/api/rosters/manual/assignment", {
           method: "POST",
@@ -15386,8 +16115,10 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
           }
         });
         toast(`Assigned ${shiftType} to ${empName} on ${formatDate(date)}`, "success");
+        setAutoSaveStatus('saved');
         await renderManualRosterBuilderView();
       } catch (err) {
+        setAutoSaveStatus('error');
         toast(err.message || "Failed to save assignment", "error");
       }
     });
@@ -15398,19 +16129,21 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
   if (clearBtn) {
     clearBtn.addEventListener("click", async () => {
       document.getElementById("mbCellShiftModal").remove();
+      setAutoSaveStatus('saving');
       try {
         await apiRequest(`/api/rosters/manual/assignment?cycleId=${manualBuilderState.cycleId || ''}&employeeId=${employeeId}&date=${date}`, {
           method: "DELETE"
         });
         toast(`Cleared manual lock for ${empName} on ${formatDate(date)}`, "success");
+        setAutoSaveStatus('saved');
         await renderManualRosterBuilderView();
       } catch (err) {
+        setAutoSaveStatus('error');
         toast(err.message || "Failed to clear assignment", "error");
       }
     });
   }
 }
-
 
 // BATCH 106: Collapsible Validation Status Panel for Manual Roster Builder
 function renderManualValidationPanel(matrix) {

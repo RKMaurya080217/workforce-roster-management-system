@@ -54,6 +54,10 @@ public interface RosterAssignmentRepository extends JpaRepository<RosterAssignme
         return findByCycleIdOrderByRosterDateAsc(cycleId);
     }
 
+    default List<RosterAssignment> findByDateRange(LocalDate startDate, LocalDate endDate) {
+        return findByRosterDateBetweenOrderByRosterDateAsc(startDate, endDate);
+    }
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM RosterAssignment a WHERE a.cycle = :cycle")
     void deleteByCycle(@Param("cycle") RosterCycle cycle);
