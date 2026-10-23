@@ -733,6 +733,14 @@ function bindGlobalEvents() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       closeMobileSidebar();
+      // Batch 108: Cleanly close all dynamic manual roster modals
+      document.querySelectorAll("#mbClearModal, #mbCompareModal, #mbSwapModal, #mbCopyModal, #mbCellShiftModal").forEach(el => el.remove());
+      // Close any open static WRMS modals
+      document.querySelectorAll(".modal-backdrop:not(.hidden)").forEach(el => {
+        if (el.id && typeof closeModal === "function") {
+          closeModal(el.id);
+        }
+      });
     }
   });
 
@@ -10433,6 +10441,9 @@ async function handleSaveShiftOverride(e) {
 
 // Shift Swap Modal
 function openShiftSwapModal(cycle) {
+  if (!cycle && typeof openManualShiftSwapModal === "function") {
+    return openManualShiftSwapModal();
+  }
   if (cycle && cycle.status === "LOCKED") {
     toast("Cannot swap shifts on a LOCKED roster. Unlock the cycle first.", "error");
     return;
@@ -14833,12 +14844,30 @@ let manualBuilderState = {
   undoStatus: { canUndo: false, undoCount: 0 }
 };
 
+function parseYMD(str) {
+  if (!str) return new Date();
+  if (str instanceof Date) return new Date(str.getFullYear(), str.getMonth(), str.getDate());
+  const parts = String(str).split('T')[0].split('-');
+  if (parts.length === 3) {
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  }
+  return new Date(str);
+}
+
+function formatYMD(d) {
+  if (!d || isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function getMondayOfDate(d) {
-  const date = new Date(d);
+  const date = parseYMD(d);
   const day = date.getDay();
   const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   date.setDate(diff);
-  return date.toISOString().split('T')[0];
+  return formatYMD(date);
 }
 
 function setAutoSaveStatus(status) {
@@ -15180,17 +15209,17 @@ async function renderManualRosterBuilderView() {
 
     // Hook up week navigation
     document.getElementById("mbPrevWeekBtn").addEventListener("click", () => {
-      const cur = new Date(manualBuilderState.startDate);
+      const cur = parseYMD(manualBuilderState.startDate);
       cur.setDate(cur.getDate() - 7);
-      manualBuilderState.startDate = cur.toISOString().split('T')[0];
+      manualBuilderState.startDate = formatYMD(cur);
       manualBuilderState.cycleId = null;
       renderManualRosterBuilderView();
     });
 
     document.getElementById("mbNextWeekBtn").addEventListener("click", () => {
-      const cur = new Date(manualBuilderState.startDate);
+      const cur = parseYMD(manualBuilderState.startDate);
       cur.setDate(cur.getDate() + 7);
-      manualBuilderState.startDate = cur.toISOString().split('T')[0];
+      manualBuilderState.startDate = formatYMD(cur);
       manualBuilderState.cycleId = null;
       renderManualRosterBuilderView();
     });
@@ -15239,7 +15268,7 @@ async function renderManualRosterBuilderView() {
 
     // Shift Swap Modal Trigger
     document.getElementById("mbSwapShiftsBtn").addEventListener("click", () => {
-      openShiftSwapModal();
+      openManualShiftSwapModal();
     });
 
     // Compare Weeks Modal Trigger
@@ -15394,6 +15423,14 @@ async function renderManualRosterBuilderView() {
     });
 
     function focusAndOpenCell(cellEl) {
+      allCells.forEach(c => c.classList.remove("focused"));
+      cellEl.classList.add("focused");
+      manualBuilderState.focusedCell = {
+        empId: Number(cellEl.getAttribute("data-emp-id")),
+        date: cellEl.getAttribute("data-date"),
+        empIdx: Number(cellEl.getAttribute("data-emp-idx")),
+        dateIdx: Number(cellEl.getAttribute("data-date-idx"))
+      };
       const empId = Number(cellEl.getAttribute("data-emp-id"));
       const date = cellEl.getAttribute("data-date");
       const currentShift = cellEl.getAttribute("data-current-shift");
@@ -15451,26 +15488,28 @@ function openCopyRosterModal() {
   const existing = document.getElementById("mbCopyModal");
   if (existing) existing.remove();
 
-  const curMonday = new Date(manualBuilderState.startDate);
+  const curMonday = parseYMD(manualBuilderState.startDate);
   const prevMondayObj = new Date(curMonday);
   prevMondayObj.setDate(prevMondayObj.getDate() - 7);
-  const defaultSource = prevMondayObj.toISOString().split('T')[0];
+  const defaultSource = formatYMD(prevMondayObj);
 
   const modalHtml = `
-    <div class="modal active" id="mbCopyModal" style="display:flex; z-index:9999;">
-      <div class="modal-backdrop" onclick="document.getElementById('mbCopyModal').remove()"></div>
-      <div class="modal-content" style="max-width:540px; border-radius:8px;">
-        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
-          <h3 style="margin:0; font-size:1.15rem;">📋 Copy Week Roster Pattern</h3>
-          <button class="modal-close" onclick="document.getElementById('mbCopyModal').remove()">&times;</button>
+    <div class="modal-backdrop" id="mbCopyModal" style="z-index:10000;" onclick="if(event.target===this) this.remove()">
+      <div class="modal-box modal-content" style="max-width:540px; width:95%; position:relative; z-index:10001;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.3rem;">📋</span>
+            <h3 style="margin:0; font-size:1.15rem; font-weight:700;">Copy Week Roster Pattern</h3>
+          </div>
+          <button type="button" class="modal-close" onclick="document.getElementById('mbCopyModal').remove()" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body" style="padding:18px;">
+        <div class="modal-body" style="padding:18px 20px;">
           <div style="margin-bottom:14px;">
-            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">Source Week Monday</label>
+            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px; color:#1e293b;">Source Week Monday</label>
             <input type="date" id="mbCopySourceInput" class="form-control" value="${defaultSource}" style="width:100%; font-weight:600;">
           </div>
           <div style="margin-bottom:14px;">
-            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">Target Week Monday</label>
+            <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px; color:#1e293b;">Target Week Monday</label>
             <input type="date" id="mbCopyTargetInput" class="form-control" value="${manualBuilderState.startDate}" readonly style="width:100%; font-weight:600; background:#f1f5f9;">
           </div>
           <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
@@ -15488,7 +15527,7 @@ function openCopyRosterModal() {
             <!-- Rendered Preview -->
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e2e8f0; padding-top:14px;">
             <button type="button" class="btn btn-secondary btn-sm" id="mbCopyPreviewBtn">
               🔍 Preview Copy
             </button>
@@ -15579,7 +15618,7 @@ function openCopyRosterModal() {
 }
 
 // =============================================================================
-// MODAL: CLEAR ROSTER (4 MODES)
+// MODAL: CLEAR ROSTER (ALL 4 MODES WITH PREVIEW & DURABLE UNDO)
 // =============================================================================
 function openClearRosterModal() {
   const existing = document.getElementById("mbClearModal");
@@ -15590,72 +15629,156 @@ function openClearRosterModal() {
   const dates = (matrix && matrix.dates) ? matrix.dates : [];
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+  const startDateStr = dates.length > 0 ? formatDate(dates[0]) : (manualBuilderState.startDate || "Active Week");
+  const endDateStr = dates.length > 0 ? formatDate(dates[dates.length - 1]) : "";
+  const totalCells = employees.length * (dates.length || 7);
+
+  const focused = manualBuilderState.focusedCell;
+  let focusedEmpName = "No employee focused";
+  let focusedEmpCode = "";
+  let focusedCurrentShift = "OFF";
+  let focusedDateFormatted = "";
+
+  if (focused && matrix && matrix.rows) {
+    const r = matrix.rows.find(row => row.employeeId === focused.empId);
+    if (r) {
+      focusedEmpName = r.employeeName;
+      focusedEmpCode = r.employeeCode || "";
+      if (r.dayAssignments && r.dayAssignments[focused.date]) {
+        focusedCurrentShift = r.dayAssignments[focused.date].shiftType || "OFF";
+      }
+    }
+    focusedDateFormatted = formatDate(focused.date);
+  }
+
   const modalHtml = `
-    <div class="modal active" id="mbClearModal" style="display:flex; z-index:9999;">
-      <div class="modal-backdrop" onclick="document.getElementById('mbClearModal').remove()"></div>
-      <div class="modal-content" style="max-width:540px; border-radius:8px;">
-        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
-          <h3 style="margin:0; font-size:1.15rem; color:#b91c1c;">🗑️ Clear Roster Assignments</h3>
-          <button class="modal-close" onclick="document.getElementById('mbClearModal').remove()">&times;</button>
+    <div class="modal-backdrop" id="mbClearModal" style="z-index:10000;" onclick="if(event.target===this) this.remove()">
+      <div class="modal-box modal-content" style="max-width:620px; width:95%; position:relative; z-index:10001; max-height:90vh; display:flex; flex-direction:column;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.4rem;">🗑️</span>
+            <div>
+              <h3 style="margin:0; font-size:1.15rem; color:#b91c1c; font-weight:700;">Clear Roster Assignments</h3>
+              <span style="font-size:0.75rem; color:var(--text-muted);">Reset working shifts to OFF with durable Undo snapshot protection</span>
+            </div>
+          </div>
+          <button type="button" class="modal-close" onclick="document.getElementById('mbClearModal').remove()" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body" style="padding:18px;">
-          <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:8px;">Select Clear Scope:</label>
-          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="radio" name="mbClearMode" value="ENTIRE_WEEK" checked>
-              <strong>Mode A: Entire Week</strong> &mdash; Clear all shifts across the whole week
+
+        <div class="modal-body" style="padding:18px 20px; overflow-y:auto;">
+          <!-- Target Week Info Banner -->
+          <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
+            <div>
+              <strong>Target Week:</strong> <span style="font-family:monospace; font-weight:700; color:#1e293b;">${startDateStr} &mdash; ${endDateStr}</span>
+            </div>
+            <div>
+              <span class="badge" style="background:#e2e8f0; color:#334155; font-weight:700;">${employees.length} Staff &bull; ${totalCells} Total Cells</span>
+            </div>
+          </div>
+
+          <label style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:8px; color:#1e293b;">Select Clear Scope:</label>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+            <label style="font-size:0.84rem; display:flex; align-items:flex-start; gap:8px; cursor:pointer; padding:6px 8px; border-radius:4px; border:1px solid #e2e8f0; background:#ffffff;">
+              <input type="radio" name="mbClearMode" value="ENTIRE_WEEK" checked style="margin-top:2px;">
+              <div>
+                <strong>Mode A: Entire Week</strong>
+                <div style="font-size:0.76rem; color:var(--text-muted);">Clear all shifts across the whole week for all ${employees.length} employees (${totalCells} assignments).</div>
+              </div>
             </label>
-            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="radio" name="mbClearMode" value="SELECTED_EMPLOYEES">
-              <strong>Mode B: Selected Employees</strong> &mdash; Clear full week for specific employees
+
+            <label style="font-size:0.84rem; display:flex; align-items:flex-start; gap:8px; cursor:pointer; padding:6px 8px; border-radius:4px; border:1px solid #e2e8f0; background:#ffffff;">
+              <input type="radio" name="mbClearMode" value="SELECTED_EMPLOYEES" style="margin-top:2px;">
+              <div>
+                <strong>Mode B: Selected Employees</strong>
+                <div style="font-size:0.76rem; color:var(--text-muted);">Clear full week schedule for specific staff members only.</div>
+              </div>
             </label>
-            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="radio" name="mbClearMode" value="SELECTED_DATES">
-              <strong>Mode C: Selected Dates</strong> &mdash; Clear all employees on specific weekdays
+
+            <label style="font-size:0.84rem; display:flex; align-items:flex-start; gap:8px; cursor:pointer; padding:6px 8px; border-radius:4px; border:1px solid #e2e8f0; background:#ffffff;">
+              <input type="radio" name="mbClearMode" value="SELECTED_DATES" style="margin-top:2px;">
+              <div>
+                <strong>Mode C: Selected Dates</strong>
+                <div style="font-size:0.76rem; color:var(--text-muted);">Clear all employees on specific weekdays (e.g. weekends or specific coverage days).</div>
+              </div>
             </label>
-            <label style="font-size:0.84rem; display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="radio" name="mbClearMode" value="SELECTED_CELLS">
-              <strong>Mode D: Active Focused Cell</strong> &mdash; Clear currently focused assignment
+
+            <label style="font-size:0.84rem; display:flex; align-items:flex-start; gap:8px; cursor:pointer; padding:6px 8px; border-radius:4px; border:1px solid #e2e8f0; background:#ffffff;">
+              <input type="radio" name="mbClearMode" value="SELECTED_CELLS" style="margin-top:2px;">
+              <div>
+                <strong>Mode D: Active Focused Cell</strong>
+                <div style="font-size:0.76rem; color:var(--text-muted);">Clear currently focused individual roster cell.</div>
+              </div>
             </label>
           </div>
 
-          <!-- Sub-options: Selected Employees -->
-          <div id="mbClearEmpsSection" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
-            <div style="font-size:0.78rem; font-weight:700; margin-bottom:6px;">Select Employees to Clear:</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <!-- Sub-options: Mode B (Selected Employees) -->
+          <div id="mbClearEmpsSection" style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:0.78rem; font-weight:700; color:#1e293b;">Select Employees to Clear:</span>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-ghost btn-xs" id="mbClearSelectAllEmpsBtn" style="font-size:0.72rem; padding:2px 8px;">Select All</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="mbClearDeselectAllEmpsBtn" style="font-size:0.72rem; padding:2px 8px;">Deselect All</button>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:160px; overflow-y:auto; padding-right:4px;">
               ${employees.map(emp => `
-                <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
-                  <input type="checkbox" class="mb-clear-emp-cb" value="${emp.employeeId}" ${manualBuilderState.selectedEmployees.has(emp.employeeId) ? 'checked' : ''}>
-                  <span>${escapeHTML(emp.employeeName)}</span>
+                <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer; background:#fff; padding:4px 6px; border-radius:4px; border:1px solid #e2e8f0;">
+                  <input type="checkbox" class="mb-clear-emp-cb" value="${emp.employeeId}" ${manualBuilderState.selectedEmployees && manualBuilderState.selectedEmployees.has(emp.employeeId) ? 'checked' : ''}>
+                  <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(emp.employeeName)}</span>
                 </label>
               `).join('')}
             </div>
           </div>
 
-          <!-- Sub-options: Selected Dates -->
-          <div id="mbClearDatesSection" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:10px; margin-bottom:14px;">
-            <div style="font-size:0.78rem; font-weight:700; margin-bottom:6px;">Select Dates to Clear:</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <!-- Sub-options: Mode C (Selected Dates) -->
+          <div id="mbClearDatesSection" style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:0.78rem; font-weight:700; color:#1e293b;">Select Dates to Clear:</span>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="btn btn-ghost btn-xs" id="mbClearQuickAllDaysBtn" style="font-size:0.72rem; padding:2px 8px;">All 7 Days</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="mbClearQuickWeekdaysBtn" style="font-size:0.72rem; padding:2px 8px;">Weekdays</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="mbClearQuickWeekendsBtn" style="font-size:0.72rem; padding:2px 8px;">Weekends</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
               ${dates.map((d, idx) => `
-                <label style="font-size:0.8rem; background:#fff; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                <label style="font-size:0.8rem; background:#fff; border:1px solid #cbd5e1; padding:5px 8px; border-radius:4px; cursor:pointer; display:flex; align-items:center; gap:5px;">
                   <input type="checkbox" class="mb-clear-date-cb" value="${d}">
-                  ${dayNames[idx]} (${formatDate(d)})
+                  <strong>${dayNames[idx]}</strong> <small style="color:var(--text-muted);">(${formatDate(d)})</small>
                 </label>
               `).join('')}
             </div>
           </div>
 
-          <div id="mbClearPreviewContainer" style="display:none; background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:12px; margin-bottom:16px;">
+          <!-- Sub-options: Mode D (Selected Focused Cell) -->
+          <div id="mbClearCellSection" style="display:none; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px; margin-bottom:14px;">
+            <div style="font-size:0.78rem; font-weight:700; color:#1e293b; margin-bottom:6px;">Focused Cell Target:</div>
+            ${focused ? `
+              <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:10px; font-size:0.82rem; display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                <div>Employee: <strong>${escapeHTML(focusedEmpName)}</strong> <code>${escapeHTML(focusedEmpCode)}</code></div>
+                <div>Date: <strong>${focusedDateFormatted}</strong></div>
+                <div>Current Shift: <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${escapeHTML(focusedCurrentShift)}</span></div>
+                <div>Action: <span style="color:#b91c1c; font-weight:700;">Reset to OFF</span></div>
+              </div>
+            ` : `
+              <div style="background:#fffbeb; border:1px solid #fef3c7; border-radius:6px; padding:8px 12px; font-size:0.8rem; color:#92400e;">
+                ⚠️ No cell currently selected. Please click any cell on the roster grid to focus it, or choose Mode A, B, or C above.
+              </div>
+            `}
+          </div>
+
+          <!-- Impact Preview Container -->
+          <div id="mbClearPreviewContainer" style="display:none; background:#fff1f2; border:1px solid #fecdd3; border-radius:6px; padding:12px 14px; margin-bottom:16px;">
             <!-- Rendered Preview -->
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e2e8f0; padding-top:14px;">
             <button type="button" class="btn btn-secondary btn-sm" id="mbClearPreviewBtn">
-              🔍 Preview Clear
+              🔍 Preview Clear Impact
             </button>
             <div style="display:flex; gap:8px;">
               <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mbClearModal').remove()">Cancel</button>
-              <button type="button" class="btn btn-danger btn-sm" id="mbClearApplyBtn" disabled style="background:#dc2626; border-color:#b91c1c;">
+              <button type="button" class="btn btn-danger btn-sm" id="mbClearApplyBtn" style="background:#dc2626; border-color:#b91c1c; color:#fff;">
                 Execute Clear
               </button>
             </div>
@@ -15669,6 +15792,7 @@ function openClearRosterModal() {
   const radios = document.querySelectorAll("input[name='mbClearMode']");
   const empsSec = document.getElementById("mbClearEmpsSection");
   const datesSec = document.getElementById("mbClearDatesSection");
+  const cellSec = document.getElementById("mbClearCellSection");
   const previewBox = document.getElementById("mbClearPreviewContainer");
   const previewBtn = document.getElementById("mbClearPreviewBtn");
   const applyBtn = document.getElementById("mbClearApplyBtn");
@@ -15677,13 +15801,42 @@ function openClearRosterModal() {
     r.addEventListener("change", () => {
       empsSec.style.display = (r.value === "SELECTED_EMPLOYEES" && r.checked) ? "block" : "none";
       datesSec.style.display = (r.value === "SELECTED_DATES" && r.checked) ? "block" : "none";
+      cellSec.style.display = (r.value === "SELECTED_CELLS" && r.checked) ? "block" : "none";
       previewBox.style.display = "none";
-      applyBtn.disabled = true;
     });
   });
 
+  // Mode B quick buttons
+  document.getElementById("mbClearSelectAllEmpsBtn")?.addEventListener("click", () => {
+    document.querySelectorAll(".mb-clear-emp-cb").forEach(cb => cb.checked = true);
+    previewBox.style.display = "none";
+  });
+  document.getElementById("mbClearDeselectAllEmpsBtn")?.addEventListener("click", () => {
+    document.querySelectorAll(".mb-clear-emp-cb").forEach(cb => cb.checked = false);
+    previewBox.style.display = "none";
+  });
+
+  // Mode C quick buttons
+  document.getElementById("mbClearQuickAllDaysBtn")?.addEventListener("click", () => {
+    document.querySelectorAll(".mb-clear-date-cb").forEach(cb => cb.checked = true);
+    previewBox.style.display = "none";
+  });
+  document.getElementById("mbClearQuickWeekdaysBtn")?.addEventListener("click", () => {
+    document.querySelectorAll(".mb-clear-date-cb").forEach((cb, idx) => {
+      cb.checked = idx < 5;
+    });
+    previewBox.style.display = "none";
+  });
+  document.getElementById("mbClearQuickWeekendsBtn")?.addEventListener("click", () => {
+    document.querySelectorAll(".mb-clear-date-cb").forEach((cb, idx) => {
+      cb.checked = idx >= 5;
+    });
+    previewBox.style.display = "none";
+  });
+
   function getClearPayload() {
-    const mode = document.querySelector("input[name='mbClearMode']:checked").value;
+    const checkedRadio = document.querySelector("input[name='mbClearMode']:checked");
+    const mode = checkedRadio ? checkedRadio.value : "ENTIRE_WEEK";
     const payload = {
       cycleId: manualBuilderState.cycleId,
       startDate: manualBuilderState.startDate,
@@ -15707,6 +15860,19 @@ function openClearRosterModal() {
 
   previewBtn.addEventListener("click", async () => {
     const payload = getClearPayload();
+    if (payload.mode === "SELECTED_EMPLOYEES" && (!payload.employeeIds || payload.employeeIds.length === 0)) {
+      toast("Please select at least one employee to clear", "warning");
+      return;
+    }
+    if (payload.mode === "SELECTED_DATES" && (!payload.dates || payload.dates.length === 0)) {
+      toast("Please select at least one date to clear", "warning");
+      return;
+    }
+    if (payload.mode === "SELECTED_CELLS" && (!payload.cells || payload.cells.length === 0)) {
+      toast("No cell is currently focused. Please click a cell on the grid first.", "warning");
+      return;
+    }
+
     previewBtn.disabled = true;
     previewBtn.textContent = "Calculating...";
     try {
@@ -15720,21 +15886,39 @@ function openClearRosterModal() {
         <div style="font-size:0.85rem; font-weight:700; color:#991b1b; margin-bottom:4px;">⚠️ Impact Preview:</div>
         <p style="font-size:0.82rem; margin:0 0 6px; color:#b91c1c;">${escapeHTML(res.summary)}</p>
         <div style="font-size:0.78rem; color:#7f1d1d; line-height:1.4;">${escapeHTML(res.warningMessage)}</div>
-        <div style="margin-top:6px; font-size:0.75rem; font-weight:700; color:#1e293b;">
-          Total Affected Assignments: <strong>${res.affectedAssignmentsCount}</strong>
+        <div style="margin-top:8px; font-size:0.78rem; font-weight:700; color:#1e293b; display:flex; gap:14px; flex-wrap:wrap;">
+          <span>Assignments Affected: <strong>${res.affectedAssignmentsCount}</strong></span>
+          <span>Staff Affected: <strong>${res.affectedEmployeesCount}</strong></span>
+          <span>Dates Affected: <strong>${res.affectedDatesCount}</strong></span>
         </div>
       `;
-      applyBtn.disabled = !res.canApply;
     } catch (err) {
       toast(err.message || "Failed to preview clear", "error");
     } finally {
       previewBtn.disabled = false;
-      previewBtn.textContent = "🔍 Preview Clear";
+      previewBtn.textContent = "🔍 Preview Clear Impact";
     }
   });
 
   applyBtn.addEventListener("click", async () => {
     const payload = getClearPayload();
+    if (payload.mode === "SELECTED_EMPLOYEES" && (!payload.employeeIds || payload.employeeIds.length === 0)) {
+      toast("Please select at least one employee to clear", "warning");
+      return;
+    }
+    if (payload.mode === "SELECTED_DATES" && (!payload.dates || payload.dates.length === 0)) {
+      toast("Please select at least one date to clear", "warning");
+      return;
+    }
+    if (payload.mode === "SELECTED_CELLS" && (!payload.cells || payload.cells.length === 0)) {
+      toast("No cell is currently focused. Please click a cell on the grid first.", "warning");
+      return;
+    }
+
+    if (!confirm("Are you sure you want to execute Clear? All affected shifts will be reset to OFF / Unassigned. You can undo this action at any time.")) {
+      return;
+    }
+
     applyBtn.disabled = true;
     applyBtn.textContent = "Clearing...";
     setAutoSaveStatus('saving');
@@ -15744,7 +15928,7 @@ function openClearRosterModal() {
         body: payload
       });
       document.getElementById("mbClearModal").remove();
-      toast("Assignments cleared successfully!", "success");
+      toast("Assignments cleared successfully! Use 'Undo' to revert if needed.", "success");
       setAutoSaveStatus('saved');
       await renderManualRosterBuilderView();
     } catch (err) {
@@ -15759,7 +15943,7 @@ function openClearRosterModal() {
 // =============================================================================
 // MODAL: SHIFT SWAP (WITH CONFLICT & STATUTORY VALIDATION)
 // =============================================================================
-function openShiftSwapModal() {
+function openManualShiftSwapModal() {
   const existing = document.getElementById("mbSwapModal");
   if (existing) existing.remove();
 
@@ -15776,47 +15960,52 @@ function openShiftSwapModal() {
   const initDateB = (dates.length > 1) ? dates[1] : initDateA;
 
   const modalHtml = `
-    <div class="modal active" id="mbSwapModal" style="display:flex; z-index:9999;">
-      <div class="modal-backdrop" onclick="document.getElementById('mbSwapModal').remove()"></div>
-      <div class="modal-content" style="max-width:560px; border-radius:8px;">
-        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
-          <h3 style="margin:0; font-size:1.15rem;">🔄 Shift Swap with Validation</h3>
-          <button class="modal-close" onclick="document.getElementById('mbSwapModal').remove()">&times;</button>
+    <div class="modal-backdrop" id="mbSwapModal" style="z-index:10000;" onclick="if(event.target===this) this.remove()">
+      <div class="modal-box modal-content" style="max-width:620px; width:95%; position:relative; z-index:10001; max-height:90vh;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.3rem;">🔄</span>
+            <div>
+              <h3 style="margin:0; font-size:1.15rem; font-weight:700;">Shift Swap with Validation</h3>
+              <span style="font-size:0.75rem; color:var(--text-muted);">Swap shifts between staff with automatic statutory & rest validation</span>
+            </div>
+          </div>
+          <button type="button" class="modal-close" onclick="document.getElementById('mbSwapModal').remove()" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body" style="padding:18px;">
+        <div class="modal-body" style="padding:18px 20px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;">
             <!-- Employee A -->
-            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px;">
-              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b;">Employee A</h4>
-              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Employee</label>
-              <select id="mbSwapEmpA" class="form-control" style="font-size:0.82rem; padding:4px 8px; margin-bottom:8px;">
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px;">
+              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b; font-weight:700;">Employee A</h4>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Staff</label>
+              <select id="mbSwapEmpA" class="form-control" style="font-size:0.82rem; padding:5px 8px; margin-bottom:8px; width:100%;">
                 ${employees.map(e => `<option value="${e.employeeId}" ${e.employeeId === initEmpA ? 'selected' : ''}>${escapeHTML(e.employeeName)}</option>`).join('')}
               </select>
               <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Date</label>
-              <select id="mbSwapDateA" class="form-control" style="font-size:0.82rem; padding:4px 8px;">
+              <select id="mbSwapDateA" class="form-control" style="font-size:0.82rem; padding:5px 8px; width:100%;">
                 ${dates.map((d, idx) => `<option value="${d}" ${d === initDateA ? 'selected' : ''}>${dayNames[idx]} (${formatDate(d)})</option>`).join('')}
               </select>
             </div>
 
             <!-- Employee B -->
-            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px;">
-              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b;">Employee B</h4>
-              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Employee</label>
-              <select id="mbSwapEmpB" class="form-control" style="font-size:0.82rem; padding:4px 8px; margin-bottom:8px;">
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px;">
+              <h4 style="margin:0 0 8px; font-size:0.85rem; color:#1e293b; font-weight:700;">Employee B</h4>
+              <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Staff</label>
+              <select id="mbSwapEmpB" class="form-control" style="font-size:0.82rem; padding:5px 8px; margin-bottom:8px; width:100%;">
                 ${employees.map(e => `<option value="${e.employeeId}" ${e.employeeId === initEmpB ? 'selected' : ''}>${escapeHTML(e.employeeName)}</option>`).join('')}
               </select>
               <label style="font-size:0.75rem; font-weight:700; display:block; margin-bottom:3px;">Select Date</label>
-              <select id="mbSwapDateB" class="form-control" style="font-size:0.82rem; padding:4px 8px;">
+              <select id="mbSwapDateB" class="form-control" style="font-size:0.82rem; padding:5px 8px; width:100%;">
                 ${dates.map((d, idx) => `<option value="${d}" ${d === initDateB ? 'selected' : ''}>${dayNames[idx]} (${formatDate(d)})</option>`).join('')}
               </select>
             </div>
           </div>
 
-          <div id="mbSwapPreviewContainer" style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px; margin-bottom:14px;">
+          <div id="mbSwapPreviewContainer" style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px 14px; margin-bottom:14px;">
             <!-- Rendered Preview -->
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #e2e8f0; padding-top:14px;">
             <button type="button" class="btn btn-secondary btn-sm" id="mbSwapPreviewBtn">
               🔍 Validate Swap
             </button>
@@ -15920,30 +16109,37 @@ function openWeekComparisonModal() {
   const existing = document.getElementById("mbCompareModal");
   if (existing) existing.remove();
 
-  const curMonday = new Date(manualBuilderState.startDate);
+  const curMonday = parseYMD(manualBuilderState.startDate);
   const prevMondayObj = new Date(curMonday);
   prevMondayObj.setDate(prevMondayObj.getDate() - 7);
-  const defaultPrev = prevMondayObj.toISOString().split('T')[0];
+  const defaultPrev = formatYMD(prevMondayObj);
+  const defaultCur = formatYMD(curMonday);
 
   const modalHtml = `
-    <div class="modal active" id="mbCompareModal" style="display:flex; z-index:9999;">
-      <div class="modal-backdrop" onclick="document.getElementById('mbCompareModal').remove()"></div>
-      <div class="modal-content" style="max-width:920px; border-radius:8px;">
-        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
-          <h3 style="margin:0; font-size:1.15rem;">🔍 Compare Roster Weeks</h3>
-          <button class="modal-close" onclick="document.getElementById('mbCompareModal').remove()">&times;</button>
+    <div class="modal-backdrop" id="mbCompareModal" style="z-index:10000;" onclick="if(event.target===this) this.remove()">
+      <div class="modal-box modal-content" style="max-width:980px; width:95%; position:relative; z-index:10001; max-height:90vh; display:flex; flex-direction:column;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.4rem;">🔍</span>
+            <div>
+              <h3 style="margin:0; font-size:1.15rem; color:var(--text-main); font-weight:700;">Compare Roster Weeks</h3>
+              <span style="font-size:0.78rem; color:var(--text-muted);">Side-by-side schedule diff between baseline and target weeks</span>
+            </div>
+          </div>
+          <button type="button" class="modal-close" onclick="document.getElementById('mbCompareModal').remove()" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body" style="padding:18px;">
-          <div style="display:flex; gap:16px; align-items:flex-end; margin-bottom:16px;">
-            <div>
-              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Week A (Baseline)</label>
-              <input type="date" id="mbCompWeekA" class="form-control" value="${defaultPrev}" style="font-weight:600; font-size:0.85rem;">
+
+        <div class="modal-body" style="padding:18px 20px; overflow-y:auto;">
+          <div style="display:flex; gap:16px; align-items:flex-end; margin-bottom:16px; background:#f8fafc; padding:12px 14px; border-radius:6px; border:1px solid #e2e8f0;">
+            <div style="flex:1;">
+              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px; color:#1e293b;">Week A (Baseline Monday)</label>
+              <input type="date" id="mbCompWeekA" class="form-control" value="${defaultPrev}" style="font-weight:600; font-size:0.85rem; width:100%;">
             </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px;">Week B (Comparison Target)</label>
-              <input type="date" id="mbCompWeekB" class="form-control" value="${manualBuilderState.startDate}" style="font-weight:600; font-size:0.85rem;">
+            <div style="flex:1;">
+              <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:4px; color:#1e293b;">Week B (Comparison Target Monday)</label>
+              <input type="date" id="mbCompWeekB" class="form-control" value="${defaultCur}" style="font-weight:600; font-size:0.85rem; width:100%;">
             </div>
-            <button type="button" class="btn btn-primary btn-sm" id="mbCompRunBtn" style="padding:7px 16px;">
+            <button type="button" class="btn btn-primary btn-sm" id="mbCompRunBtn" style="padding:8px 18px; font-weight:600; white-space:nowrap;">
               Compare Weeks
             </button>
           </div>
@@ -15959,56 +16155,63 @@ function openWeekComparisonModal() {
   `;
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-  document.getElementById("mbCompRunBtn").addEventListener("click", async () => {
+  document.getElementById("mbCompWeekA").addEventListener("change", (e) => {
+    e.target.value = getMondayOfDate(e.target.value);
+  });
+  document.getElementById("mbCompWeekB").addEventListener("change", (e) => {
+    e.target.value = getMondayOfDate(e.target.value);
+  });
+
+  const runCompare = async () => {
     const weekA = getMondayOfDate(document.getElementById("mbCompWeekA").value);
     const weekB = getMondayOfDate(document.getElementById("mbCompWeekB").value);
     const container = document.getElementById("mbCompResultsContainer");
-    container.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner"></div><p>Calculating schedule differences...</p></div>`;
+    container.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner"></div><p style="margin-top:10px; color:var(--text-muted);">Calculating schedule differences between ${weekA} and ${weekB}...</p></div>`;
 
     try {
       const data = await apiRequest(`/api/rosters/manual/compare?weekA=${weekA}&weekB=${weekB}`);
       const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
       container.innerHTML = `
-        <div style="display:flex; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
-          <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700; padding:4px 10px;">
+        <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+          <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700; padding:5px 12px; font-size:0.8rem;">
             Total Differences: ${data.totalDifferences}
           </span>
-          <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700; padding:4px 10px;">
+          <span class="badge" style="background:#fef3c7; color:#92400e; font-weight:700; padding:5px 12px; font-size:0.8rem;">
             Shift Changes: ${data.shiftChangesCount}
           </span>
-          <span class="badge" style="background:#f3e8ff; color:#7e22ce; font-weight:700; padding:4px 10px;">
+          <span class="badge" style="background:#f3e8ff; color:#7e22ce; font-weight:700; padding:5px 12px; font-size:0.8rem;">
             OFF Changes: ${data.offChangesCount}
           </span>
-          <span class="badge" style="background:#dcfce7; color:#15803d; font-weight:700; padding:4px 10px;">
+          <span class="badge" style="background:#dcfce7; color:#15803d; font-weight:700; padding:5px 12px; font-size:0.8rem;">
             Manual Flags: ${data.manualFlagsChangesCount}
           </span>
         </div>
 
-        <div style="max-height:360px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px;">
+        <div style="max-height:420px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px;">
           <table class="data-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
-            <thead>
-              <tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-                <th style="padding:8px 10px; text-align:left;">Employee</th>
-                ${dayNames.map(d => `<th style="text-align:center; padding:8px 4px; min-width:85px;">${d}</th>`).join('')}
+            <thead style="position:sticky; top:0; background:#f8fafc; z-index:2;">
+              <tr style="border-bottom:2px solid #e2e8f0;">
+                <th style="padding:10px 12px; text-align:left; background:#f8fafc;">Employee</th>
+                ${dayNames.map(d => `<th style="text-align:center; padding:10px 4px; min-width:90px; background:#f8fafc;">${d}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
               ${data.rows.map(row => `
                 <tr style="border-bottom:1px solid #f1f5f9;">
-                  <td style="padding:8px 10px; font-weight:700;">
+                  <td style="padding:8px 12px; font-weight:700; white-space:nowrap;">
                     ${escapeHTML(row.employeeName)}
                   </td>
                   ${[1,2,3,4,5,6,7].map(d => {
                     const cell = row.dayComparisons[d] || {};
                     const hasDiff = cell.hasDifference;
                     return `
-                      <td style="text-align:center; padding:6px 2px; ${hasDiff ? 'background:#fffbeb;' : ''}">
+                      <td style="text-align:center; padding:6px 4px; ${hasDiff ? 'background:#fffbeb;' : ''}">
                         ${hasDiff ? `
-                          <div style="font-size:0.7rem; font-weight:700; color:#b45309;">
+                          <div style="font-size:0.72rem; font-weight:700; color:#b45309;">
                             ${escapeHTML(cell.shiftA)} &rarr; ${escapeHTML(cell.shiftB)}
                           </div>
-                          <div style="font-size:0.65rem; color:#92400e;">
+                          <div style="font-size:0.65rem; color:#92400e; margin-top:2px;">
                             ${escapeHTML(cell.diffDescription || 'Changed')}
                           </div>
                         ` : `
@@ -16026,9 +16229,12 @@ function openWeekComparisonModal() {
         </div>
       `;
     } catch (err) {
-      container.innerHTML = `<p style="color:#ef4444;">Failed to compare weeks: ${escapeHTML(err.message)}</p>`;
+      container.innerHTML = `<p style="color:#ef4444; padding:20px; text-align:center;">Failed to compare weeks: ${escapeHTML(err.message)}</p>`;
     }
-  });
+  };
+
+  document.getElementById("mbCompRunBtn").addEventListener("click", runCompare);
+  runCompare();
 }
 
 // =============================================================================
@@ -16042,20 +16248,19 @@ function openCellShiftModal(employeeId, date, currentShift, isManual) {
   const empName = employee ? employee.employeeName : "Employee";
 
   const modalHtml = `
-    <div class="modal active" id="mbCellShiftModal" style="display:flex; z-index:9999;">
-      <div class="modal-backdrop" onclick="document.getElementById('mbCellShiftModal').remove()"></div>
-      <div class="modal-content" style="max-width:420px; border-radius:8px;">
-        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:14px 18px;">
+    <div class="modal-backdrop" id="mbCellShiftModal" style="z-index:10000;" onclick="if(event.target===this) this.remove()">
+      <div class="modal-box modal-content" style="max-width:440px; width:95%; position:relative; z-index:10001;">
+        <div class="modal-header" style="border-bottom:1px solid #e2e8f0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <h3 style="margin:0; font-size:1.1rem;">Assign Shift</h3>
+            <h3 style="margin:0; font-size:1.15rem; font-weight:700;">Assign Shift</h3>
             <span style="font-size:0.78rem; color:var(--text-muted); font-weight:600;">
               ${escapeHTML(empName)} &bull; ${formatDate(date)}
             </span>
           </div>
-          <button class="modal-close" onclick="document.getElementById('mbCellShiftModal').remove()">&times;</button>
+          <button type="button" class="modal-close" onclick="document.getElementById('mbCellShiftModal').remove()" aria-label="Close">&times;</button>
         </div>
-        <div class="modal-body" style="padding:18px;">
-          <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:8px;">Select Shift (Strict Authoritative Level 1 Assignment):</label>
+        <div class="modal-body" style="padding:18px 20px;">
+          <label style="font-size:0.8rem; font-weight:700; display:block; margin-bottom:8px;">Select Shift (Authoritative Level 1 Assignment):</label>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
             <button type="button" class="btn btn-secondary btn-sm mb-shift-pick-btn ${currentShift === 'MORNING' ? 'btn-primary' : ''}" data-shift="MORNING" style="text-align:left; padding:8px 10px;">
               🌅 Morning
