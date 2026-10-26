@@ -11,9 +11,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -26,9 +26,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
-@TestPropertySource(properties = {"wrms.dev.credential-mirror.enabled=false"})
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "wrms.dev.credential-mirror.enabled=false",
+        "spring.datasource.url=jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL"
+})
 public class Batch101EmployeeRosterAndPreferenceIsolationTest {
+
+    static {
+        try {
+            System.setProperty("spring.profiles.active", "test");
+            System.setProperty("spring.datasource.url", "jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL");
+            java.io.File targetDir = new java.io.File("target");
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+            java.io.File realDb = new java.io.File("data/wrms.db");
+            java.io.File testDb = new java.io.File("target/test-wrms.db");
+            if (realDb.exists()) {
+                java.nio.file.Files.copy(realDb.toPath(), testDb.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;

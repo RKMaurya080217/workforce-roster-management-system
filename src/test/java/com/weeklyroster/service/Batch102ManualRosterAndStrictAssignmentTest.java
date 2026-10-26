@@ -28,9 +28,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -45,9 +45,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Transactional
-@TestPropertySource(properties = {"wrms.dev.credential-mirror.enabled=false"})
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "wrms.dev.credential-mirror.enabled=false",
+        "spring.datasource.url=jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL"
+})
 public class Batch102ManualRosterAndStrictAssignmentTest {
+
+    static {
+        try {
+            System.setProperty("spring.profiles.active", "test");
+            System.setProperty("spring.datasource.url", "jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL");
+            java.io.File targetDir = new java.io.File("target");
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+            java.io.File realDb = new java.io.File("data/wrms.db");
+            java.io.File testDb = new java.io.File("target/test-wrms.db");
+            if (realDb.exists()) {
+                java.nio.file.Files.copy(realDb.toPath(), testDb.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -200,7 +221,7 @@ public class Batch102ManualRosterAndStrictAssignmentTest {
         // 1. Create Recurring Preference via REST
         RecurringShiftPreferenceRequest createReq = new RecurringShiftPreferenceRequest(
                 testEmployee.getId(),
-                DayOfWeek.SATURDAY,
+                DayOfWeek.SUNDAY,
                 ShiftType.MORNING,
                 targetMonday,
                 null,
@@ -213,7 +234,7 @@ public class Batch102ManualRosterAndStrictAssignmentTest {
                         .content(objectMapper.writeValueAsString(createReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").isNumber())
-                .andExpect(jsonPath("$.dayOfWeek").value("SATURDAY"))
+                .andExpect(jsonPath("$.dayOfWeek").value("SUNDAY"))
                 .andExpect(jsonPath("$.shiftType").value("MORNING"))
                 .andReturn().getResponse().getContentAsString();
 
@@ -222,7 +243,7 @@ public class Batch102ManualRosterAndStrictAssignmentTest {
         // 2. Attempt to create conflicting active rule on same DayOfWeek for same employee
         RecurringShiftPreferenceRequest conflictReq = new RecurringShiftPreferenceRequest(
                 testEmployee.getId(),
-                DayOfWeek.SATURDAY,
+                DayOfWeek.SUNDAY,
                 ShiftType.EVENING,
                 targetMonday,
                 null,
@@ -329,9 +350,9 @@ public class Batch102ManualRosterAndStrictAssignmentTest {
                 targetMonday,
                 testEmployee.getId(),
                 wednesday,
-                ShiftType.NIGHT,
+                ShiftType.MORNING,
                 false,
-                "Night test"
+                "Morning test"
         ), "admin");
 
         mockMvc.perform(delete("/api/rosters/manual/assignment")
@@ -347,17 +368,18 @@ public class Batch102ManualRosterAndStrictAssignmentTest {
     @DisplayName("BATCH 102 - TEST 9: Copy Previous Week duplicates shift pattern with COPIED source")
     @WithMockUser(username = "admin", authorities = {"ROLE_ADMIN"})
     public void testCopyPreviousWeek() throws Exception {
-        LocalDate prevMonday = targetMonday.minusWeeks(1);
+        LocalDate copyTargetMonday = targetMonday.plusWeeks(3);
+        LocalDate prevMonday = copyTargetMonday.minusWeeks(1);
         rosterService.generateWeeklyRoster(prevMonday, GenerationMode.MANUAL);
 
-        CopyPreviousWeekRequest req = new CopyPreviousWeekRequest(null, targetMonday);
+        CopyPreviousWeekRequest req = new CopyPreviousWeekRequest(null, copyTargetMonday);
 
         mockMvc.perform(post("/api/rosters/manual/copy-week")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk());
 
-        List<RosterAssignment> copied = assignmentRepository.findByEmployeeIdAndRosterDate(testEmployee.getId(), targetMonday);
+        List<RosterAssignment> copied = assignmentRepository.findByEmployeeIdAndRosterDate(testEmployee.getId(), copyTargetMonday);
         assertFalse(copied.isEmpty());
         assertTrue(copied.get(0).isManualAssignment());
         assertEquals("COPIED", copied.get(0).getAssignmentSource());

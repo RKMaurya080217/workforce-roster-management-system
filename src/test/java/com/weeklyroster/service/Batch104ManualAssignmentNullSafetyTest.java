@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
@@ -28,9 +28,30 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
-@Transactional
-@TestPropertySource(properties = {"wrms.dev.credential-mirror.enabled=false"})
+@ActiveProfiles("test")
+@TestPropertySource(properties = {
+        "wrms.dev.credential-mirror.enabled=false",
+        "spring.datasource.url=jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL"
+})
 public class Batch104ManualAssignmentNullSafetyTest {
+
+    static {
+        try {
+            System.setProperty("spring.profiles.active", "test");
+            System.setProperty("spring.datasource.url", "jdbc:sqlite:target/test-wrms.db?busy_timeout=30000&journal_mode=WAL");
+            java.io.File targetDir = new java.io.File("target");
+            if (!targetDir.exists()) {
+                targetDir.mkdirs();
+            }
+            java.io.File realDb = new java.io.File("data/wrms.db");
+            java.io.File testDb = new java.io.File("target/test-wrms.db");
+            if (realDb.exists()) {
+                java.nio.file.Files.copy(realDb.toPath(), testDb.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     @Autowired
     private RosterAssignmentRepository rosterAssignmentRepository;
@@ -126,7 +147,7 @@ public class Batch104ManualAssignmentNullSafetyTest {
     @Test
     @DisplayName("Case 2: Automatically generated assignments have manualAssignment = false")
     public void testAutomaticAssignmentHasManualAssignmentFalse() {
-        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(2);
+        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(12);
         rosterService.generateWeeklyRoster(monday, GenerationMode.AUTOMATIC);
 
         List<RosterAssignment> assignments = rosterAssignmentRepository.findByRosterDateBetweenWithDetails(monday, monday.plusDays(6));
@@ -144,7 +165,7 @@ public class Batch104ManualAssignmentNullSafetyTest {
         List<Employee> emps = employeeRepository.findAll();
         Employee emp = emps.get(0);
 
-        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(3);
+        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(13);
         LocalDate targetDate = monday.plusDays(1); // Tuesday
 
         RosterCycle cycle = rosterService.getOrCreateDraftCycle(monday, 6);
@@ -175,7 +196,7 @@ public class Batch104ManualAssignmentNullSafetyTest {
         List<Employee> emps = employeeRepository.findAll();
         Employee emp = emps.get(0);
 
-        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(4);
+        LocalDate monday = LocalDate.now().with(TemporalAdjusters.next(DayOfWeek.MONDAY)).plusWeeks(14);
         LocalDate targetDate = monday.plusDays(5); // Saturday
 
         RosterCycle cycle = rosterService.getOrCreateDraftCycle(monday, 6);
