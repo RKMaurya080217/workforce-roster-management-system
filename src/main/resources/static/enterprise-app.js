@@ -1,4 +1,4 @@
-/* ==========================================================================
+﻿/* ==========================================================================
    ENTERPRISE FEATURES MODULE (WRMS Enterprise v2.0)
    1. Roster Analytics Dashboard
    2. Smart Roster Conflict Detector / Validator
@@ -2614,6 +2614,7 @@ function openHolidayModal(holiday) {
   const form = document.getElementById("holidayModalForm");
   if (!form) return;
   form.reset();
+  form.onsubmit = null;
 
   const titleEl = document.getElementById("holidayModalTitle");
   const idEl = document.getElementById("holidayFormId");

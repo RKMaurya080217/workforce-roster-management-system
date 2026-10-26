@@ -134,7 +134,25 @@ public class Batch46ResponsiveAndExportIntegrationTest {
     @Test
     @DisplayName("Test 4: Roster Email Delivery dispatches and returns delivery logs")
     void testRosterEmailDelivery() {
-        when(rosterService.cycle(101L)).thenReturn(mockCycle);
+        RosterCycleResponse publishedCycle = new RosterCycleResponse(
+                101L,
+                LocalDate.of(2026, 9, 7),
+                LocalDate.of(2026, 9, 13),
+                LocalDateTime.now(),
+                GenerationMode.MANUAL,
+                RosterStatus.PUBLISHED,
+                LocalDateTime.now(),
+                "admin",
+                null,
+                null,
+                null,
+                null,
+                null,
+                "NOT_SENT",
+                Collections.emptyList(),
+                null
+        );
+        when(rosterService.cycle(101L)).thenReturn(publishedCycle);
         when(rosterEmailService.distributeRosterEmails(any(), any(), eq(GenerationMode.MANUAL), any()))
                 .thenReturn(List.of(new EmailDeliveryLogResponse(1L, 101L, 1L, "EMP001", "Rajat Maurya", "rajat@example.com", "2026-09-02 00:00:00", EmailDeliveryStatus.SENT, null, GenerationMode.MANUAL)));
 

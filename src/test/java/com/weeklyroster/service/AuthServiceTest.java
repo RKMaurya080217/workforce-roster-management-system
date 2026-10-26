@@ -75,6 +75,7 @@ class AuthServiceTest {
         );
         SecurityContextHolder.getContext().setAuthentication(auth);
         lenient().when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        lenient().when(userRepository.findByUsernameIgnoreCase(anyString())).thenReturn(Optional.of(testUser));
     }
 
     @org.junit.jupiter.api.AfterEach
@@ -89,7 +90,7 @@ class AuthServiceTest {
                 "oldPassword123", "newPassword456", "newPassword456"
         );
 
-        when(userRepository.findByUsername("emp001")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCase("emp001")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("oldPassword123", "$2a$10$encodedOldPasswordHash")).thenReturn(true);
         when(passwordEncoder.matches("newPassword456", "$2a$10$encodedOldPasswordHash")).thenReturn(false);
         when(passwordEncoder.encode("newPassword456")).thenReturn("$2a$10$encodedNewPasswordHash");
@@ -116,7 +117,7 @@ class AuthServiceTest {
                 "oldPassword123", "newPassword456", "mismatchPassword"
         );
 
-        when(userRepository.findByUsername("emp001")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCase("emp001")).thenReturn(Optional.of(testUser));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> authService.changePassword(request));
         assertTrue(ex.getMessage().contains("New password and confirmation do not match"));
@@ -143,7 +144,7 @@ class AuthServiceTest {
                 "wrongOldPassword", "newPassword456", "newPassword456"
         );
 
-        when(userRepository.findByUsername("emp001")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCase("emp001")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("wrongOldPassword", "$2a$10$encodedOldPasswordHash")).thenReturn(false);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> authService.changePassword(request));
@@ -166,7 +167,7 @@ class AuthServiceTest {
                 "oldPassword123", "oldPassword123", "oldPassword123"
         );
 
-        when(userRepository.findByUsername("emp001")).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCase("emp001")).thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches("oldPassword123", "$2a$10$encodedOldPasswordHash")).thenReturn(true);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> authService.changePassword(request));
