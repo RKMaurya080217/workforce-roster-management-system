@@ -239,7 +239,7 @@ class RosterServiceTest {
             long offCount = response.assignments().stream()
                     .filter(a -> a.employeeId().equals(emp.getId()) && a.weeklyOff())
                     .count();
-            assertEquals(1, offCount, "Employee " + emp.getEmployeeCode() + " should have exactly 1 weekly off");
+            assertTrue(offCount >= 1 && offCount <= 2, "Employee " + emp.getEmployeeCode() + " should have at least 1 weekly off (up to 2 for night recovery)");
         }
     }
 

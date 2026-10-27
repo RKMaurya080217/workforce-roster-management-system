@@ -202,4 +202,33 @@ public record ApplicablePreference(
         if (recurringWeeklyShifts == null || dayOfWeek == null) return null;
         return recurringWeeklyShifts.get(dayOfWeek);
     }
+
+    /**
+     * BATCH 113: Authoritative Target Shift for Date.
+     * Priority 3 (Date-Specific) takes precedence over Priority 4 (Recurring Weekly).
+     */
+    public ShiftType getTargetShiftForDate(LocalDate date) {
+        if (date == null) return null;
+        if (hasDateSpecificShift(date)) {
+            return getDateSpecificShift(date);
+        }
+        if (hasRecurringShift(date.getDayOfWeek())) {
+            return getRecurringShift(date.getDayOfWeek());
+        }
+        return null;
+    }
+
+    public boolean hasTargetShiftForDate(LocalDate date) {
+        return getTargetShiftForDate(date) != null;
+    }
+
+    public boolean isTargetShift(ShiftType shiftType, LocalDate date) {
+        ShiftType target = getTargetShiftForDate(date);
+        return target != null && target == shiftType;
+    }
+
+    public boolean isShiftTargetOrNeutral(ShiftType shiftType, LocalDate date) {
+        ShiftType target = getTargetShiftForDate(date);
+        return target == null || target == shiftType;
+    }
 }

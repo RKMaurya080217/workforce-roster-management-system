@@ -27,6 +27,27 @@ public class RosterValidatorService {
     private final ShiftRepository shiftRepository;
     private final LeaveRequestRepository leaveRequestRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.weeklyroster.repository.RecurringShiftPreferenceRepository recurringShiftPreferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository;
+
+    public void setDateShiftPreferenceRepository(com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository) {
+        this.dateShiftPreferenceRepository = dateShiftPreferenceRepository;
+    }
+
+    public void setRecurringShiftPreferenceRepository(com.weeklyroster.repository.RecurringShiftPreferenceRepository recurringShiftPreferenceRepository) {
+        this.recurringShiftPreferenceRepository = recurringShiftPreferenceRepository;
+    }
+
+    public void setPreferenceRepository(com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository) {
+        this.preferenceRepository = preferenceRepository;
+    }
+
     public RosterValidatorService(RosterCycleRepository cycleRepository,
                                   RosterAssignmentRepository assignmentRepository,
                                   ShiftRepository shiftRepository,
@@ -203,6 +224,51 @@ public class RosterValidatorService {
                 }
             }
 
+            if (!empAssignments.isEmpty()) {
+                RosterAssignment first = empAssignments.get(0);
+                List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), first.getRosterDate());
+                if (!prevWorked.isEmpty()) {
+                    RosterAssignment prevA = prevWorked.get(0);
+                    if (prevA.getRosterDate() != null && prevA.getRosterDate().equals(first.getRosterDate().minusDays(1))) {
+                        if (prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
+                            checksRun++;
+                            if (!first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null && first.getShift().getShiftType() != ShiftType.OFF) {
+                                findings.add(new RosterValidationFinding(
+                                        "NIGHT_REQUIRES_NEXT_DAY_OFF",
+                                        "Night Shift Must Be Followed by Weekly OFF",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, first.getRosterDate(),
+                                        empName + " worked NIGHT on preceding Sunday (" + prevA.getRosterDate() + ") but is assigned " + first.getShift().getShiftType().name() + " on " + first.getRosterDate() + " (must be Weekly OFF).",
+                                        "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
+                                ));
+                            }
+                        } else if (prevA.getShift() != null && !first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null) {
+                            checksRun++;
+                            Shift sPrev = prevA.getShift();
+                            Shift sCur = first.getShift();
+                            LocalDateTime endPrev = prevA.getRosterDate().atTime(sPrev.getEndTime());
+                            if (sPrev.isOvernight() || sPrev.getEndTime().isBefore(sPrev.getStartTime())) {
+                                endPrev = endPrev.plusDays(1);
+                            }
+                            LocalDateTime startCur = first.getRosterDate().atTime(sCur.getStartTime());
+                            long restMins = Duration.between(endPrev, startCur).toMinutes();
+                            if (restMins < 720) {
+                                long hours = restMins / 60;
+                                long mins = Math.abs(restMins % 60);
+                                findings.add(new RosterValidationFinding(
+                                        "REST_INTERVAL_VIOLATION",
+                                        "12-Hour Rest Violation",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, first.getRosterDate(),
+                                        sPrev.getShiftType().name() + " -> " + sCur.getShiftType().name() + " (" + hours + "h " + mins + "m rest; required 12h 00m)",
+                                        "Consecutive shift gap across week boundary is below minimum 12h mandatory rest."
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
             int consecutiveNights = 0;
             int consecutiveWorkDays = 0;
             for (int i = 0; i < empAssignments.size(); i++) {
@@ -285,6 +351,101 @@ public class RosterValidatorService {
                                 empName + " is on approved leave on " + curr.getRosterDate() + " but assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
                                 "Approved leaves must be respected with ON_LEAVE status."
                         ));
+                    }
+                }
+
+                // BATCH 113: Date-specific shift preference validation
+                if (dateShiftPreferenceRepository != null) {
+                    var dspOpt = dateShiftPreferenceRepository.findByEmployeeIdAndPreferenceDate(emp.getId(), curr.getRosterDate());
+                    if (dspOpt.isPresent()) {
+                        checksRun++;
+                        ShiftType expected = dspOpt.get().getShiftType();
+                        if (expected == ShiftType.OFF) {
+                            if (!curr.isWeeklyOff()) {
+                                findings.add(new RosterValidationFinding(
+                                        "DATE_PREFERENCE_VIOLATION",
+                                        "Date Shift Preference Mismatch",
+                                        ValidationSeverity.WARNING,
+                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                        empName + " has Date Preference for OFF on " + curr.getRosterDate() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                        "Admin configured date-specific preference should be respected unless hard safety rules prevent it."
+                                ));
+                            }
+                        } else {
+                            if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                findings.add(new RosterValidationFinding(
+                                        "DATE_PREFERENCE_VIOLATION",
+                                        "Date Shift Preference Mismatch",
+                                        ValidationSeverity.WARNING,
+                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                        empName + " has Date Preference for " + expected.name() + " on " + curr.getRosterDate() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                        "Admin configured date-specific preference should be respected unless hard safety rules prevent it."
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // BATCH 113: Recurring weekly shift preference validation
+                if (recurringShiftPreferenceRepository != null) {
+                    var recList = recurringShiftPreferenceRepository.findByEmployeeIdAndActiveTrue(emp.getId());
+                    if (recList != null) {
+                        for (var rp : recList) {
+                            if (rp.getDayOfWeek() == curr.getRosterDate().getDayOfWeek()) {
+                                boolean startOk = (rp.getStartDate() == null || !rp.getStartDate().isAfter(curr.getRosterDate()));
+                                boolean endOk = (rp.getEndDate() == null || !rp.getEndDate().isBefore(curr.getRosterDate()));
+                                if (startOk && endOk) {
+                                    checksRun++;
+                                    ShiftType expected = rp.getShiftType();
+                                    if (expected == ShiftType.OFF) {
+                                        if (!curr.isWeeklyOff()) {
+                                            findings.add(new RosterValidationFinding(
+                                                    "RECURRING_PREFERENCE_VIOLATION",
+                                                    "Recurring Shift Preference Mismatch",
+                                                    ValidationSeverity.WARNING,
+                                                    emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                    empName + " has Recurring Preference for OFF on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                                    "Admin configured recurring weekly preference should be respected unless hard safety rules prevent it."
+                                            ));
+                                        }
+                                    } else {
+                                        if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                            findings.add(new RosterValidationFinding(
+                                                    "RECURRING_PREFERENCE_VIOLATION",
+                                                    "Recurring Shift Preference Mismatch",
+                                                    ValidationSeverity.WARNING,
+                                                    emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                    empName + " has Recurring Preference for " + expected.name() + " on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                                    "Admin configured recurring weekly preference should be respected unless hard safety rules prevent it."
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // BATCH 113: Avoided shift types validation
+                if (preferenceRepository != null && !curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift() != null) {
+                    var prefs = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(emp.getId());
+                    if (prefs != null && !prefs.isEmpty()) {
+                        var activePref = prefs.stream().filter(p -> p.getStatus() == PreferenceStatus.APPROVED).findFirst().orElse(null);
+                        if (activePref != null && activePref.getAvoidShiftTypes() != null && !activePref.getAvoidShiftTypes().isBlank()) {
+                            checksRun++;
+                            Set<String> avoid = Arrays.stream(activePref.getAvoidShiftTypes().split(","))
+                                    .map(String::trim).map(String::toUpperCase).collect(Collectors.toSet());
+                            if (avoid.contains(curr.getShift().getShiftType().name())) {
+                                findings.add(new RosterValidationFinding(
+                                        "AVOID_SHIFT_VIOLATION",
+                                        "Avoided Shift Assigned",
+                                        ValidationSeverity.WARNING,
+                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                        empName + " prefers to avoid " + curr.getShift().getShiftType().name() + " shift on " + curr.getRosterDate(),
+                                        "Avoided shift types should be respected unless hard coverage constraints strictly require assignment."
+                                ));
+                            }
+                        }
                     }
                 }
             }
