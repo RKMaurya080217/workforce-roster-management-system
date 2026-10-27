@@ -114,6 +114,7 @@ public record ApplicablePreference(
     }
 
     public static ApplicablePreference withDateShifts(Long employeeId, Map<LocalDate, ShiftType> dateShifts) {
+        boolean hasDate = dateShifts != null && !dateShifts.isEmpty();
         return new ApplicablePreference(
                 null,
                 employeeId,
@@ -123,7 +124,7 @@ public record ApplicablePreference(
                 Collections.emptySet(),
                 Collections.emptySet(),
                 null,
-                true,
+                hasDate,
                 dateShifts != null ? dateShifts : Collections.emptyMap(),
                 Collections.emptyMap()
         );
@@ -133,6 +134,8 @@ public record ApplicablePreference(
             Long employeeId,
             Map<LocalDate, ShiftType> dateShifts,
             Map<DayOfWeek, ShiftType> recurringShifts) {
+        boolean hasDateOrRecurring = (dateShifts != null && !dateShifts.isEmpty())
+                || (recurringShifts != null && !recurringShifts.isEmpty());
         return new ApplicablePreference(
                 null,
                 employeeId,
@@ -142,7 +145,7 @@ public record ApplicablePreference(
                 Collections.emptySet(),
                 Collections.emptySet(),
                 null,
-                true,
+                hasDateOrRecurring,
                 dateShifts != null ? dateShifts : Collections.emptyMap(),
                 recurringShifts != null ? recurringShifts : Collections.emptyMap()
         );

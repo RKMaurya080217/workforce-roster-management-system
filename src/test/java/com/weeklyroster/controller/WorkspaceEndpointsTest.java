@@ -147,7 +147,7 @@ class WorkspaceEndpointsTest {
         LocalDate startDate = LocalDate.of(2026, 8, 17);
         RosterCycleResponse cycle = new RosterCycleResponse(100L, startDate, startDate.plusDays(6), LocalDateTime.now(), List.of());
 
-        when(rosterService.generateWeeklyRoster(startDate, com.weeklyroster.entity.GenerationMode.MANUAL)).thenReturn(cycle);
+        when(rosterService.generateWeeklyRoster(startDate, com.weeklyroster.entity.GenerationMode.MANUAL, 6)).thenReturn(cycle);
 
         ResponseEntity<RosterCycleResponse> response = rosterController.generate(startDate);
 
@@ -155,7 +155,7 @@ class WorkspaceEndpointsTest {
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
         assertEquals(startDate, response.getBody().startDate());
-        verify(rosterService, times(1)).generateWeeklyRoster(startDate, com.weeklyroster.entity.GenerationMode.MANUAL);
+        verify(rosterService, times(1)).generateWeeklyRoster(startDate, com.weeklyroster.entity.GenerationMode.MANUAL, 6);
     }
 
     @Test

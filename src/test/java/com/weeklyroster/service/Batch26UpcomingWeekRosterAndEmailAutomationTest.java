@@ -174,6 +174,7 @@ class Batch26UpcomingWeekRosterAndEmailAutomationTest {
         manualCycle.setStartDate(manualStart);
         manualCycle.setEndDate(manualEnd);
         manualCycle.setGenerationMode(GenerationMode.MANUAL);
+        manualCycle.setStatus(RosterStatus.PUBLISHED);
 
         RosterCycleResponse manualResp = new RosterCycleResponse(505L, manualStart, manualEnd, LocalDateTime.now(), List.of());
 

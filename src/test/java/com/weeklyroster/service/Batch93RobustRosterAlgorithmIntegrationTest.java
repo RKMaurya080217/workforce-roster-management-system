@@ -77,6 +77,12 @@ public class Batch93RobustRosterAlgorithmIntegrationTest {
         if (dateShiftPreferenceRepository != null) {
             dateShiftPreferenceRepository.deleteAll();
         }
+        if (assignmentRepository != null) {
+            assignmentRepository.deleteAll();
+        }
+        if (cycleRepository != null) {
+            cycleRepository.deleteAll();
+        }
     }
 
     private boolean matchesName(Employee e, String keyword) {

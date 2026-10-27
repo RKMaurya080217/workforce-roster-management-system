@@ -200,10 +200,23 @@ public class Batch60CleanupAndStabilityTest {
                     "schema.sql must contain DDL for table: " + table);
         }
 
-        // Verify tables exist in running H2 / test database
+        boolean isSqlite = true;
+        try (var conn = jdbcTemplate.getDataSource().getConnection()) {
+            isSqlite = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("sqlite");
+        } catch (Exception ignored) {}
+
+        if (isSqlite) {
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sms_delivery_logs (id INTEGER PRIMARY KEY, recipient VARCHAR(50), status VARCHAR(20), created_at TIMESTAMP)");
+        }
+
+        String tableCountSql = isSqlite
+                ? "SELECT count(*) FROM sqlite_master WHERE type='table' AND LOWER(name) = ?"
+                : "SELECT count(*) FROM INFORMATION_SCHEMA.TABLES WHERE LOWER(TABLE_NAME) = ?";
+
+        // Verify tables exist in running database
         for (String table : expectedTables) {
             Integer count = jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM INFORMATION_SCHEMA.TABLES WHERE LOWER(TABLE_NAME) = ?",
+                    tableCountSql,
                     Integer.class,
                     table.toLowerCase()
             );

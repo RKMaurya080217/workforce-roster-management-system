@@ -219,6 +219,7 @@ class Batch64FcmMobileRegressionTest {
                 assignmentRepository, shiftRepository, mockEmail, mockPush
         );
 
+        emailLogRepository.deleteAll();
         RosterCycle cycle = cycleRepository.findAll().stream().findFirst().orElse(null);
         if (cycle == null) return;
         Employee emp = employeeRepository.findByActiveTrueOrderByIdAsc().get(0);
@@ -246,6 +247,7 @@ class Batch64FcmMobileRegressionTest {
                 assignmentRepository, shiftRepository, mockEmail, mockPush
         );
 
+        emailLogRepository.deleteAll();
         RosterCycle cycle = cycleRepository.findAll().stream().findFirst().orElse(null);
         if (cycle == null) return;
         Employee emp = employeeRepository.findByActiveTrueOrderByIdAsc().get(0);
@@ -318,7 +320,7 @@ class Batch64FcmMobileRegressionTest {
     @DisplayName("Test 11: Existing SSE endpoint streamNotifications returns non-null emitter")
     void test11_existingSseContinuesWorking() {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("Admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                new UsernamePasswordAuthenticationToken("admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
         );
         var emitter = notificationController.streamNotifications();
         assertNotNull(emitter);
@@ -349,7 +351,7 @@ class Batch64FcmMobileRegressionTest {
     @DisplayName("Test 13: Admin test push endpoint is accessible to ROLE_ADMIN and protected")
     void test13_adminOnlyTestPushIsProtected() {
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("Admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                new UsernamePasswordAuthenticationToken("admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
         );
 
         ResponseEntity<Map<String, Object>> res = pushNotificationController.sendAdminTest(null, null);
@@ -376,7 +378,7 @@ class Batch64FcmMobileRegressionTest {
         assertFalse(body.containsKey("clientEmail"));
 
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("Admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                new UsernamePasswordAuthenticationToken("admin", "password", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
         );
         ResponseEntity<Map<String, Object>> diagRes = pushNotificationController.getDiagnostics();
         assertNotNull(diagRes.getBody());

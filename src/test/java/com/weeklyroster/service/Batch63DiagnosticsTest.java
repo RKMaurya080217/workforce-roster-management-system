@@ -182,7 +182,15 @@ class Batch63DiagnosticsTest {
         planWeeklyOffsMethod.setAccessible(true);
 
         @SuppressWarnings("unchecked")
-        Map<Long, LocalDate> weeklyOffs = (Map<Long, LocalDate>) planWeeklyOffsMethod.invoke(targetService, employees, start, end, Collections.emptyMap(), 0);
+        Map<Long, ?> rawWeeklyOffs = (Map<Long, ?>) planWeeklyOffsMethod.invoke(targetService, employees, start, end, Collections.emptyMap(), 0);
+        Map<Long, LocalDate> weeklyOffs = new HashMap<>();
+        for (Map.Entry<Long, ?> entry : rawWeeklyOffs.entrySet()) {
+            if (entry.getValue() instanceof Set<?> s) {
+                weeklyOffs.put(entry.getKey(), s.isEmpty() ? null : (LocalDate) s.iterator().next());
+            } else if (entry.getValue() instanceof LocalDate ld) {
+                weeklyOffs.put(entry.getKey(), ld);
+            }
+        }
 
         System.out.println("Weekly Off Plan (Attempt 0):");
         for (Employee e : employees) {
@@ -218,8 +226,8 @@ class Batch63DiagnosticsTest {
 
         // Now let's trace generateDay for each day 0..6
         var generateDayMethod = RosterService.class.getDeclaredMethod("generateDay",
-                RosterCycle.class, List.class, Map.class, Set.class, Map.class, LocalDate.class,
-                Map.class, Map.class, Map.class, Map.class, int.class, Map.class, int.class);
+                RosterCycle.class, List.class, Map.class, Map.class, Map.class, LocalDate.class,
+                Map.class, Map.class, Map.class, Map.class, int.class, Map.class, int.class, int.class);
         generateDayMethod.setAccessible(true);
 
         RosterCycle testCycle = new RosterCycle();
@@ -227,7 +235,7 @@ class Batch63DiagnosticsTest {
         testCycle.setEndDate(end);
 
         Map<ShiftType, Shift> shifts = shiftRepository.findAll().stream().collect(Collectors.toMap(Shift::getShiftType, s -> s));
-        Set<Long> offTaken = new HashSet<>();
+        Map<Long, Integer> offTaken = new HashMap<>();
         Map<Long, Shift> lastShiftMap = new HashMap<>();
         Map<Long, LocalDate> lastShiftDateMap = new HashMap<>();
         Map<Long, Integer> cycleNightCounts = new HashMap<>();
@@ -249,8 +257,8 @@ class Batch63DiagnosticsTest {
         List<RosterAssignment> candidateAssignments = new ArrayList<>();
         for (int offset = 0; offset < 7; offset++) {
             LocalDate date = start.plusDays(offset);
-            Object dayResult = generateDayMethod.invoke(targetService, testCycle, employees, weeklyOffs, offTaken, shifts, date,
-                    lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, 2, Collections.emptyMap(), 0);
+            Object dayResult = generateDayMethod.invoke(targetService, testCycle, employees, rawWeeklyOffs, offTaken, shifts, date,
+                    lastShiftMap, lastShiftDateMap, cycleNightCounts, shiftCountsMap, 2, Collections.emptyMap(), 0, 6);
 
             var assignmentsField = dayResult.getClass().getDeclaredMethod("assignments");
             assignmentsField.setAccessible(true);
@@ -270,7 +278,7 @@ class Batch63DiagnosticsTest {
         var repairMethod = RosterService.class.getDeclaredMethod("enforceAndRepairExactWeeklyOff",
                 RosterCycle.class, List.class, List.class, Map.class, int.class, Map.class, Map.class);
         repairMethod.setAccessible(true);
-        repairMethod.invoke(targetService, testCycle, candidateAssignments, employees, shifts, 2, weeklyOffs, Collections.emptyMap());
+        repairMethod.invoke(targetService, testCycle, candidateAssignments, employees, shifts, 2, rawWeeklyOffs, Collections.emptyMap());
 
         System.out.println("--- After enforceAndRepairExactWeeklyOff for Day 7 (" + day7 + ") ---");
         candidateAssignments.stream()

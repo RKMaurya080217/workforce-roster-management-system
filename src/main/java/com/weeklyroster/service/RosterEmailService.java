@@ -166,7 +166,7 @@ public class RosterEmailService {
         // BATCH 94: Manual generation draft safety rule.
         // Draft, candidate, selected, or un-finalized rosters must NEVER trigger emails to employees.
         if (mode == GenerationMode.MANUAL) {
-            if (cycle.getStatus() != com.weeklyroster.entity.RosterStatus.PUBLISHED 
+            if (cycle.getStatus() != null && cycle.getStatus() != com.weeklyroster.entity.RosterStatus.PUBLISHED 
                     && cycle.getStatus() != com.weeklyroster.entity.RosterStatus.FINAL 
                     && cycle.getStatus() != com.weeklyroster.entity.RosterStatus.LOCKED) {
                 log.warn("[WRMS EMAIL] Manual email distribution rejected for cycle #{} (status: {}). "

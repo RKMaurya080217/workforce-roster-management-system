@@ -202,6 +202,7 @@ class Batch28EmailAutomationAndShutdownHardeningTest {
         manualCycle.setStartDate(customStart);
         manualCycle.setEndDate(customEnd);
         manualCycle.setGenerationMode(GenerationMode.MANUAL);
+        manualCycle.setStatus(RosterStatus.PUBLISHED);
 
         RosterCycleResponse manualResp = new RosterCycleResponse(301L, customStart, customEnd, LocalDateTime.now(), List.of());
 

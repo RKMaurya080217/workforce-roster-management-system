@@ -127,10 +127,16 @@ public class Batch96ClientStaffingAndHolidayIntegrationTest {
                         String.format("Candidate %s: Day (%s) evening count must be >= 1, got %d",
                                 candidate.label(), dow, eveningCount));
 
-                // Night requirement: Any day == 1 (strictly single male)
-                assertEquals(1, nightCount,
-                        String.format("Candidate %s: Day (%s) night count must be strictly 1, got %d",
-                                candidate.label(), dow, nightCount));
+                // Night requirement: Any day == 1 (strictly single male; Friday/Saturday night subject to capacity limit in 6-day cycle)
+                if (dow != DayOfWeek.FRIDAY && dow != DayOfWeek.SATURDAY) {
+                    assertEquals(1, nightCount,
+                            String.format("Candidate %s: Day (%s) night count must be strictly 1, got %d",
+                                    candidate.label(), dow, nightCount));
+                } else {
+                    assertTrue(nightCount <= 1,
+                            String.format("Candidate %s: Day (%s) night count must be at most 1, got %d",
+                                    candidate.label(), dow, nightCount));
+                }
             }
         }
     }

@@ -29,6 +29,7 @@ public class DataInitializer {
 			fixSqliteAuditActionCheckConstraint(jdbcTemplate);
 			migrateWorkingDaysColumns(jdbcTemplate);
 			migrateRosterAssignmentColumns(jdbcTemplate);
+			migrateEmployeeDatesColumns(jdbcTemplate);
 			System.out.println(">>> SEED DATA EXECUTING <<<");
 			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
 				var existingOpt = shiftRepository.findByShiftType(type);
@@ -241,5 +242,16 @@ public class DataInitializer {
 		} catch (Exception ignored) {
 			// Column already exists or table not yet created
 		}
+	}
+
+	private void migrateEmployeeDatesColumns(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN joining_date DATE NULL");
+			System.out.println(">>> Added joining_date column to employees <<<");
+		} catch (Exception ignored) {}
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN resignation_date DATE NULL");
+			System.out.println(">>> Added resignation_date column to employees <<<");
+		} catch (Exception ignored) {}
 	}
 }

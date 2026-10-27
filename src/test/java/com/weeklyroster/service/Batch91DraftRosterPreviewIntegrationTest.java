@@ -105,14 +105,16 @@ public class Batch91DraftRosterPreviewIntegrationTest {
         List<RosterAssignment> assignments = assignmentRepository.findByCycleIdOrderByRosterDateAsc(response.id());
         assertFalse(assignments.isEmpty());
 
-        // Find a male employee assignment that is not off or leave
+        // Find a male employee assignment that is not off, leave, or night (so shifting does not leave night empty)
         RosterAssignment target = assignments.stream()
-                .filter(a -> a.getEmployee().getGender() == Gender.MALE && !a.isWeeklyOff() && !a.isOnLeave())
+                .filter(a -> a.getEmployee().getGender() == Gender.MALE && !a.isWeeklyOff() && !a.isOnLeave()
+                        && a.getShift() != null && a.getShift().getShiftType() != ShiftType.NIGHT)
                 .findFirst()
                 .orElse(assignments.get(0));
 
-        // Change shift
-        ShiftType newShift = target.getShift().getShiftType() == ShiftType.NIGHT ? ShiftType.GENERAL : ShiftType.GENERAL;
+        // Change shift to another valid day shift
+        ShiftType newShift = (target.getShift() != null && target.getShift().getShiftType() == ShiftType.MORNING)
+                ? ShiftType.GENERAL : ShiftType.MORNING;
         ShiftChangeRequest req = new ShiftChangeRequest(newShift, "Admin manual draft adjustment");
         var updated = rosterService.changeShift(target.getId(), req);
 

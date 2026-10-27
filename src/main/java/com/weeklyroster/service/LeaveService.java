@@ -273,6 +273,7 @@ public class LeaveService {
                 .findByEmployeeIdAndRosterDateBetween(leave.getEmployee().getId(), leave.getStartDate(), leave.getEndDate());
         for (RosterAssignment assignment : affectedAssignments) {
             assignment.setOnLeave(true);
+            assignment.setWeeklyOff(false);
             if (offShift != null) {
                 assignment.setShift(offShift);
             }
@@ -404,6 +405,7 @@ public class LeaveService {
                 assignment.setOnLeave(false);
             } else {
                 assignment.setOnLeave(true);
+                assignment.setWeeklyOff(false);
                 if (offShift != null) {
                     assignment.setShift(offShift);
                 }
@@ -418,6 +420,7 @@ public class LeaveService {
                 .findByEmployeeIdAndRosterDateBetween(leave.getEmployee().getId(), newStart, newEnd);
         for (RosterAssignment assignment : newAssignments) {
             assignment.setOnLeave(true);
+            assignment.setWeeklyOff(false);
             if (offShift != null) {
                 assignment.setShift(offShift);
             }
@@ -617,3 +620,4 @@ public class LeaveService {
         );
     }
 }
+

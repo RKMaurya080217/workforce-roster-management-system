@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 
 public record EmployeeRequest(
         @Size(max = 40) String employeeCode,
@@ -15,13 +16,19 @@ public record EmployeeRequest(
         String username,
         String password,
         String contactNumber,
-        String shiftPreference
+        String shiftPreference,
+        LocalDate joiningDate,
+        LocalDate resignationDate
 ) {
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, null, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, null, null, null, null);
     }
 
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, null, null, null);
+    }
+
+    public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber, String shiftPreference) {
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, shiftPreference, null, null);
     }
 }

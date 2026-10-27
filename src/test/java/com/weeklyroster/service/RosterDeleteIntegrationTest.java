@@ -106,6 +106,8 @@ class RosterDeleteIntegrationTest {
         overrideRepository.save(override);
 
         // 2. Add email logs
+        cycle.setStatus(RosterStatus.PUBLISHED);
+        cycle = cycleRepository.save(cycle);
         emailService.distributeRosterEmails(cycle, gen, GenerationMode.MANUAL);
 
         List<EmailDeliveryLog> logs = emailLogRepository.findByCycleOrderBySentAtDesc(cycle);

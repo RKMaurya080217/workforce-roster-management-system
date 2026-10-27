@@ -47,6 +47,9 @@ class Batch18FullStabilizationAndEmailIntegrityTest {
     private RosterEmailService emailService;
 
     @Autowired
+    private EmailDeliveryLogRepository emailDeliveryLogRepository;
+
+    @Autowired
     private EmployeeRepository employeeRepository;
 
     @Autowired
@@ -130,7 +133,10 @@ class Batch18FullStabilizationAndEmailIntegrityTest {
 
         // TEST 8: Email delivery log recipient check -> Uses target email
         authenticateAdmin();
+        emailDeliveryLogRepository.deleteAll();
         RosterCycle cycleEntity = cycleRepository.findById(cycle.id()).orElseThrow();
+        cycleEntity.setStatus(RosterStatus.PUBLISHED);
+        cycleEntity = cycleRepository.save(cycleEntity);
         List<EmailDeliveryLogResponse> logs = emailService.distributeRosterEmails(cycleEntity, cycle, GenerationMode.MANUAL);
         assertNotNull(logs);
         assertTrue(logs.stream().anyMatch(l -> targetEmail.equalsIgnoreCase(l.recipientEmail()) || "EMP001".equalsIgnoreCase(l.employeeCode())),

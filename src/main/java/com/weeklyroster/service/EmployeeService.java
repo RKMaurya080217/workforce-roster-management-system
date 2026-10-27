@@ -1,19 +1,32 @@
 package com.weeklyroster.service;
 
 import com.weeklyroster.dto.request.EmployeeRequest;
+import com.weeklyroster.dto.response.AdminFullEmployeeProfileResponse;
+import com.weeklyroster.dto.response.DateShiftPreferenceResponse;
 import com.weeklyroster.dto.response.EmployeeResponse;
+import com.weeklyroster.dto.response.LeaveResponse;
+import com.weeklyroster.dto.response.RecurringShiftPreferenceResponse;
 import com.weeklyroster.entity.Employee;
 import com.weeklyroster.entity.Role;
+import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.entity.User;
 import com.weeklyroster.exception.BusinessException;
 import com.weeklyroster.exception.ResourceNotFoundException;
+import com.weeklyroster.repository.DateShiftPreferenceRepository;
 import com.weeklyroster.repository.EmployeePreferenceRepository;
 import com.weeklyroster.repository.EmployeeRepository;
+import com.weeklyroster.repository.LeaveRequestRepository;
+import com.weeklyroster.repository.RecurringShiftPreferenceRepository;
+import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.UserRepository;
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,16 +39,28 @@ public class EmployeeService {
 	private final DevCredentialMirrorService devCredentialMirrorService;
 	private final EmployeePreferenceRepository preferenceRepository;
 
+	@Autowired(required = false)
+	private RecurringShiftPreferenceRepository recurringShiftPreferenceRepository;
+
+	@Autowired(required = false)
+	private DateShiftPreferenceRepository dateShiftPreferenceRepository;
+
+	@Autowired(required = false)
+	private LeaveRequestRepository leaveRequestRepository;
+
+	@Autowired(required = false)
+	private RosterAssignmentRepository assignmentRepository;
+
 	public EmployeeService(EmployeeRepository employeeRepository, UserRepository userRepository,
 			PasswordEncoder passwordEncoder) {
 		this(employeeRepository, userRepository, passwordEncoder, null, null);
 	}
 
-	@org.springframework.beans.factory.annotation.Autowired
+	@Autowired
 	public EmployeeService(EmployeeRepository employeeRepository, UserRepository userRepository,
 			PasswordEncoder passwordEncoder,
-			@org.springframework.beans.factory.annotation.Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService,
-			@org.springframework.beans.factory.annotation.Autowired(required = false) EmployeePreferenceRepository preferenceRepository) {
+			@Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService,
+			@Autowired(required = false) EmployeePreferenceRepository preferenceRepository) {
 		this.employeeRepository = employeeRepository;
 		this.userRepository = userRepository;
 		this.passwordEncoder = passwordEncoder;
@@ -152,7 +177,6 @@ public class EmployeeService {
 		}
 
 		if (employeeRepository.existsByEmployeeCode(code)) {
-			// Handle race condition: if frontend-cached ID was just claimed, generate authoritative next ID
 			if (code.matches("^EMP\\d+$")) {
 				code = generateNextEmployeeCode();
 			}
@@ -218,7 +242,7 @@ public class EmployeeService {
 
 	@Transactional(readOnly = true)
 	public EmployeeResponse getMyProfile() {
-		org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || !auth.isAuthenticated()) {
 			throw new org.springframework.security.access.AccessDeniedException("Authentication required to access profile");
 		}
@@ -230,7 +254,7 @@ public class EmployeeService {
 
 	@Transactional
 	public EmployeeResponse updateMyProfile(com.weeklyroster.dto.request.UpdateMyProfileRequest request) {
-		org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 		if (auth == null || !auth.isAuthenticated()) {
 			throw new org.springframework.security.access.AccessDeniedException("Authentication required to update profile");
 		}
@@ -301,6 +325,12 @@ public class EmployeeService {
 		if (request.contactNumber() != null) {
 			employee.setContactNumber(request.contactNumber().trim());
 		}
+		if (request.joiningDate() != null) {
+			employee.setJoiningDate(request.joiningDate());
+		}
+		if (request.resignationDate() != null) {
+			employee.setResignationDate(request.resignationDate());
+		}
 	}
 
 	public EmployeeResponse toResponse(Employee employee) {
@@ -308,9 +338,86 @@ public class EmployeeService {
 	}
 
 	public EmployeeResponse toResponse(Employee employee, String shiftPreference) {
+		boolean isAdmin = false;
+		try {
+			Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+			if (auth != null && auth.getAuthorities() != null) {
+				isAdmin = auth.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+			}
+		} catch (Exception ignored) {}
+
+		LocalDate resDate = isAdmin ? employee.getResignationDate() : null;
 		return new EmployeeResponse(employee.getId(), employee.getEmployeeCode(), employee.getFirstName(),
 				employee.getLastName(), employee.getEmail(), employee.getGender(), employee.isActive(),
 				employee.getUser() == null ? null : employee.getUser().getUsername(),
-				employee.getContactNumber(), shiftPreference);
+				employee.getContactNumber(), shiftPreference, employee.getJoiningDate(), resDate);
+	}
+
+	@Transactional(readOnly = true)
+	public AdminFullEmployeeProfileResponse getFullProfile(Long id) {
+		Employee emp = employeeRepository.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException("Employee not found"));
+
+		String shiftPref = loadShiftPreference(emp.getId());
+		List<RecurringShiftPreferenceResponse> recList = Collections.emptyList();
+		if (recurringShiftPreferenceRepository != null) {
+			recList = recurringShiftPreferenceRepository.findByEmployeeIdAndActiveTrue(emp.getId()).stream()
+					.map(rp -> new RecurringShiftPreferenceResponse(
+							rp.getId(), rp.getEmployee().getId(),
+							rp.getEmployee().getEmployeeCode(),
+							rp.getEmployee().getFirstName() + " " + rp.getEmployee().getLastName(),
+							rp.getDayOfWeek(), rp.getShiftType(), rp.getStartDate(), rp.getEndDate(),
+							rp.isActive(), rp.getReason(), rp.getCreatedBy(), rp.getCreatedAt(), rp.getUpdatedAt()
+					)).toList();
+		}
+
+		List<DateShiftPreferenceResponse> dateList = Collections.emptyList();
+		if (dateShiftPreferenceRepository != null) {
+			dateList = dateShiftPreferenceRepository.findByEmployeeIdOrderByPreferenceDateDesc(emp.getId()).stream()
+					.map(dp -> new DateShiftPreferenceResponse(
+							dp.getId(), dp.getEmployee().getId(),
+							dp.getEmployee().getEmployeeCode(),
+							dp.getEmployee().getFirstName() + " " + dp.getEmployee().getLastName(),
+							dp.getPreferenceDate(), dp.getShiftType(),
+							dp.getReason(), dp.getCreatedBy(), dp.getCreatedAt(), dp.getUpdatedAt()
+					)).toList();
+		}
+
+		List<LeaveResponse> leaveList = Collections.emptyList();
+		if (leaveRequestRepository != null) {
+			leaveList = leaveRequestRepository.findByEmployeeIdOrderByRequestedAtDesc(emp.getId()).stream()
+					.limit(10)
+					.map(lr -> new LeaveResponse(
+							lr.getId(), lr.getEmployee().getId(),
+							lr.getEmployee().getEmployeeCode(),
+							lr.getEmployee().getFirstName() + " " + lr.getEmployee().getLastName(),
+							lr.getStartDate(), lr.getEndDate(), lr.getReason(), lr.getStatus(),
+							lr.getAdminRemarks(), lr.getRequestedAt(), lr.getReviewedAt(),
+							lr.getOriginalStartDate(), lr.getOriginalEndDate(),
+							lr.getPendingStartDate(), lr.getPendingEndDate(),
+							lr.getModificationReason(), lr.getCancellationReason(), lr.getModifiedAt(),
+							lr.getRequestType() != null ? lr.getRequestType() : "LEAVE"
+					)).toList();
+		}
+
+		long totalAssignments = 0;
+		long totalNight = 0;
+		long totalOffs = 0;
+		if (assignmentRepository != null) {
+			totalAssignments = assignmentRepository.countByEmployeeId(emp.getId());
+			totalNight = assignmentRepository.countShiftForEmployee(emp.getId(), ShiftType.NIGHT);
+			totalOffs = assignmentRepository.countWeeklyOffsForEmployee(emp.getId());
+		}
+
+		String role = emp.getUser() != null && emp.getUser().getRole() != null ? emp.getUser().getRole().name() : "ROLE_EMPLOYEE";
+
+		return new AdminFullEmployeeProfileResponse(
+				emp.getId(), emp.getEmployeeCode(), emp.getFirstName(), emp.getLastName(),
+				emp.getEmail(), emp.getContactNumber(), emp.getGender(),
+				emp.getUser() != null ? emp.getUser().getUsername() : null, role,
+				emp.getJoiningDate(), emp.getResignationDate(), emp.isActive(),
+				shiftPref, recList, dateList, leaveList,
+				totalAssignments, totalNight, totalOffs
+		);
 	}
 }

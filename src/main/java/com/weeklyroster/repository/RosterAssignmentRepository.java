@@ -36,6 +36,11 @@ public interface RosterAssignmentRepository extends JpaRepository<RosterAssignme
     @Query("SELECT count(a) FROM RosterAssignment a WHERE a.employee.id = :employeeId AND a.shift.shiftType = :shiftType")
     long countShiftForEmployee(@Param("employeeId") Long employeeId, @Param("shiftType") ShiftType shiftType);
 
+    long countByEmployeeId(Long employeeId);
+
+    @Query("SELECT count(a) FROM RosterAssignment a WHERE a.employee.id = :employeeId AND a.weeklyOff = true")
+    long countWeeklyOffsForEmployee(@Param("employeeId") Long employeeId);
+
     @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.shift WHERE a.employee.id = :employeeId AND a.rosterDate < :rosterDate AND a.weeklyOff = false AND a.onLeave = false ORDER BY a.rosterDate DESC")
     List<RosterAssignment> findWorkedAssignmentsBefore(@Param("employeeId") Long employeeId, @Param("rosterDate") LocalDate rosterDate);
 

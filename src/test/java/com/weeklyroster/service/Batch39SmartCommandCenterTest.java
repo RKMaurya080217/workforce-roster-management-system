@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 public class Batch39SmartCommandCenterTest {
 
     @Mock
@@ -220,6 +221,7 @@ public class Batch39SmartCommandCenterTest {
         override.setReason("Admin manual coverage fix");
         override.setCreatedAt(LocalDateTime.now());
         when(overrideRepository.findAll()).thenReturn(List.of(override));
+        when(overrideRepository.findByAssignmentCycle(testCycle)).thenReturn(List.of(override));
 
         when(auditLogRepository.findAllByOrderByTimestampDesc()).thenReturn(Collections.emptyList());
         when(notificationRepository.findAll()).thenReturn(Collections.emptyList());

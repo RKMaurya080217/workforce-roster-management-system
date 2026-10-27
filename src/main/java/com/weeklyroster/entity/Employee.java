@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "employees")
@@ -40,6 +41,12 @@ public class Employee {
 
 	@Column(length = 30)
 	private String contactNumber;
+
+	@Column(name = "joining_date")
+	private LocalDate joiningDate;
+
+	@Column(name = "resignation_date")
+	private LocalDate resignationDate;
 
 	@OneToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "user_id")
@@ -109,11 +116,35 @@ public class Employee {
 		this.contactNumber = contactNumber;
 	}
 
+	public LocalDate getJoiningDate() {
+		return joiningDate;
+	}
+
+	public void setJoiningDate(LocalDate joiningDate) {
+		this.joiningDate = joiningDate;
+	}
+
+	public LocalDate getResignationDate() {
+		return resignationDate;
+	}
+
+	public void setResignationDate(LocalDate resignationDate) {
+		this.resignationDate = resignationDate;
+	}
+
 	public User getUser() {
 		return user;
 	}
 
 	public void setUser(User user) {
 		this.user = user;
+	}
+
+	public boolean isEligibleForDate(LocalDate date) {
+		if (!active) return false;
+		if (date == null) return true;
+		if (joiningDate != null && date.isBefore(joiningDate)) return false;
+		if (resignationDate != null && date.isAfter(resignationDate)) return false;
+		return true;
 	}
 }

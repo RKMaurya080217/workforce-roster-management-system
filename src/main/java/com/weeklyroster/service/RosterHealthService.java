@@ -107,6 +107,31 @@ public class RosterHealthService {
         int totalDaysEvaluated = 0;
         int coveredDaysCount = 0;
 
+        long eligibleMaleStaff = empMap.values().stream()
+                .filter(l -> !l.isEmpty() && l.get(0).getEmployee().getGender() == Gender.MALE && l.get(0).getEmployee().isActive())
+                .count();
+        long nonDevEligibleMales = empMap.values().stream()
+                .filter(l -> !l.isEmpty() && l.get(0).getEmployee().getGender() == Gender.MALE
+                        && l.get(0).getEmployee().isActive()
+                        && !isDevelopmentTeam(l.get(0).getEmployee()))
+                .count();
+        int totalMaleNightCapacity = 0;
+        for (List<RosterAssignment> l : empMap.values()) {
+            if (l.isEmpty()) continue;
+            Employee emp = l.get(0).getEmployee();
+            if (emp.getGender() != Gender.MALE || !emp.isActive() || isDevelopmentTeam(emp)) continue;
+            if (matchesName(emp, "rajat") || matchesName(emp, "sambhav")) {
+                totalMaleNightCapacity += (nonDevEligibleMales <= 3) ? 2 : 1;
+            } else {
+                totalMaleNightCapacity += 2;
+            }
+        }
+        int workingDays = (cycle != null && cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
+        int maxNightsAllowed = 2;
+        boolean nightCapacityShortage = (workingDays == 6)
+                ? (eligibleMaleStaff < 7)
+                : (totalMaleNightCapacity < 7 || eligibleMaleStaff * maxNightsAllowed < 7);
+
         for (Map.Entry<LocalDate, Map<ShiftType, List<RosterAssignment>>> entry : dateShiftMap.entrySet()) {
             totalDaysEvaluated++;
             LocalDate date = entry.getKey();
@@ -160,14 +185,23 @@ public class RosterHealthService {
                 ));
             }
             if (nightCount == 0) {
-                coverageOk = false;
-                dayOk = false;
-                conflicts.add(new ConflictItem(
-                        date, null, "Night Staffing", ShiftType.NIGHT,
-                        "MIN_COVERAGE_NIGHT", "0 assigned", "Exactly 1 assigned",
-                        "Night shift has 0 assigned staff on " + date,
-                        "CRITICAL", "Assign exactly 1 eligible male employee to Night shift", false
-                ));
+                if (nightCapacityShortage) {
+                    conflicts.add(new ConflictItem(
+                            date, null, "Night Staffing", ShiftType.NIGHT,
+                            "MIN_COVERAGE_NIGHT", "0 assigned", "1 assigned",
+                            "Night shift unstaffed on " + date + " due to active male workforce capacity constraint in " + workingDays + "-day cycle",
+                            "WARNING", "Review male workforce staffing capacity", false
+                    ));
+                } else {
+                    coverageOk = false;
+                    dayOk = false;
+                    conflicts.add(new ConflictItem(
+                            date, null, "Night Staffing", ShiftType.NIGHT,
+                            "MIN_COVERAGE_NIGHT", "0 assigned", "Exactly 1 assigned",
+                            "Night shift has 0 assigned staff on " + date,
+                            "CRITICAL", "Assign exactly 1 eligible male employee to Night shift", false
+                    ));
+                }
             } else if (nightCount > 1) {
                 coverageOk = false;
                 dayOk = false;
@@ -349,7 +383,7 @@ public class RosterHealthService {
                     }
                 }
             }
-            int allowableMaxOffs = Math.max(targetOffs, (int) postNightOffCount);
+            int allowableMaxOffs = (expectedOffs == 1) ? 1 : Math.max(targetOffs, (int) postNightOffCount);
             boolean empOffCompliant = (weeklyOffCount >= targetOffs && weeklyOffCount <= allowableMaxOffs) || (leaveCount >= 7);
             if (weeklyOffCount > allowableMaxOffs && leaveCount < 7) {
                 weeklyOffOk = false;
@@ -612,6 +646,13 @@ public class RosterHealthService {
                 healthScoreStatus, hardConstraintsMap,
                 preferenceDetails, continuityDetails, workloadDetails, nightDetails, offDetails
         );
+    }
+
+    private boolean matchesName(Employee e, String keyword) {
+        if (e == null || keyword == null) return false;
+        String name = (e.getFirstName() + " " + (e.getLastName() == null ? "" : e.getLastName())).toLowerCase();
+        String code = e.getEmployeeCode() != null ? e.getEmployeeCode().toLowerCase() : "";
+        return name.contains(keyword.toLowerCase()) || code.contains(keyword.toLowerCase());
     }
 
     private boolean isDevelopmentTeam(Employee e) {

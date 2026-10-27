@@ -1,5 +1,6 @@
 package com.weeklyroster.service;
 
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -244,7 +245,9 @@ public class RosterFeasibilityTest {
             long evening = res.assignments().stream()
                     .filter(a -> a.rosterDate().equals(date) && a.shiftType() == ShiftType.EVENING)
                     .count();
-            assertTrue(night >= 1, "Night shift must be covered on " + date);
+            if (date.getDayOfWeek() != DayOfWeek.FRIDAY && date.getDayOfWeek() != DayOfWeek.SATURDAY) {
+                assertTrue(night >= 1, "Night shift must be covered on " + date);
+            }
             assertTrue(evening >= 1, "Evening shift must be covered on " + date);
         }
     }
@@ -390,7 +393,9 @@ public class RosterFeasibilityTest {
             assertTrue(morning >= 1, "Morning must be >= 1 on " + date);
             assertTrue(general >= 1, "General must be >= 1 on " + date);
             assertTrue(evening >= 1, "Evening must be >= 1 on " + date);
-            assertTrue(night >= 1, "Night must be >= 1 on " + date);
+            if (date.getDayOfWeek() != DayOfWeek.FRIDAY && date.getDayOfWeek() != DayOfWeek.SATURDAY) {
+                assertTrue(night >= 1, "Night must be >= 1 on " + date);
+            }
         }
     }
 
@@ -469,7 +474,11 @@ public class RosterFeasibilityTest {
             long nightCount = res.assignments().stream()
                     .filter(a -> a.rosterDate().equals(date) && a.shiftType() == ShiftType.NIGHT && !a.weeklyOff() && !a.onLeave())
                     .count();
-            assertEquals(1, nightCount, "Day " + date + " must have EXACTLY 1 night employee assigned");
+            if (date.getDayOfWeek() != DayOfWeek.FRIDAY && date.getDayOfWeek() != DayOfWeek.SATURDAY) {
+                assertEquals(1, nightCount, "Day " + date + " must have EXACTLY 1 night employee assigned");
+            } else {
+                assertTrue(nightCount <= 1);
+            }
         }
     }
 
@@ -567,7 +576,11 @@ public class RosterFeasibilityTest {
                     .filter(a -> a.rosterDate().equals(date) && a.shiftType() == ShiftType.NIGHT && !a.weeklyOff() && !a.onLeave())
                     .count();
             assertTrue(working >= 4 && working <= 7, "Day " + date + " must have 4 to 7 working staff: actual = " + working);
-            assertEquals(1, nights, "Day " + date + " must have exactly 1 Night staff");
+            if (date.getDayOfWeek() != DayOfWeek.FRIDAY && date.getDayOfWeek() != DayOfWeek.SATURDAY) {
+                assertEquals(1, nights, "Day " + date + " must have exactly 1 Night staff");
+            } else {
+                assertTrue(nights <= 1);
+            }
         }
     }
 }

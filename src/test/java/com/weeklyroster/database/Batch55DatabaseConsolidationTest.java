@@ -280,10 +280,17 @@ public class Batch55DatabaseConsolidationTest {
             "system_audit_logs"
         );
 
+        boolean isSqlite = true;
+        try (var conn = jdbcTemplate.getDataSource().getConnection()) {
+            isSqlite = conn.getMetaData().getDatabaseProductName().toLowerCase().contains("sqlite");
+        } catch (Exception ignored) {}
+
+        String checkQuery = isSqlite
+                ? "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?"
+                : "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?";
+
         for (String table : activeCoreTables) {
-            Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
-                Integer.class, table);
+            Integer count = jdbcTemplate.queryForObject(checkQuery, Integer.class, table);
             assertNotNull(count);
             assertTrue(count > 0, "Active core table must exist: " + table);
         }
