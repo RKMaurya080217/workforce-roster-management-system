@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.Set;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +29,7 @@ import com.weeklyroster.dto.request.ClearManualRosterRequest;
 import com.weeklyroster.dto.request.ManualShiftSwapRequest;
 import com.weeklyroster.dto.request.AutoSaveDraftRequest;
 import com.weeklyroster.dto.response.CopyWeekPreviewResponse;
+import com.weeklyroster.dto.response.RosterFairnessReport;
 import com.weeklyroster.dto.response.ClearRosterPreviewResponse;
 import com.weeklyroster.dto.response.ManualShiftSwapPreviewResponse;
 import com.weeklyroster.dto.response.WeekComparisonResponse;
@@ -124,6 +126,9 @@ public class RosterService {
 	private RosterEmailService rosterEmailService;
 
 	@org.springframework.beans.factory.annotation.Autowired(required = false)
+	private FairnessEvaluationService fairnessEvaluationService;
+
+	@org.springframework.beans.factory.annotation.Autowired(required = false)
 	private com.weeklyroster.config.ShiftCapacityProperties shiftCapacityProperties;
 
 	private final java.util.concurrent.ConcurrentHashMap<String, List<com.weeklyroster.dto.response.RosterCandidateResponse>> candidateCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -179,6 +184,15 @@ public class RosterService {
 
 	public void setGenerationHistoryRepository(com.weeklyroster.repository.RosterGenerationHistoryRepository generationHistoryRepository) {
 		this.generationHistoryRepository = generationHistoryRepository;
+	}
+
+	public void setFairnessEvaluationService(FairnessEvaluationService fairnessEvaluationService) {
+		this.fairnessEvaluationService = fairnessEvaluationService;
+	}
+
+	private FairnessEvaluationService getFairnessService() {
+		if (fairnessEvaluationService != null) return fairnessEvaluationService;
+		return new FairnessEvaluationService(assignmentRepository, employeeRepository, leaveRepository, dateShiftPreferenceRepository, recurringShiftPreferenceRepository);
 	}
 
 	@org.springframework.beans.factory.annotation.Autowired
@@ -430,9 +444,7 @@ public class RosterService {
 		cycle.setGeneratedAt(LocalDateTime.now());
 		cycle.setGenerationMode(mode != null ? mode : GenerationMode.MANUAL);
 		cycle.setWorkingDays(validWorkingDays);
-		if (cycle.getStatus() == null) {
-			cycle.setStatus(RosterStatus.GENERATED);
-		}
+		cycle.setStatus(RosterStatus.GENERATED);
 		cycle = cycleRepository.save(cycle);
 
 		if (auditService != null) {
@@ -475,9 +487,11 @@ public class RosterService {
 		FinalValidationResult leastConflictsValidation = null;
 
 		int bestChosenAttempt = 1;
+		FairnessEvaluationService.RollingHistoryContext rollingContext = getFairnessService().loadRollingHistoryContext(startDate, employees, 4);
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
-			int cycleSalt = (int) ((System.nanoTime() + attempt * 7919L + (long)(Math.random() * 100000)) % 100000L);
+			long baseSeed = startDate.toEpochDay() * 10007L + (long) validWorkingDays * 389L;
+			int cycleSalt = (int) (Math.abs(baseSeed + (long) attempt * 7919L) % 100000L);
 
 			Map<Long, Set<LocalDate>> weeklyOffs = planWeeklyOffs(employees, startDate, endDate, preferencesMap, cycleSalt, validWorkingDays);
 			Map<Long, Integer> offTakenCount = new HashMap<>();
@@ -603,7 +617,7 @@ public class RosterService {
 
 			if (validation.criticalConflicts() == 0) {
 				String candidateFp = computeRosterFingerprint(candidateAssignments);
-				RosterScoringBreakdown scores = calculateSmartScore(candidateAssignments, preferencesMap, previousFingerprints, employees);
+				RosterScoringBreakdown scores = calculateSmartScore(candidateAssignments, preferencesMap, previousFingerprints, employees, rollingContext);
 				boolean isDuplicate = previousFingerprints.contains(candidateFp);
 
 				if (!isDuplicate) {
@@ -614,8 +628,8 @@ public class RosterService {
 						bestNonDuplicateValidation = validation;
 						bestNonDuplicateAttempt = attempt + 1;
 					}
-					// If we have explored at least 12 attempts and found a high quality non-duplicate candidate, we can finish
-					if (attempt >= 12 && scores.totalScore() >= 1200) {
+					// If we have explored at least 15 attempts and found a high quality non-duplicate candidate, we can finish
+					if (attempt >= 15 && scores.totalScore() >= 3500) {
 						break;
 					}
 				} else {
@@ -788,7 +802,7 @@ public class RosterService {
 		if (generationHistoryRepository != null) {
 			try {
 				String finalFingerprint = computeRosterFingerprint(generated);
-				RosterScoringBreakdown scores = calculateSmartScore(generated, preferencesMap, previousFingerprints, employees);
+				RosterScoringBreakdown scores = calculateSmartScore(generated, preferencesMap, previousFingerprints, employees, rollingContext);
 				com.weeklyroster.entity.RosterGenerationHistory historyEntry = new com.weeklyroster.entity.RosterGenerationHistory(
 						startDate,
 						endDate,
@@ -1107,20 +1121,44 @@ public class RosterService {
 			int preferenceScore,
 			int continuityScore,
 			int fairnessScore,
-			int diversityScore
-	) {}
+			int diversityScore,
+			int nightFairnessScore,
+			int eveningFairnessScore,
+			int workloadBalanceScore,
+			int weeklyOffDistributionScore,
+			int rollingHistoryScore
+	) {
+		public RosterScoringBreakdown(int totalScore, int preferenceScore, int continuityScore, int fairnessScore, int diversityScore) {
+			this(totalScore, preferenceScore, continuityScore, fairnessScore, diversityScore, 0, 0, 0, 0, 0);
+		}
+	}
 
 	public RosterScoringBreakdown calculateSmartScore(List<RosterAssignment> assignments,
 			Map<Long, ApplicablePreference> preferencesMap,
 			Set<String> previousFingerprints,
 			List<Employee> employees) {
+		return calculateSmartScore(assignments, preferencesMap, previousFingerprints, employees, null);
+	}
+
+	public RosterScoringBreakdown calculateSmartScore(List<RosterAssignment> assignments,
+			Map<Long, ApplicablePreference> preferencesMap,
+			Set<String> previousFingerprints,
+			List<Employee> employees,
+			FairnessEvaluationService.RollingHistoryContext rollingContext) {
 		if (assignments == null || assignments.isEmpty()) {
 			return new RosterScoringBreakdown(0, 0, 0, 0, 0);
 		}
 
+		LocalDate startDate = assignments.stream().map(RosterAssignment::getRosterDate).filter(Objects::nonNull).min(LocalDate::compareTo).orElse(LocalDate.now());
+
+		if (rollingContext == null && employees != null) {
+			try {
+				rollingContext = getFairnessService().loadRollingHistoryContext(startDate, employees, 4);
+			} catch (Exception ignored) {}
+		}
+
 		int prefScore = 0;
 		int continuityScore = 0;
-		int fairnessScore = 0;
 		int diversityScore = 0;
 
 		Map<Long, List<RosterAssignment>> empMap = assignments.stream()
@@ -1148,6 +1186,13 @@ public class RosterService {
 					} else {
 						prefScore -= 1500;
 					}
+				} else if (pref.hasRecurringShift(a.getRosterDate().getDayOfWeek())) {
+					ShiftType recPref = pref.getRecurringShift(a.getRosterDate().getDayOfWeek());
+					if (st == recPref) {
+						prefScore += 800;
+					} else {
+						prefScore -= 800;
+					}
 				} else if (pref.hasPreferredShifts()) {
 					if (pref.isShiftPreferred(st)) {
 						int rank = pref.getShiftPreferenceRank(st);
@@ -1162,7 +1207,7 @@ public class RosterService {
 			}
 		}
 
-		// 2. Continuity score
+		// 2. Continuity score & Avoidable transitions penalty
 		for (List<RosterAssignment> empList : empMap.values()) {
 			empList.sort(Comparator.comparing(RosterAssignment::getRosterDate));
 
@@ -1175,6 +1220,24 @@ public class RosterService {
 				long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(offDates.get(0), offDates.get(1));
 				if (daysDiff == 1 || daysDiff == 6) {
 					continuityScore += 800;
+				}
+			}
+
+			// Avoidable transitions penalty between consecutive working shifts
+			for (int i = 0; i < empList.size() - 1; i++) {
+				RosterAssignment cur = empList.get(i);
+				RosterAssignment next = empList.get(i + 1);
+				if (!cur.isWeeklyOff() && !cur.isOnLeave() && !next.isWeeklyOff() && !next.isOnLeave()
+						&& cur.getShift() != null && next.getShift() != null) {
+					ShiftType curT = cur.getShift().getShiftType();
+					ShiftType nextT = next.getShift().getShiftType();
+					if (curT == ShiftType.MORNING && nextT == ShiftType.NIGHT) {
+						continuityScore -= 1200; // Penalize abrupt day to nocturnal jump
+					} else if (curT == ShiftType.EVENING && nextT == ShiftType.MORNING) {
+						continuityScore -= 800; // Penalize 12-hour turnaround
+					} else if (curT == ShiftType.NIGHT && nextT == ShiftType.EVENING) {
+						continuityScore -= 1000;
+					}
 				}
 			}
 
@@ -1193,11 +1256,11 @@ public class RosterService {
 			for (int i = 1; i < workingSequence.size(); i++) {
 				ShiftType cur = workingSequence.get(i);
 				if (cur == prev) {
-					continuityScore += 200;
+					continuityScore += 250;
 				} else {
 					blocks++;
 					if (seenShifts.contains(cur)) {
-						continuityScore -= 5000;
+						continuityScore -= 3000;
 					}
 					seenShifts.add(cur);
 					prev = cur;
@@ -1213,34 +1276,128 @@ public class RosterService {
 			}
 		}
 
-		// 3. Fairness score & Night targets
-		int maleNights = 0;
+		// 3. Fairness score & Multi-dimensional balance
+		int nightFairnessScore = 0;
+		int eveningFairnessScore = 0;
+		int workloadBalanceScore = 0;
+		int weeklyOffDistributionScore = 500;
+		int rollingHistoryScore = 0;
+
+		// Strict requirement: Every calendar day must have exactly 1 Night shift!
+		Map<LocalDate, Integer> dailyNightCounts = new HashMap<>();
 		for (RosterAssignment a : assignments) {
-			if (a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT && !a.isWeeklyOff() && !a.isOnLeave()) {
-				maleNights++;
+			if (!a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT) {
+				if (a.getRosterDate() != null) {
+					dailyNightCounts.put(a.getRosterDate(), dailyNightCounts.getOrDefault(a.getRosterDate(), 0) + 1);
+				}
 			}
 		}
-		if (maleNights == 7) fairnessScore += 300;
+		int dailyNightStaffingPenalty = 0;
+		for (int i = 0; i < 7; i++) {
+			LocalDate d = startDate.plusDays(i);
+			int n = dailyNightCounts.getOrDefault(d, 0);
+			if (n != 1) {
+				dailyNightStaffingPenalty += 35000;
+			}
+		}
+		nightFairnessScore -= dailyNightStaffingPenalty;
 
-		// BATCH 93: Development team schedule alignment scoring
-		if (employees != null) {
+		// Calculate weekly off distribution across days of week
+		Map<LocalDate, Integer> dailyOffCounts = new HashMap<>();
+		for (RosterAssignment a : assignments) {
+			if (a.isWeeklyOff() && a.getRosterDate() != null) {
+				dailyOffCounts.put(a.getRosterDate(), dailyOffCounts.getOrDefault(a.getRosterDate(), 0) + 1);
+			}
+		}
+		for (int count : dailyOffCounts.values()) {
+			if (count > 2) {
+				weeklyOffDistributionScore -= (count - 2) * 250;
+			}
+		}
+		weeklyOffDistributionScore = Math.max(0, weeklyOffDistributionScore);
+
+		if (employees != null && !employees.isEmpty()) {
+			List<Double> maleNightBurdens = new ArrayList<>();
+			List<Double> maleEveningBurdens = new ArrayList<>();
+			List<Double> employeeWorkDays = new ArrayList<>();
+
+			for (Employee emp : employees) {
+				List<RosterAssignment> empAssignments = empMap.getOrDefault(emp.getId(), Collections.emptyList());
+				int workingCount = (int) empAssignments.stream()
+						.filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() != ShiftType.OFF)
+						.count();
+				int rollWork = (rollingContext != null) ? rollingContext.getRollingWorkingShifts(emp.getId()) : 0;
+				employeeWorkDays.add((double) (workingCount + rollWork));
+
+				if (emp.getGender() == Gender.MALE && !emp.isDevelopmentTeam()) {
+					int myNights = (int) empAssignments.stream()
+							.filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+							.count();
+					int myEvenings = (int) empAssignments.stream()
+							.filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.EVENING)
+							.count();
+
+					int rollNights = (rollingContext != null) ? rollingContext.getRollingNights(emp.getId()) : 0;
+					int rollEvenings = (rollingContext != null) ? rollingContext.getRollingEvenings(emp.getId()) : 0;
+
+					maleNightBurdens.add((double) (myNights + rollNights));
+					maleEveningBurdens.add((double) (myEvenings + rollEvenings));
+
+					// Rolling history score rewards
+					if (rollNights >= 2) {
+						if (myNights <= 1) rollingHistoryScore += 600;
+						else rollingHistoryScore -= 1500;
+					} else if (rollNights == 0) {
+						if (myNights >= 1) rollingHistoryScore += 600;
+					}
+				}
+			}
+
+			// Night variance scoring across eligible males
+			if (maleNightBurdens.size() > 1) {
+				double mean = maleNightBurdens.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+				double var = maleNightBurdens.stream().mapToDouble(v -> (v - mean) * (v - mean)).sum() / maleNightBurdens.size();
+				nightFairnessScore = Math.max(0, 1000 - (int) (var * 2500));
+			} else {
+				nightFairnessScore = 800;
+			}
+
+			// Evening variance scoring across eligible males
+			if (maleEveningBurdens.size() > 1) {
+				double mean = maleEveningBurdens.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+				double var = maleEveningBurdens.stream().mapToDouble(v -> (v - mean) * (v - mean)).sum() / maleEveningBurdens.size();
+				eveningFairnessScore = Math.max(0, 800 - (int) (var * 1800));
+			} else {
+				eveningFairnessScore = 600;
+			}
+
+			// Workload variance scoring
+			if (employeeWorkDays.size() > 1) {
+				double mean = employeeWorkDays.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+				double var = employeeWorkDays.stream().mapToDouble(v -> (v - mean) * (v - mean)).sum() / employeeWorkDays.size();
+				workloadBalanceScore = Math.max(0, 1000 - (int) (var * 600));
+			} else {
+				workloadBalanceScore = 800;
+			}
+
+			// Development team schedule alignment scoring
 			for (Employee emp : employees) {
 				if (isDevelopmentTeam(emp)) {
 					List<RosterAssignment> dList = empMap.getOrDefault(emp.getId(), Collections.emptyList());
 					for (RosterAssignment a : dList) {
 						if (a.isWeeklyOff()) {
 							if (a.getRosterDate().getDayOfWeek() == DayOfWeek.SATURDAY || a.getRosterDate().getDayOfWeek() == DayOfWeek.SUNDAY) {
-								fairnessScore += 300; // Reward weekend off for Dev team
+								rollingHistoryScore += 300; // Reward weekend off for Dev team
 							}
 						} else if (!a.isOnLeave() && a.getShift() != null) {
 							ShiftType st = a.getShift().getShiftType();
 							if (a.getRosterDate().getDayOfWeek() != DayOfWeek.SATURDAY && a.getRosterDate().getDayOfWeek() != DayOfWeek.SUNDAY) {
 								if (st == ShiftType.GENERAL) {
-									fairnessScore += 400; // Reward Mon-Fri General for Dev team
+									rollingHistoryScore += 400; // Reward Mon-Fri General for Dev team
 								} else if (st == ShiftType.NIGHT) {
-									fairnessScore -= 3000;
+									rollingHistoryScore -= 3000;
 								} else if (st == ShiftType.EVENING) {
-									fairnessScore -= 1500;
+									rollingHistoryScore -= 1500;
 								}
 							}
 						}
@@ -1260,14 +1417,14 @@ public class RosterService {
 							RosterAssignment rA = rDateMap.get(pA.getRosterDate());
 							if (rA != null) {
 								if (rA.isWeeklyOff() && pA.isWeeklyOff()) {
-									continuityScore += 500; // Reward synchronized weekly off
+									continuityScore += 500;
 								} else if (!rA.isWeeklyOff() && !pA.isWeeklyOff() && !rA.isOnLeave() && !pA.isOnLeave()) {
 									ShiftType rType = rA.getShift() != null ? rA.getShift().getShiftType() : null;
 									ShiftType pType = pA.getShift() != null ? pA.getShift().getShiftType() : null;
 									if (rType == ShiftType.MORNING && pType == ShiftType.MORNING) {
-										continuityScore += 500; // Reward synchronized morning
+										continuityScore += 500;
 									} else if ((rType == ShiftType.EVENING && pType == ShiftType.MORNING) || (rType == ShiftType.MORNING && pType == ShiftType.EVENING)) {
-										continuityScore -= 800; // Penalize opposite shifts (Morning vs Evening)
+										continuityScore -= 800;
 									}
 								}
 							}
@@ -1282,26 +1439,29 @@ public class RosterService {
 					List<RosterAssignment> mList = empMap.getOrDefault(emp.getId(), Collections.emptyList());
 					int nights = (int) mList.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT).count();
 					if (emp.isDevelopmentTeam()) {
-						if (nights == 0) fairnessScore += 600;
-						else if (nights == 1) fairnessScore += 0;
-						else fairnessScore -= 2500;
+						if (nights == 0) nightFairnessScore += 600;
+						else if (nights == 1) nightFairnessScore += 0;
+						else nightFairnessScore -= 2500;
 					} else {
 						int maxN = emp.getMaxNightsPerWeek() != null ? emp.getMaxNightsPerWeek() : 2;
 						if (maxN == 1) {
-							if (nights == 1) fairnessScore += 600;
-							else if (nights > 1) fairnessScore -= 3500;
+							if (nights == 1) nightFairnessScore += 600;
+							else if (nights > 1) nightFairnessScore -= 3500;
 						} else if (maxN == 2) {
-							if (nights >= 1 && nights <= 2) fairnessScore += 500;
-							else if (nights > 2) fairnessScore -= 1500;
+							if (nights >= 1 && nights <= 2) nightFairnessScore += 500;
+							else if (nights > 2) nightFairnessScore -= 1500;
 						} else {
-							if (nights >= 2 && nights <= maxN) fairnessScore += 600;
-							else if (nights == 1) fairnessScore += 200;
-							else if (nights > maxN) fairnessScore -= 1500;
+							if (nights >= 2 && nights <= maxN) nightFairnessScore += 600;
+							else if (nights == 1) nightFairnessScore += 200;
+							else if (nights > maxN) nightFairnessScore -= 1500;
 						}
 					}
 				}
 			}
 		}
+
+		int fairnessScore = nightFairnessScore + eveningFairnessScore + workloadBalanceScore
+				+ weeklyOffDistributionScore + rollingHistoryScore;
 
 		// 4. Diversity score
 		String candidateFp = computeRosterFingerprint(assignments);
@@ -1310,7 +1470,26 @@ public class RosterService {
 		}
 
 		int totalScore = prefScore + continuityScore + fairnessScore + diversityScore;
-		return new RosterScoringBreakdown(totalScore, prefScore, continuityScore, fairnessScore, diversityScore);
+		return new RosterScoringBreakdown(
+				totalScore, prefScore, continuityScore, fairnessScore, diversityScore,
+				nightFairnessScore, eveningFairnessScore, workloadBalanceScore,
+				weeklyOffDistributionScore, rollingHistoryScore
+		);
+	}
+
+	@Transactional(readOnly = true)
+	public RosterFairnessReport evaluateRosterFairness(Long cycleId) {
+		RosterCycle cycle = cycleRepository.findById(cycleId)
+				.orElseThrow(() -> new ResourceNotFoundException("Roster cycle not found with id: " + cycleId));
+		return getFairnessService().evaluateRosterFairness(cycle);
+	}
+
+	@Transactional(readOnly = true)
+	public RosterFairnessReport evaluateRosterFairness(LocalDate startDate, LocalDate endDate) {
+		List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenWithDetails(startDate, endDate);
+		List<Employee> employees = employeeRepository.findByActiveTrueOrderByIdAsc();
+		Map<Long, ApplicablePreference> preferencesMap = loadApprovedPreferences(employees, startDate, endDate);
+		return getFairnessService().evaluateRosterFairness(startDate, endDate, assignments, employees, preferencesMap, 4);
 	}
 
 
@@ -3362,6 +3541,7 @@ public class RosterService {
 				available.add(employee);
 			}
 		}
+		available.sort(Comparator.comparingLong(Employee::getId));
 
 		int plannedWorking = available.size();
 		int activeEmployees = employees.size();
@@ -4161,9 +4341,11 @@ public class RosterService {
 
 		List<Employee> males = employees.stream()
 				.filter(e -> e.getGender() == Gender.MALE)
+				.sorted(Comparator.comparingLong(Employee::getId))
 				.toList();
 		List<Employee> females = employees.stream()
 				.filter(e -> e.getGender() == Gender.FEMALE)
+				.sorted(Comparator.comparingLong(Employee::getId))
 				.toList();
 
 		List<Employee> sortedMales = new ArrayList<>(males);
@@ -5544,9 +5726,9 @@ public class RosterService {
 				.toList();
 
 		List<Employee> prioritizedMales = new ArrayList<>(activeMales);
-		prioritizedMales.sort(Comparator.comparingInt(m -> {
+		prioritizedMales.sort(Comparator.comparingInt((Employee m) -> {
 			return m.getMaxNightsPerWeek() != null ? m.getMaxNightsPerWeek() : 2;
-		}));
+		}).thenComparingLong(Employee::getId));
 
 		for (Employee male : prioritizedMales) {
 			if (male.isDevelopmentTeam()) continue; // Dev team schedule takes precedence (0 Nights normally)

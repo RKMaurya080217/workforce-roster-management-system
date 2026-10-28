@@ -50,6 +50,10 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     List<LeaveRequest> findByStartDateLessThanEqualAndEndDateGreaterThanEqual(@Param("endDate") LocalDate endDate,
                                                                              @Param("startDate") LocalDate startDate);
 
+    default boolean hasApprovedLeaveOnDate(Long employeeId, LocalDate date) {
+        return existsByEmployeeIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(employeeId, LeaveStatus.APPROVED, date, date);
+    }
+
     default List<LeaveRequest> findPendingRequests() {
         return findByStatusOrderByRequestedAtAsc(LeaveStatus.PENDING);
     }

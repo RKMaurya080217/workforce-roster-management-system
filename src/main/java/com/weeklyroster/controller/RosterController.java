@@ -5,6 +5,7 @@ import com.weeklyroster.dto.request.ShiftChangeRequest;
 import com.weeklyroster.dto.response.EmailDeliveryLogResponse;
 import com.weeklyroster.dto.response.RosterAssignmentResponse;
 import com.weeklyroster.dto.response.RosterCycleResponse;
+import com.weeklyroster.dto.response.RosterFairnessReport;
 import com.weeklyroster.dto.response.ShiftExplanationResponse;
 
 import com.weeklyroster.dto.response.TodayDutyResponse;
@@ -284,6 +285,12 @@ public class RosterController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<RosterService.FinalValidationResult> validateCycle(@PathVariable("id") Long id) {
         return ResponseEntity.ok(rosterService.validateCycle(id));
+    }
+
+    @GetMapping(value = "/cycle/{id}/fairness", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<RosterFairnessReport> getCycleFairness(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(rosterService.evaluateRosterFairness(id));
     }
 
     @PostMapping(value = "/cycle/{id}/finalize", produces = MediaType.APPLICATION_JSON_VALUE)

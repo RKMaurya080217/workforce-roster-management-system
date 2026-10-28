@@ -55,6 +55,12 @@ public interface RosterAssignmentRepository extends JpaRepository<RosterAssignme
     @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.employee JOIN FETCH a.shift WHERE a.cycle.id = :cycleId ORDER BY a.rosterDate ASC, a.employee.id ASC")
     List<RosterAssignment> findByCycleIdOrderByRosterDateAsc(@Param("cycleId") Long cycleId);
 
+    @Query("SELECT a FROM RosterAssignment a JOIN FETCH a.employee JOIN FETCH a.shift " +
+           "WHERE a.rosterDate BETWEEN :startDate AND :endDate " +
+           "AND (a.cycle IS NULL OR a.cycle.status NOT IN (com.weeklyroster.entity.RosterStatus.DRAFT, com.weeklyroster.entity.RosterStatus.CANDIDATE)) " +
+           "ORDER BY a.rosterDate ASC, a.employee.id ASC")
+    List<RosterAssignment> findFinalizedAssignmentsInWindow(@Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
     default List<RosterAssignment> findByCycleId(Long cycleId) {
         return findByCycleIdOrderByRosterDateAsc(cycleId);
     }
