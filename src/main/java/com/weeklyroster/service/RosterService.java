@@ -605,6 +605,8 @@ public class RosterService {
 				}
 			}
 
+			enforceAndRepairExactWeeklyOff(cycle, candidateAssignments, employees, shifts, maxNightsAllowed, weeklyOffs, preferencesMap, validWorkingDays);
+
 			for (RosterAssignment a : candidateAssignments) {
 				ApplicablePreference pref = preferencesMap.getOrDefault(a.getEmployee().getId(), ApplicablePreference.none(a.getEmployee().getId()));
 				populateAssignmentReason(a, pref);
@@ -763,6 +765,8 @@ public class RosterService {
 			}
 		}
 
+		enforceAndRepairExactWeeklyOff(cycle, generated, employees, shifts, maxNightsAllowed, null, preferencesMap, validWorkingDays);
+
 		for (RosterAssignment a : generated) {
 			ApplicablePreference pref = preferencesMap.getOrDefault(a.getEmployee().getId(), ApplicablePreference.none(a.getEmployee().getId()));
 			populateAssignmentReason(a, pref);
@@ -861,6 +865,7 @@ public class RosterService {
 		}
 
 		Map<Long, Map<DayOfWeek, ShiftType>> recurringShiftMap = new HashMap<>();
+		Map<Long, Map<DayOfWeek, Set<ShiftType>>> recurringAvoidMap = new HashMap<>();
 		if (recurringShiftPreferenceRepository != null) {
 			try {
 				List<com.weeklyroster.entity.RecurringShiftPreference> recurringPrefs = recurringShiftPreferenceRepository.findByActiveTrue();
@@ -869,8 +874,14 @@ public class RosterService {
 						boolean startOk = (rp.getStartDate() == null || endDate == null || !rp.getStartDate().isAfter(endDate));
 						boolean endOk = (rp.getEndDate() == null || startDate == null || !rp.getEndDate().isBefore(startDate));
 						if (startOk && endOk) {
-							recurringShiftMap.computeIfAbsent(rp.getEmployee().getId(), k -> new EnumMap<>(DayOfWeek.class))
-									.put(rp.getDayOfWeek(), rp.getShiftType());
+							if (rp.getPreferenceType() == com.weeklyroster.entity.RecurringPreferenceType.DO_NOT_ASSIGN) {
+								recurringAvoidMap.computeIfAbsent(rp.getEmployee().getId(), k -> new EnumMap<>(DayOfWeek.class))
+										.computeIfAbsent(rp.getDayOfWeek(), k -> new HashSet<>())
+										.add(rp.getShiftType());
+							} else {
+								recurringShiftMap.computeIfAbsent(rp.getEmployee().getId(), k -> new EnumMap<>(DayOfWeek.class))
+										.put(rp.getDayOfWeek(), rp.getShiftType());
+							}
 						}
 					}
 				}
@@ -882,8 +893,9 @@ public class RosterService {
 		for (Employee emp : employees) {
 			Map<LocalDate, ShiftType> empDateShifts = dateShiftMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			Map<DayOfWeek, ShiftType> empRecurringShifts = recurringShiftMap.getOrDefault(emp.getId(), Collections.emptyMap());
+			Map<DayOfWeek, Set<ShiftType>> empRecurringAvoids = recurringAvoidMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			if (preferenceRepository == null) {
-				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts));
+				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts, empRecurringAvoids));
 				continue;
 			}
 			List<EmployeePreference> prefs = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(emp.getId());
@@ -895,23 +907,27 @@ public class RosterService {
 					.orElse(null);
 
 			if (active != null) {
-				map.put(emp.getId(), parseApplicablePreference(active, empDateShifts, empRecurringShifts));
+				map.put(emp.getId(), parseApplicablePreference(active, empDateShifts, empRecurringShifts, empRecurringAvoids));
 			} else {
-				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts));
+				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts, empRecurringAvoids));
 			}
 		}
 		return map;
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p) {
-		return parseApplicablePreference(p, Collections.emptyMap(), Collections.emptyMap());
+		return parseApplicablePreference(p, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts) {
-		return parseApplicablePreference(p, dateShifts, Collections.emptyMap());
+		return parseApplicablePreference(p, dateShifts, Collections.emptyMap(), Collections.emptyMap());
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts, Map<DayOfWeek, ShiftType> recurringShifts) {
+		return parseApplicablePreference(p, dateShifts, recurringShifts, Collections.emptyMap());
+	}
+
+	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts, Map<DayOfWeek, ShiftType> recurringShifts, Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
 		List<ShiftType> preferredShiftOrder = parseShiftTypesList(p.getPreferredShiftTypes());
 		Set<ShiftType> preferredShifts = new LinkedHashSet<>(preferredShiftOrder);
 		Set<ShiftType> avoidShifts = parseShiftTypes(p.getAvoidShiftTypes());
@@ -935,7 +951,8 @@ public class RosterService {
 				p.getTemporaryRestrictions(),
 				true,
 				dateShifts != null ? dateShifts : Collections.emptyMap(),
-				recurringShifts != null ? recurringShifts : Collections.emptyMap()
+				recurringShifts != null ? recurringShifts : Collections.emptyMap(),
+				recurringAvoidShifts != null ? recurringAvoidShifts : Collections.emptyMap()
 		);
 	}
 
@@ -1071,6 +1088,13 @@ public class RosterService {
 				return;
 			} else {
 				a.setAssignmentReason("Recurring Preference Conflict: " + recPref + " requested on " + a.getRosterDate().getDayOfWeek() + ", assigned " + st + " due to operational / safety rules");
+				return;
+			}
+		}
+
+		if (pref != null && pref.hasRecurringAvoidShift(a.getRosterDate().getDayOfWeek())) {
+			if (pref.getRecurringAvoidShifts(a.getRosterDate().getDayOfWeek()).contains(st)) {
+				a.setAssignmentReason("Restriction Conflict: Do Not Assign " + st + " on " + a.getRosterDate().getDayOfWeek() + ", assigned due to unavoidable staffing / safety constraints");
 				return;
 			}
 		}
@@ -4349,6 +4373,14 @@ public class RosterService {
 		LocalDate d5 = startDate.plusDays(5);
 		LocalDate d6 = startDate.plusDays(6);
 
+		List<com.weeklyroster.entity.Holiday> activeHolidays = (holidayRepository != null && startDate != null && endDate != null)
+				? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate)
+				: Collections.emptyList();
+		Set<LocalDate> holidayDates = activeHolidays.stream()
+				.filter(com.weeklyroster.entity.Holiday::isActive)
+				.map(com.weeklyroster.entity.Holiday::getHolidayDate)
+				.collect(Collectors.toSet());
+
 		List<Employee> males = employees.stream()
 				.filter(e -> e.getGender() == Gender.MALE)
 				.sorted(Comparator.comparingLong(Employee::getId))
@@ -4803,11 +4835,27 @@ public class RosterService {
 			// Single off or filling remainder up to neededOffs
 			while (empOffs.size() < neededOffs) {
 				LocalDate target = null;
-				if (pref != null && !pref.preferredOffDays().isEmpty()) {
+				// BATCH 124 Priority 1: Consecutive Holiday + Weekly Off Placement
+				if (!holidayDates.isEmpty()) {
+					for (LocalDate hDate : holidayDates) {
+						for (LocalDate adj : List.of(hDate.minusDays(1), hDate.plusDays(1))) {
+							if (!adj.isBefore(d0) && !adj.isAfter(d6) && !empOffs.contains(adj)
+									&& !holidayDates.contains(adj) && !isApprovedLeave(m.getId(), adj)
+									&& !hasTargetWorkShift(pref, adj)
+									&& offCounts.get(adj) < getMaxOffLimit.applyAsInt(adj)
+									&& maleOffCounts.get(adj) < getMaxMaleOffLimit.applyAsInt(adj)) {
+								target = adj;
+								break;
+							}
+						}
+						if (target != null) break;
+					}
+				}
+				if (target == null && pref != null && !pref.preferredOffDays().isEmpty()) {
 					for (DayOfWeek dow : pref.preferredOffDays()) {
 						for (int d = 0; d < 7; d++) {
 							LocalDate cand = startDate.plusDays(d);
-							if (cand.getDayOfWeek() == dow && !empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
+							if (!holidayDates.contains(cand) && cand.getDayOfWeek() == dow && !empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
 									&& !hasTargetWorkShift(pref, cand)
 									&& offCounts.get(cand) < getMaxOffLimit.applyAsInt(cand) && maleOffCounts.get(cand) < getMaxMaleOffLimit.applyAsInt(cand)) {
 								target = cand;
@@ -4820,7 +4868,7 @@ public class RosterService {
 				if (target == null) {
 					for (int step = 0; step < maleOrderedTargets.size(); step++) {
 						LocalDate cand = maleOrderedTargets.get((maleTargetPointer + step) % maleOrderedTargets.size());
-						if (!empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
+						if (!holidayDates.contains(cand) && !empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
 								&& !hasTargetWorkShift(pref, cand)
 								&& offCounts.get(cand) < getMaxOffLimit.applyAsInt(cand) && maleOffCounts.get(cand) < getMaxMaleOffLimit.applyAsInt(cand)) {
 							target = cand;
@@ -4831,7 +4879,7 @@ public class RosterService {
 				}
 				if (target == null) {
 					for (LocalDate cand : List.of(d6, d5, d4, d2, d3, d1, d0)) {
-						if (!empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
+						if (!holidayDates.contains(cand) && !empOffs.contains(cand) && !isApprovedLeave(m.getId(), cand)
 								&& !hasTargetWorkShift(pref, cand)
 								&& offCounts.get(cand) < getMaxOffLimit.applyAsInt(cand) && maleOffCounts.get(cand) < getMaxMaleOffLimit.applyAsInt(cand)) {
 							target = cand;
@@ -4961,11 +5009,26 @@ public class RosterService {
 			// Single off or filling remainder up to neededOffs
 			while (empOffs.size() < neededOffs) {
 				LocalDate target = null;
-				if (pref != null && !pref.preferredOffDays().isEmpty()) {
+				// BATCH 124 Priority 1: Consecutive Holiday + Weekly Off Placement
+				if (!holidayDates.isEmpty()) {
+					for (LocalDate hDate : holidayDates) {
+						for (LocalDate adj : List.of(hDate.minusDays(1), hDate.plusDays(1))) {
+							if (!adj.isBefore(d0) && !adj.isAfter(d6) && !empOffs.contains(adj)
+									&& !holidayDates.contains(adj) && !isApprovedLeave(f.getId(), adj)
+									&& !hasTargetWorkShift(pref, adj)
+									&& offCounts.get(adj) < getMaxOffLimit.applyAsInt(adj)) {
+								target = adj;
+								break;
+							}
+						}
+						if (target != null) break;
+					}
+				}
+				if (target == null && pref != null && !pref.preferredOffDays().isEmpty()) {
 					for (DayOfWeek dow : pref.preferredOffDays()) {
 						for (int d = 0; d < 7; d++) {
 							LocalDate cand = startDate.plusDays(d);
-							if (cand.getDayOfWeek() == dow && !empOffs.contains(cand) && !isApprovedLeave(f.getId(), cand)
+							if (!holidayDates.contains(cand) && cand.getDayOfWeek() == dow && !empOffs.contains(cand) && !isApprovedLeave(f.getId(), cand)
 									&& !hasTargetWorkShift(pref, cand)
 									&& offCounts.get(cand) < getMaxOffLimit.applyAsInt(cand)) {
 								target = cand;
@@ -4978,7 +5041,7 @@ public class RosterService {
 				if (target == null) {
 					for (int step = 0; step < femaleOrderedTargets.size(); step++) {
 						LocalDate cand = femaleOrderedTargets.get((femaleTargetPointer + step) % femaleOrderedTargets.size());
-						if (!empOffs.contains(cand) && !isApprovedLeave(f.getId(), cand)
+						if (!holidayDates.contains(cand) && !empOffs.contains(cand) && !isApprovedLeave(f.getId(), cand)
 								&& !hasTargetWorkShift(pref, cand)
 								&& offCounts.get(cand) < getMaxOffLimit.applyAsInt(cand)) {
 							target = cand;
@@ -5346,6 +5409,20 @@ public class RosterService {
 							nextAssign.setWeeklyOff(true);
 							nextAssign.setShift(shifts.get(ShiftType.OFF));
 							nextAssign.setAssignmentReason("Weekly OFF (Fatigue Safety: Follows Night Shift)");
+
+							// BATCH 124: In 6-day mode, unmark any other weekly off to preserve exactly 1 weekly off
+							boolean isSixDay = (cycle == null || cycle.getWorkingDays() == null || cycle.getWorkingDays() == 6);
+							if (isSixDay) {
+								List<RosterAssignment> empAll = empAssignments.getOrDefault(candidateToMove.getEmployee().getId(), Collections.emptyList());
+								for (RosterAssignment otherA : empAll) {
+									if (otherA != nextAssign && otherA.isWeeklyOff() && !otherA.isManualAssignment() && !otherA.isOverridden()) {
+										otherA.setWeeklyOff(false);
+										otherA.setShift(shifts.get(ShiftType.GENERAL));
+										otherA.setAssignmentReason("Rebalanced to preserve single Weekly Off invariant");
+										break;
+									}
+								}
+							}
 						}
 					}
 				}
@@ -5883,7 +5960,7 @@ public class RosterService {
 							&& lastA.getShift() != null && lastA.getShift().getShiftType() == ShiftType.NIGHT) {
 						if (!list.isEmpty()) {
 							RosterAssignment mondayAssign = list.get(0);
-							if (!mondayAssign.isOnLeave() && (mondayAssign.getShift() == null || mondayAssign.getShift().getShiftType() != ShiftType.NIGHT)) {
+							if (!mondayAssign.isOnLeave() && !mondayAssign.isManualAssignment() && !mondayAssign.isOverridden() && (mondayAssign.getShift() == null || mondayAssign.getShift().getShiftType() != ShiftType.NIGHT)) {
 								postNightOffDates.add(mondayAssign.getRosterDate());
 								mondayAssign.setWeeklyOff(true);
 								mondayAssign.setShift(shifts.get(ShiftType.OFF));
@@ -5897,17 +5974,41 @@ public class RosterService {
 				RosterAssignment cur = list.get(i);
 				if (!cur.isWeeklyOff() && !cur.isOnLeave() && cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.NIGHT) {
 					if (i + 1 < list.size()) {
-												RosterAssignment next = list.get(i + 1);
+						RosterAssignment next = list.get(i + 1);
 						if (!next.isOnLeave()) {
-							postNightOffDates.add(next.getRosterDate());
-							next.setWeeklyOff(true);
-							next.setShift(shifts.get(ShiftType.OFF));
+							if ((next.isManualAssignment() || next.isOverridden()) && !next.isWeeklyOff()) {
+								// Explicit manual lock on next day must never be overwritten by automatic off; revert prior shift to GENERAL
+								if (!cur.isManualAssignment() && !cur.isOverridden()) {
+									cur.setShift(shifts.get(ShiftType.GENERAL));
+								}
+							} else {
+								postNightOffDates.add(next.getRosterDate());
+								next.setWeeklyOff(true);
+								next.setShift(shifts.get(ShiftType.OFF));
+							}
 						}
 					}
 				}
 			}
 
-			// 2. Query offList after ensuring post-night OFF
+			List<com.weeklyroster.entity.Holiday> cycleHolidays = (holidayRepository != null && cycle != null && cycle.getStartDate() != null && cycle.getEndDate() != null)
+					? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(cycle.getStartDate(), cycle.getEndDate())
+					: Collections.emptyList();
+			Set<LocalDate> holidayDates = cycleHolidays.stream()
+					.filter(com.weeklyroster.entity.Holiday::isActive)
+					.map(com.weeklyroster.entity.Holiday::getHolidayDate)
+					.collect(Collectors.toSet());
+
+			// BATCH 124: Holiday must not become Weekly Off
+			for (RosterAssignment a : list) {
+				if (holidayDates.contains(a.getRosterDate()) && a.isWeeklyOff()) {
+					a.setWeeklyOff(false);
+					a.setShift(shifts.get(ShiftType.OFF));
+					a.setAssignmentReason("Official Holiday");
+				}
+			}
+
+			// 2. Query offList after ensuring post-night OFF and unmarking holiday weeklyOff
 			List<RosterAssignment> offList = new ArrayList<>(list.stream().filter(RosterAssignment::isWeeklyOff).toList());
 			Set<LocalDate> scheduledOffs = weeklyOffs != null ? weeklyOffs.get(emp.getId()) : null;
 
@@ -5917,8 +6018,14 @@ public class RosterService {
 			if (offList.size() > targetOffs) {
 				Set<RosterAssignment> keepOffs = new LinkedHashSet<>();
 
+				// Priority 0: Explicit manual assignments or overrides
+				for (RosterAssignment offA : offList) {
+					if (offA.isManualAssignment() || offA.isOverridden()) {
+						keepOffs.add(offA);
+					}
+				}
 				// Priority 1: Post-Sunday-night recovery OFF on cycle start date
-				if (cycle != null && cycle.getStartDate() != null && postNightOffDates.contains(cycle.getStartDate())) {
+				if (keepOffs.size() < targetOffs && cycle != null && cycle.getStartDate() != null && postNightOffDates.contains(cycle.getStartDate())) {
 					offList.stream().filter(a -> a.getRosterDate().equals(cycle.getStartDate())).findFirst().ifPresent(keepOffs::add);
 				}
 				// Priority 2: Other post-night OFFs
@@ -5926,6 +6033,19 @@ public class RosterService {
 					for (LocalDate postNightDate : postNightOffDates) {
 						if (keepOffs.size() >= targetOffs) break;
 						offList.stream().filter(a -> a.getRosterDate().equals(postNightDate)).findFirst().ifPresent(keepOffs::add);
+					}
+				}
+				// Priority 2b: Consecutive rest adjacent to Holiday
+				if (keepOffs.size() < targetOffs && !holidayDates.isEmpty()) {
+					for (LocalDate hDate : holidayDates) {
+						if (keepOffs.size() >= targetOffs) break;
+						for (RosterAssignment offA : offList) {
+							long diff = Math.abs(java.time.temporal.ChronoUnit.DAYS.between(hDate, offA.getRosterDate()));
+							if (diff == 1) {
+								keepOffs.add(offA);
+								break;
+							}
+						}
 					}
 				}
 				// Priority 3: Scheduled offs from weeklyOffs
@@ -6105,8 +6225,18 @@ public class RosterService {
 
 				List<RosterAssignment> sortedCandidates = new ArrayList<>(workingAssigns);
 				sortedCandidates.sort(Comparator.comparing((RosterAssignment a) -> {
+					if (a.isManualAssignment() || a.isOverridden()) return 500;
+					if (holidayDates.contains(a.getRosterDate())) return 200;
 					if (pref != null && pref.hasTargetShiftForDate(a.getRosterDate())) return 100;
 					int p = 50;
+					if (!holidayDates.isEmpty()) {
+						for (LocalDate hDate : holidayDates) {
+							if (Math.abs(java.time.temporal.ChronoUnit.DAYS.between(hDate, a.getRosterDate())) == 1) {
+								p -= 25; // BATCH 124: Prefer adjacent to Holiday for consecutive rest
+								break;
+							}
+						}
+					}
 					if (scheduledOffs != null && scheduledOffs.contains(a.getRosterDate())) p -= 30;
 					if (pref != null && pref.isDayPreferredOff(a.getRosterDate().getDayOfWeek())) p -= 20;
 					boolean adjToOff = offList.stream().anyMatch(o -> Math.abs(java.time.temporal.ChronoUnit.DAYS.between(o.getRosterDate(), a.getRosterDate())) == 1);
@@ -6119,6 +6249,8 @@ public class RosterService {
 
 				for (RosterAssignment cand : sortedCandidates) {
 					if (offList.size() >= targetOffs) break;
+					if (cand.isManualAssignment() || cand.isOverridden()) continue; // Never overwrite explicit manual assignments to OFF
+					if (holidayDates.contains(cand.getRosterDate())) continue; // Holiday != Weekly Off
 					LocalDate cDate = cand.getRosterDate();
 					boolean isWk = (cDate.getDayOfWeek() == DayOfWeek.SATURDAY || cDate.getDayOfWeek() == DayOfWeek.SUNDAY);
 					long workingOnDay = assignments.stream()
@@ -6146,6 +6278,7 @@ public class RosterService {
 				if (offList.size() < targetOffs) {
 					for (RosterAssignment cand : sortedCandidates) {
 						if (offList.size() >= targetOffs) break;
+						if (holidayDates.contains(cand.getRosterDate())) continue;
 						if (cand.isWeeklyOff() || cand.isManualAssignment() || cand.isOverridden()) continue;
 						LocalDate cDate = cand.getRosterDate();
 						boolean isWk = (cDate.getDayOfWeek() == DayOfWeek.SATURDAY || cDate.getDayOfWeek() == DayOfWeek.SUNDAY);
@@ -6173,7 +6306,8 @@ public class RosterService {
 				if (offList.size() < targetOffs) {
 					for (RosterAssignment cand : sortedCandidates) {
 						if (offList.size() >= targetOffs) break;
-						if (cand.isWeeklyOff() || cand.isOnLeave()) continue;
+						if (holidayDates.contains(cand.getRosterDate())) continue;
+						if (cand.isWeeklyOff() || cand.isOnLeave() || cand.isManualAssignment() || cand.isOverridden()) continue;
 						LocalDate cDate = cand.getRosterDate();
 						boolean isWk = (cDate.getDayOfWeek() == DayOfWeek.SATURDAY || cDate.getDayOfWeek() == DayOfWeek.SUNDAY);
 						if (cand.getEmployee().isDevelopmentTeam() && !isWk) continue;
@@ -6898,6 +7032,9 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 		if (pref != null) {
 			if (pref.isShiftAvoided(shiftType)) {
 				return false;
+			}
+			if (date != null && pref.isShiftAvoidedOnDate(shiftType, date)) {
+				return false; // BATCH 124: Candidate domain exclusion for recurring negative shift restriction
 			}
 			if (date != null) {
 				ShiftType targetShift = pref.getTargetShiftForDate(date);

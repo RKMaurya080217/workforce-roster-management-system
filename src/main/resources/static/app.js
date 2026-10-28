@@ -9033,10 +9033,13 @@ async function renderEmployeePreferenceDetailView() {
       try {
         const recurringRules = await apiRequest(`/api/admin/preferences/recurring?employeeId=${empId}`).catch(() => []);
         
-        // Map rules by day of week
+        // Map rules by day of week (supporting multiple rules per day)
         const ruleMap = {};
         recurringRules.forEach(r => {
-          if (r.dayOfWeek) ruleMap[r.dayOfWeek] = r;
+          if (r.dayOfWeek) {
+            if (!ruleMap[r.dayOfWeek]) ruleMap[r.dayOfWeek] = [];
+            ruleMap[r.dayOfWeek].push(r);
+          }
         });
 
         const ALL_DAYS = [
@@ -9051,9 +9054,9 @@ async function renderEmployeePreferenceDetailView() {
 
         cardBody.innerHTML = `
           <div class="alert-info-box" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534; font-size:0.84rem; margin-bottom:16px;">
-            Configure a default shift for a specific day of every week. This preference remains active until the Admin changes or deactivates it.
+            Configure positive shift preferences or shift restrictions ("Do Not Assign") for specific days of every week. These rules remain active until changed or deactivated.
             <div style="font-size:0.78rem; color:#15803d; margin-top:4px;">
-              <strong>Priority Order:</strong> Date-Specific Preference &rarr; Recurring Weekly Preference &rarr; Normal Roster Algorithm. Mandatory rules (12h rest, female safety, single weekly off) are strictly preserved.
+              <strong>Authoritative Priority:</strong> Hard Rules &rarr; Leave &rarr; Holiday &rarr; Manual &rarr; Date-Specific &rarr; Recurring Positive &rarr; Recurring Negative &rarr; Optimization.
             </div>
           </div>
 
@@ -9061,15 +9064,23 @@ async function renderEmployeePreferenceDetailView() {
           <form id="prefDetailRecurringForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:16px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:20px;">
             <input type="hidden" id="recurringRuleId" value="">
             
-            <div style="min-width:140px;">
-              <label for="recurringDaySelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Day of Week <span class="req">*</span></label>
+            <div style="min-width:130px;">
+              <label for="recurringDaySelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Day <span class="req">*</span></label>
               <select id="recurringDaySelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; font-weight:600; border-radius:6px;">
                 ${ALL_DAYS.map(d => `<option value="${d.key}">${d.label}</option>`).join('')}
               </select>
             </div>
 
-            <div style="min-width:180px;">
-              <label for="recurringShiftSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Default Shift <span class="req">*</span></label>
+            <div style="min-width:160px;">
+              <label for="recurringTypeSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Preference Type <span class="req">*</span></label>
+              <select id="recurringTypeSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; font-weight:600; border-radius:6px;">
+                <option value="PREFERRED" selected>Preferred Shift</option>
+                <option value="DO_NOT_ASSIGN">Do Not Assign Shift</option>
+              </select>
+            </div>
+
+            <div style="min-width:160px;">
+              <label for="recurringShiftSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Shift <span class="req">*</span></label>
               <select id="recurringShiftSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; font-weight:600; border-radius:6px;">
                 <option value="MORNING">Morning (07:00 – 15:30)</option>
                 <option value="GENERAL" selected>General (09:30 – 18:00)</option>
@@ -9079,7 +9090,7 @@ async function renderEmployeePreferenceDetailView() {
               </select>
             </div>
 
-            <div style="min-width:120px;">
+            <div style="min-width:110px;">
               <label for="recurringActiveSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Status <span class="req">*</span></label>
               <select id="recurringActiveSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
                 <option value="true" selected>Active</option>
@@ -9087,14 +9098,14 @@ async function renderEmployeePreferenceDetailView() {
               </select>
             </div>
 
-            <div style="flex:1; min-width:180px;">
+            <div style="flex:1; min-width:160px;">
               <label for="recurringReasonInput" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
-              <input type="text" id="recurringReasonInput" class="form-control" placeholder="e.g. Standard day shift / recurring duty" style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
+              <input type="text" id="recurringReasonInput" class="form-control" placeholder="e.g. Personal constraint / regular preference" style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
             </div>
 
             <div style="display:flex; gap:8px;">
               <button type="submit" class="btn btn-primary btn-sm" id="recurringSaveBtn" style="padding:8px 18px; font-weight:600;">
-                Save Preference
+                Save Rule
               </button>
               <button type="button" class="btn btn-ghost btn-sm" id="recurringCancelBtn" style="padding:8px 12px;">
                 Cancel
@@ -9107,20 +9118,26 @@ async function renderEmployeePreferenceDetailView() {
             <table class="data-table" style="font-size:0.88rem;">
               <thead>
                 <tr>
-                  <th style="width:140px;">Day</th>
-                  <th style="width:180px;">Default Shift</th>
-                  <th style="width:110px;">Status</th>
+                  <th style="width:120px;">Day</th>
+                  <th style="width:160px;">Preference Type</th>
+                  <th style="width:160px;">Shift</th>
+                  <th style="width:100px;">Status</th>
                   <th>Reason</th>
-                  <th style="text-align:right; width:180px;">Actions</th>
+                  <th style="text-align:right; width:160px;">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 ${ALL_DAYS.map(d => {
-                  const rule = ruleMap[d.key];
-                  if (rule) {
-                    return `
+                  const rules = ruleMap[d.key] || [];
+                  if (rules.length > 0) {
+                    return rules.map((rule, idx) => `
                       <tr data-day-row="${d.key}">
-                        <td style="font-weight:700; color:var(--text-primary, #1e293b);">${d.label}</td>
+                        <td style="font-weight:700; color:var(--text-primary, #1e293b);">${idx === 0 ? d.label : '<span style="color:var(--text-muted); font-weight:normal;">&rdquor;</span>'}</td>
+                        <td>
+                          ${rule.preferenceType === 'DO_NOT_ASSIGN' 
+                            ? '<span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:600; padding:4px 8px; border-radius:4px;"><i class="fa fa-ban" style="margin-right:4px;"></i>Do Not Assign</span>' 
+                            : '<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:600; padding:4px 8px; border-radius:4px;"><i class="fa fa-star" style="margin-right:4px;"></i>Preferred Shift</span>'}
+                        </td>
                         <td>
                           <span class="badge ${formatShiftBadgeClass(rule.shiftType)}" style="font-size:0.84rem; padding:4px 10px;">
                             ${escapeHTML(formatShiftName(rule.shiftType))}
@@ -9133,7 +9150,7 @@ async function renderEmployeePreferenceDetailView() {
                         </td>
                         <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(rule.reason || '—')}</td>
                         <td style="text-align:right;">
-                          <button type="button" class="btn btn-secondary btn-xs" data-edit-day="${d.key}" data-rule-id="${rule.id}" data-shift="${rule.shiftType}" data-active="${rule.active}" data-reason="${escapeHTML(rule.reason || '')}" style="padding:3px 8px; margin-right:4px;">
+                          <button type="button" class="btn btn-secondary btn-xs" data-edit-day="${d.key}" data-rule-id="${rule.id}" data-shift="${rule.shiftType}" data-pref-type="${rule.preferenceType || 'PREFERRED'}" data-active="${rule.active}" data-reason="${escapeHTML(rule.reason || '')}" style="padding:3px 8px; margin-right:4px;">
                             Edit
                           </button>
                           <button type="button" class="btn btn-ghost btn-xs" data-toggle-recurring="${rule.id}" style="color:var(--primary); padding:3px 8px; margin-right:4px;">
@@ -9144,12 +9161,13 @@ async function renderEmployeePreferenceDetailView() {
                           </button>
                         </td>
                       </tr>
-                    `;
+                    `).join('');
                   } else {
                     return `
                       <tr data-day-row="${d.key}">
                         <td style="font-weight:600; color:var(--text-muted);">${d.label}</td>
                         <td style="color:var(--text-muted); font-style:italic;">Not Configured</td>
+                        <td style="color:var(--text-muted);">&mdash;</td>
                         <td style="color:var(--text-muted);">&mdash;</td>
                         <td style="color:var(--text-muted);">&mdash;</td>
                         <td style="text-align:right;">
@@ -9170,6 +9188,7 @@ async function renderEmployeePreferenceDetailView() {
         const form = document.getElementById("prefDetailRecurringForm");
         const cancelBtn = document.getElementById("recurringCancelBtn");
         const daySelect = document.getElementById("recurringDaySelect");
+        const typeSelect = document.getElementById("recurringTypeSelect");
         const shiftSelect = document.getElementById("recurringShiftSelect");
         const activeSelect = document.getElementById("recurringActiveSelect");
         const reasonInput = document.getElementById("recurringReasonInput");
@@ -9179,10 +9198,11 @@ async function renderEmployeePreferenceDetailView() {
         function resetForm() {
           ruleIdInput.value = "";
           daySelect.value = "MONDAY";
+          typeSelect.value = "PREFERRED";
           shiftSelect.value = "GENERAL";
           activeSelect.value = "true";
           reasonInput.value = "";
-          saveBtn.textContent = "Save Preference";
+          saveBtn.textContent = "Save Rule";
         }
 
         if (cancelBtn) {
@@ -9193,6 +9213,7 @@ async function renderEmployeePreferenceDetailView() {
           form.addEventListener("submit", async (e) => {
             e.preventDefault();
             const dayOfWeek = daySelect.value;
+            const preferenceType = typeSelect.value;
             const shiftType = shiftSelect.value;
             const active = activeSelect.value === "true";
             const reason = reasonInput.value.trim() || null;
@@ -9209,11 +9230,12 @@ async function renderEmployeePreferenceDetailView() {
                     employeeId: empId,
                     dayOfWeek,
                     shiftType,
+                    preferenceType,
                     active,
                     reason
                   })
                 });
-                toast(`Updated recurring preference for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
+                toast(`Updated recurring ${preferenceType === 'DO_NOT_ASSIGN' ? 'restriction' : 'preference'} for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
               } else {
                 // Create or Update
                 await apiRequest("/api/admin/preferences/recurring", {
@@ -9222,18 +9244,19 @@ async function renderEmployeePreferenceDetailView() {
                     employeeId: empId,
                     dayOfWeek,
                     shiftType,
+                    preferenceType,
                     active,
                     reason
                   })
                 });
-                toast(`Saved recurring preference for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
+                toast(`Saved recurring ${preferenceType === 'DO_NOT_ASSIGN' ? 'restriction' : 'preference'} for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
               }
               await renderEmployeeRecurringPrefSection();
             } catch (err) {
-              toast(err.message || "Failed to save recurring preference", "error");
+              toast(err.message || "Failed to save recurring rule", "error");
             } finally {
               saveBtn.disabled = false;
-              saveBtn.textContent = "Save Preference";
+              saveBtn.textContent = "Save Rule";
             }
           });
         }
@@ -9244,15 +9267,22 @@ async function renderEmployeePreferenceDetailView() {
             const day = btn.getAttribute("data-edit-day");
             const ruleId = btn.getAttribute("data-rule-id") || "";
             const shift = btn.getAttribute("data-shift") || "GENERAL";
+            const prefType = btn.getAttribute("data-pref-type") || "PREFERRED";
             const active = btn.getAttribute("data-active") !== "false";
             const reason = btn.getAttribute("data-reason") || "";
 
             daySelect.value = day;
+            typeSelect.value = prefType;
             shiftSelect.value = shift;
             activeSelect.value = active ? "true" : "false";
             reasonInput.value = reason;
             ruleIdInput.value = ruleId;
-            saveBtn.textContent = ruleId ? "Update Preference" : "Save Preference";
+            saveBtn.textContent = ruleId ? "Update Rule" : "Save Rule";
+
+            form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            shiftSelect.focus();
+          });
+        });
 
             form.scrollIntoView({ behavior: "smooth", block: "nearest" });
             shiftSelect.focus();

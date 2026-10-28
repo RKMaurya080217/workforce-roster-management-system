@@ -402,10 +402,12 @@ public class RosterValidatorService {
                     }
                 }
 
-                // BATCH 113 & BATCH 115: Date-specific shift preference validation (HARD CONSTRAINT)
+                // BATCH 113 & BATCH 115 & BATCH 124: Date-specific shift preference validation (HARD CONSTRAINT)
+                boolean hasDateSpecificPref = false;
                 if (dateShiftPreferenceRepository != null) {
                     var dspOpt = dateShiftPreferenceRepository.findByEmployeeIdAndPreferenceDate(emp.getId(), curr.getRosterDate());
                     if (dspOpt.isPresent()) {
+                        hasDateSpecificPref = true;
                         checksRun++;
                         ShiftType expected = dspOpt.get().getShiftType();
                         if (expected == ShiftType.OFF) {
@@ -434,8 +436,9 @@ public class RosterValidatorService {
                     }
                 }
 
-                // BATCH 113 & BATCH 115: Recurring weekly shift preference validation (HARD CONSTRAINT)
-                if (recurringShiftPreferenceRepository != null) {
+                // BATCH 113 & BATCH 115 & BATCH 124: Recurring weekly shift preference validation (HARD CONSTRAINT)
+                // Date-specific preference takes precedence over recurring preference
+                if (!hasDateSpecificPref && recurringShiftPreferenceRepository != null) {
                     var recList = recurringShiftPreferenceRepository.findByEmployeeIdAndActiveTrue(emp.getId());
                     if (recList != null) {
                         for (var rp : recList) {
@@ -444,28 +447,44 @@ public class RosterValidatorService {
                                 boolean endOk = (rp.getEndDate() == null || !rp.getEndDate().isBefore(curr.getRosterDate()));
                                 if (startOk && endOk) {
                                     checksRun++;
-                                    ShiftType expected = rp.getShiftType();
-                                    if (expected == ShiftType.OFF) {
-                                        if (!curr.isWeeklyOff()) {
+                                    if (rp.getPreferenceType() == RecurringPreferenceType.DO_NOT_ASSIGN) {
+                                        // Recurring Negative Restriction: Shift must NOT be assigned
+                                        ShiftType restricted = rp.getShiftType();
+                                        if (!curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift() != null && curr.getShift().getShiftType() == restricted) {
                                             findings.add(new RosterValidationFinding(
-                                                    "RECURRING_PREFERENCE_VIOLATION",
-                                                    "Recurring Shift Preference Mismatch",
+                                                    "RECURRING_RESTRICTION_VIOLATION",
+                                                    "Recurring Shift Restriction Violated",
                                                     ValidationSeverity.ERROR,
                                                     emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                                    empName + " has Recurring Preference for OFF on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
-                                                    "Admin configured recurring weekly preference is a mandatory hard constraint."
+                                                    empName + " has Recurring Restriction 'Do Not Assign " + restricted.name() + "' on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + restricted.name(),
+                                                    "Admin configured shift restriction must be respected."
                                             ));
                                         }
                                     } else {
-                                        if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
-                                            findings.add(new RosterValidationFinding(
-                                                    "RECURRING_PREFERENCE_VIOLATION",
-                                                    "Recurring Shift Preference Mismatch",
-                                                    ValidationSeverity.ERROR,
-                                                    emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                                    empName + " has Recurring Preference for " + expected.name() + " on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
-                                                    "Admin configured recurring weekly preference is a mandatory hard constraint."
-                                            ));
+                                        // Recurring Positive Preference
+                                        ShiftType expected = rp.getShiftType();
+                                        if (expected == ShiftType.OFF) {
+                                            if (!curr.isWeeklyOff()) {
+                                                findings.add(new RosterValidationFinding(
+                                                        "RECURRING_PREFERENCE_VIOLATION",
+                                                        "Recurring Shift Preference Mismatch",
+                                                        ValidationSeverity.ERROR,
+                                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                        empName + " has Recurring Preference for OFF on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                                        "Admin configured recurring weekly preference is a mandatory hard constraint."
+                                                ));
+                                            }
+                                        } else {
+                                            if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                                findings.add(new RosterValidationFinding(
+                                                        "RECURRING_PREFERENCE_VIOLATION",
+                                                        "Recurring Shift Preference Mismatch",
+                                                        ValidationSeverity.ERROR,
+                                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                        empName + " has Recurring Preference for " + expected.name() + " on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                                        "Admin configured recurring weekly preference is a mandatory hard constraint."
+                                                ));
+                                            }
                                         }
                                     }
                                 }

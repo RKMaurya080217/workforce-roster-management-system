@@ -125,9 +125,30 @@ public class WorkDayReportService {
                 String dow = currentDate.getDayOfWeek().name();
 
                 // Categorize day with strict precedence:
-                // Rule 1: Official Holiday recognized in WRMS
-                if (holidayMap.containsKey(currentDate)) {
-                    Holiday h = holidayMap.get(currentDate);
+                RosterAssignment assignment = empDateMap.get(currentDate);
+                boolean isHoliday = holidayMap.containsKey(currentDate);
+                Holiday h = isHoliday ? holidayMap.get(currentDate) : null;
+
+                // Rule 1: Check if employee worked on this date (including working on a holiday)
+                if (assignment != null && !assignment.isWeeklyOff() && !assignment.isOnLeave()
+                        && assignment.getShift() != null && assignment.getShift().getShiftType() != ShiftType.OFF) {
+                    ShiftType st = assignment.getShift().getShiftType();
+                    if (shiftFilter == null || shiftFilter == st) {
+                        empWorked++;
+                        String reason = isHoliday ? "Worked on Holiday (" + h.getName() + ")" : "Assigned Duty";
+                        dailyRecords.add(new EmployeeDailyRecord(
+                                currentDate, dow, "WORKED", st.name(), st, reason
+                        ));
+                    } else {
+                        dailyRecords.add(new EmployeeDailyRecord(
+                                currentDate, dow, "FILTERED_OUT", st.name(), st, "Excluded by shift filter"
+                        ));
+                    }
+                    continue;
+                }
+
+                // Rule 2: Official Holiday recognized in WRMS (and employee did not work)
+                if (isHoliday) {
                     empHolidays++;
                     dailyRecords.add(new EmployeeDailyRecord(
                             currentDate, dow, "HOLIDAY", "Official Holiday", null, h.getName()
@@ -149,7 +170,6 @@ public class WorkDayReportService {
                 }
 
                 // Rule 3: Roster Assignment check
-                RosterAssignment assignment = empDateMap.get(currentDate);
                 if (assignment != null) {
                     if (assignment.isWeeklyOff()) {
                         empWeeklyOffs++;
@@ -318,9 +338,28 @@ public class WorkDayReportService {
                 LocalDate currentDate = d;
                 String dow = currentDate.getDayOfWeek().name();
 
-                // Priority 1: Holiday
-                if (holidayMap.containsKey(currentDate)) {
-                    Holiday h = holidayMap.get(currentDate);
+                RosterAssignment assignment = empDateMap.get(currentDate);
+                boolean isHoliday = holidayMap.containsKey(currentDate);
+                Holiday h = isHoliday ? holidayMap.get(currentDate) : null;
+
+                // Priority 1: Check if employee worked on this date (including working on a holiday)
+                if (assignment != null && !assignment.isWeeklyOff() && !assignment.isOnLeave()
+                        && assignment.getShift() != null && assignment.getShift().getShiftType() != ShiftType.OFF) {
+                    ShiftType st = assignment.getShift().getShiftType();
+                    empWorked++;
+                    if (st == ShiftType.MORNING) morningCount++;
+                    else if (st == ShiftType.GENERAL) generalCount++;
+                    else if (st == ShiftType.EVENING) eveningCount++;
+                    else if (st == ShiftType.NIGHT) nightCount++;
+                    String reason = isHoliday ? "Worked on Holiday: " + h.getName() : (assignment.getAssignmentReason() != null ? assignment.getAssignmentReason() : "Assigned Working Shift");
+                    dailyRecords.add(new EmployeeDailyRecord(
+                            currentDate, dow, "WORKED", st.name(), st, reason
+                    ));
+                    continue;
+                }
+
+                // Priority 2: Official Holiday (and employee did not work)
+                if (isHoliday) {
                     empHolidays++;
                     dailyRecords.add(new EmployeeDailyRecord(
                             currentDate, dow, "HOLIDAY", "Official Holiday", null, h.getName()
@@ -342,7 +381,6 @@ public class WorkDayReportService {
                 }
 
                 // Priority 3 & 4: Roster Assignment (Weekly Off or Worked Shift)
-                RosterAssignment assignment = empDateMap.get(currentDate);
                 if (assignment != null) {
                     if (assignment.isWeeklyOff() || (assignment.getShift() != null && assignment.getShift().getShiftType() == ShiftType.OFF)) {
                         empWeeklyOffs++;

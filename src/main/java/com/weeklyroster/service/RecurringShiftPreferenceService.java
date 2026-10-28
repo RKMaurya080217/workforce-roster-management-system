@@ -4,6 +4,7 @@ import com.weeklyroster.dto.request.RecurringShiftPreferenceRequest;
 import com.weeklyroster.dto.response.RecurringShiftPreferenceResponse;
 import com.weeklyroster.entity.AuditAction;
 import com.weeklyroster.entity.Employee;
+import com.weeklyroster.entity.RecurringPreferenceType;
 import com.weeklyroster.entity.RecurringShiftPreference;
 import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.exception.BusinessException;
@@ -21,9 +22,11 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @Transactional
@@ -84,19 +87,27 @@ public class RecurringShiftPreferenceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Employee with ID " + req.employeeId() + " not found"));
 
         boolean isActive = req.active() == null || req.active();
+        RecurringPreferenceType prefType = req.preferenceType() != null ? req.preferenceType() : RecurringPreferenceType.PREFERRED;
 
-        // Check if an existing rule exists for this employee and dayOfWeek
+        // BATCH 124 Conflict Detection: Prevent logically contradictory rules
+        // e.g. Saturday -> Prefer Morning and Saturday -> Do Not Assign Morning
         List<RecurringShiftPreference> existingList = recurringRepository.findByEmployeeIdAndDayOfWeek(employee.getId(), req.dayOfWeek());
-        Optional<RecurringShiftPreference> activeOpt = existingList.stream()
-                .filter(RecurringShiftPreference::isActive)
+        if (isActive) {
+            checkConflict(null, employee, req.dayOfWeek(), req.shiftType(), prefType, effectiveStart, req.endDate());
+        }
+
+        // Look for matching rule to update (same employee, day, shift, and preference type, or same preference type if PREFERRED)
+        Optional<RecurringShiftPreference> matchOpt = existingList.stream()
+                .filter(r -> r.getPreferenceType() == prefType && (prefType == RecurringPreferenceType.PREFERRED || r.getShiftType() == req.shiftType()))
                 .findFirst();
 
         RecurringShiftPreference pref;
         String oldShift = null;
-        if (activeOpt.isPresent()) {
-            pref = activeOpt.get();
+        if (matchOpt.isPresent()) {
+            pref = matchOpt.get();
             oldShift = pref.getShiftType() != null ? pref.getShiftType().name() : "NONE";
             pref.setShiftType(req.shiftType());
+            pref.setPreferenceType(prefType);
             pref.setStartDate(effectiveStart);
             pref.setEndDate(req.endDate());
             pref.setActive(isActive);
@@ -104,36 +115,23 @@ public class RecurringShiftPreferenceService {
                 pref.setReason(req.reason().trim());
             }
             pref.setUpdatedAt(LocalDateTime.now());
-            log.info("[BATCH 123] Updated existing recurring preference for employee {} on Every {}: {} -> {}",
-                    employee.getEmployeeCode(), req.dayOfWeek(), oldShift, req.shiftType());
+            log.info("[BATCH 124] Updated existing recurring rule for employee {} on Every {}: {} ({})",
+                    employee.getEmployeeCode(), req.dayOfWeek(), req.shiftType(), prefType);
         } else {
-            Optional<RecurringShiftPreference> anyExisting = existingList.stream().findFirst();
-            if (anyExisting.isPresent() && !isActive) {
-                pref = anyExisting.get();
-                oldShift = pref.getShiftType() != null ? pref.getShiftType().name() : "NONE";
-                pref.setShiftType(req.shiftType());
-                pref.setStartDate(effectiveStart);
-                pref.setEndDate(req.endDate());
-                pref.setActive(false);
-                if (req.reason() != null) pref.setReason(req.reason().trim());
-                pref.setUpdatedAt(LocalDateTime.now());
-                log.info("[BATCH 123] Updated inactive recurring preference for employee {} on Every {}: {}",
-                        employee.getEmployeeCode(), req.dayOfWeek(), req.shiftType());
-            } else {
-                String creator = (adminUsername != null && !adminUsername.isBlank()) ? adminUsername : "Admin";
-                pref = new RecurringShiftPreference(
-                        employee,
-                        req.dayOfWeek(),
-                        req.shiftType(),
-                        effectiveStart,
-                        req.endDate(),
-                        isActive,
-                        req.reason() != null ? req.reason().trim() : null,
-                        creator
-                );
-                log.info("[BATCH 123] Created recurring preference for employee {} on Every {}: {}",
-                        employee.getEmployeeCode(), req.dayOfWeek(), req.shiftType());
-            }
+            String creator = (adminUsername != null && !adminUsername.isBlank()) ? adminUsername : "Admin";
+            pref = new RecurringShiftPreference(
+                    employee,
+                    req.dayOfWeek(),
+                    req.shiftType(),
+                    prefType,
+                    effectiveStart,
+                    req.endDate(),
+                    isActive,
+                    req.reason() != null ? req.reason().trim() : null,
+                    creator
+            );
+            log.info("[BATCH 124] Created recurring rule for employee {} on Every {}: {} ({})",
+                    employee.getEmployeeCode(), req.dayOfWeek(), req.shiftType(), prefType);
         }
 
         RecurringShiftPreference saved = recurringRepository.save(pref);
@@ -148,7 +146,8 @@ public class RecurringShiftPreferenceService {
                     employee.getFirstName() + " " + (employee.getLastName() != null ? employee.getLastName() : ""),
                     oldShift != null ? oldShift : "NONE",
                     req.shiftType().name(),
-                    "Admin configured recurring weekly shift preference for Every " + req.dayOfWeek() + " -> " + req.shiftType(),
+                    "Admin configured recurring weekly " + (prefType == RecurringPreferenceType.DO_NOT_ASSIGN ? "restriction" : "preference")
+                            + " for Every " + req.dayOfWeek() + " -> " + req.shiftType(),
                     "MANUAL"
             );
         }
@@ -162,6 +161,7 @@ public class RecurringShiftPreferenceService {
 
         if (req.dayOfWeek() != null) existing.setDayOfWeek(req.dayOfWeek());
         if (req.shiftType() != null) existing.setShiftType(req.shiftType());
+        if (req.preferenceType() != null) existing.setPreferenceType(req.preferenceType());
         if (req.startDate() != null) existing.setStartDate(req.startDate());
         if (req.endDate() != null) {
             if (req.endDate().isBefore(existing.getStartDate())) {
@@ -176,7 +176,8 @@ public class RecurringShiftPreferenceService {
         existing.setUpdatedAt(LocalDateTime.now());
 
         if (existing.isActive()) {
-            checkConflict(existing.getId(), existing.getEmployee(), existing.getDayOfWeek(), existing.getStartDate(), existing.getEndDate());
+            checkConflict(existing.getId(), existing.getEmployee(), existing.getDayOfWeek(), existing.getShiftType(),
+                    existing.getPreferenceType(), existing.getStartDate(), existing.getEndDate());
         }
 
         RecurringShiftPreference saved = recurringRepository.save(existing);
@@ -211,7 +212,8 @@ public class RecurringShiftPreferenceService {
 
         boolean newActive = !pref.isActive();
         if (newActive) {
-            checkConflict(pref.getId(), pref.getEmployee(), pref.getDayOfWeek(), pref.getStartDate(), pref.getEndDate());
+            checkConflict(pref.getId(), pref.getEmployee(), pref.getDayOfWeek(), pref.getShiftType(),
+                    pref.getPreferenceType(), pref.getStartDate(), pref.getEndDate());
         }
         pref.setActive(newActive);
         pref.setUpdatedAt(LocalDateTime.now());
@@ -220,7 +222,8 @@ public class RecurringShiftPreferenceService {
         return toResponse(saved);
     }
 
-    private void checkConflict(Long excludeId, Employee employee, DayOfWeek dayOfWeek, LocalDate startDate, LocalDate endDate) {
+    private void checkConflict(Long excludeId, Employee employee, DayOfWeek dayOfWeek, ShiftType shiftType,
+                               RecurringPreferenceType preferenceType, LocalDate startDate, LocalDate endDate) {
         List<RecurringShiftPreference> existingList = recurringRepository.findByEmployeeIdAndDayOfWeek(employee.getId(), dayOfWeek);
         for (RecurringShiftPreference ex : existingList) {
             if (excludeId != null && ex.getId().equals(excludeId)) continue;
@@ -230,10 +233,12 @@ public class RecurringShiftPreferenceService {
             boolean overlaps = (ex.getEndDate() == null || !startDate.isAfter(ex.getEndDate())) &&
                                (endDate == null || !endDate.isBefore(ex.getStartDate()));
 
-            if (overlaps) {
-                throw new BusinessException("Conflicting recurring preference rule already exists for "
-                        + employee.getFirstName() + " on Every " + dayOfWeek + " (" + ex.getShiftType()
-                        + " starting " + ex.getStartDate() + "). Please update or deactivate the existing rule first.");
+            if (overlaps && ex.getShiftType() == shiftType && ex.getPreferenceType() != preferenceType) {
+                String dayStr = dayOfWeek.name().charAt(0) + dayOfWeek.name().substring(1).toLowerCase();
+                String shiftStr = shiftType.name().charAt(0) + shiftType.name().substring(1).toLowerCase();
+                throw new BusinessException("Conflicting weekly preferences: "
+                        + dayStr + " is configured as both Preferred " + shiftStr
+                        + " and Do Not Assign " + shiftStr + ".");
             }
         }
     }
@@ -245,6 +250,7 @@ public class RecurringShiftPreferenceService {
 
         for (RecurringShiftPreference rsp : allActive) {
             if (rsp.getEmployee() == null) continue;
+            if (rsp.getPreferenceType() == RecurringPreferenceType.DO_NOT_ASSIGN) continue; // Positive preferences only
             Long empId = rsp.getEmployee().getId();
 
             // Check if active rule overlaps the target week
@@ -254,6 +260,29 @@ public class RecurringShiftPreferenceService {
             if (inRange) {
                 result.computeIfAbsent(empId, k -> new EnumMap<>(DayOfWeek.class))
                         .put(rsp.getDayOfWeek(), rsp.getShiftType());
+            }
+        }
+
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, Map<DayOfWeek, Set<ShiftType>>> getActiveRecurringAvoidMap(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
+        Map<Long, Map<DayOfWeek, Set<ShiftType>>> result = new HashMap<>();
+        List<RecurringShiftPreference> allActive = recurringRepository.findByActiveTrue();
+
+        for (RecurringShiftPreference rsp : allActive) {
+            if (rsp.getEmployee() == null) continue;
+            if (rsp.getPreferenceType() != RecurringPreferenceType.DO_NOT_ASSIGN) continue; // Negative restrictions only
+            Long empId = rsp.getEmployee().getId();
+
+            boolean inRange = (rsp.getEndDate() == null || !rsp.getEndDate().isBefore(startDate))
+                    && !rsp.getStartDate().isAfter(endDate);
+
+            if (inRange) {
+                result.computeIfAbsent(empId, k -> new EnumMap<>(DayOfWeek.class))
+                        .computeIfAbsent(rsp.getDayOfWeek(), k -> new HashSet<>())
+                        .add(rsp.getShiftType());
             }
         }
 
@@ -271,6 +300,7 @@ public class RecurringShiftPreferenceService {
                 name,
                 r.getDayOfWeek(),
                 r.getShiftType(),
+                r.getPreferenceType(),
                 r.getStartDate(),
                 r.getEndDate(),
                 r.isActive(),

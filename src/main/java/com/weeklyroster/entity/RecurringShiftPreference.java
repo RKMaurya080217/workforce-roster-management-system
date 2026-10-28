@@ -42,6 +42,10 @@ public class RecurringShiftPreference {
     @Column(name = "shift_type", nullable = false, length = 30)
     private ShiftType shiftType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preference_type", length = 30)
+    private RecurringPreferenceType preferenceType = RecurringPreferenceType.PREFERRED;
+
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
 
@@ -68,9 +72,17 @@ public class RecurringShiftPreference {
     public RecurringShiftPreference(Employee employee, DayOfWeek dayOfWeek, ShiftType shiftType,
                                     LocalDate startDate, LocalDate endDate, boolean active,
                                     String reason, String createdBy) {
+        this(employee, dayOfWeek, shiftType, RecurringPreferenceType.PREFERRED, startDate, endDate, active, reason, createdBy);
+    }
+
+    public RecurringShiftPreference(Employee employee, DayOfWeek dayOfWeek, ShiftType shiftType,
+                                    RecurringPreferenceType preferenceType,
+                                    LocalDate startDate, LocalDate endDate, boolean active,
+                                    String reason, String createdBy) {
         this.employee = employee;
         this.dayOfWeek = dayOfWeek;
         this.shiftType = shiftType;
+        this.preferenceType = preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
         this.startDate = startDate;
         this.endDate = endDate;
         this.active = active;
@@ -110,6 +122,14 @@ public class RecurringShiftPreference {
 
     public void setShiftType(ShiftType shiftType) {
         this.shiftType = shiftType;
+    }
+
+    public RecurringPreferenceType getPreferenceType() {
+        return preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
+    }
+
+    public void setPreferenceType(RecurringPreferenceType preferenceType) {
+        this.preferenceType = preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
     }
 
     public LocalDate getStartDate() {
