@@ -227,7 +227,26 @@ public class WorkDayReportService {
             monday = todayInKolkata.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         }
         final LocalDate sunday = monday.plusDays(6);
-        final int totalPeriodDays = 7;
+        return generateWorkSummary(monday, sunday, employeeId);
+    }
+
+    public WeeklyWorkSummaryResponse generateMonthlyWorkSummary(int year, int month, Long employeeId) {
+        LocalDate start = LocalDate.of(year, month, 1);
+        LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
+        return generateWorkSummary(start, end, employeeId);
+    }
+
+    public WeeklyWorkSummaryResponse generateOverallWorkSummary(LocalDate startDate, LocalDate endDate, Long employeeId) {
+        LocalDate start = startDate != null ? startDate : LocalDate.of(2026, 1, 1);
+        LocalDate end = endDate != null ? endDate : LocalDate.of(2026, 12, 31);
+        return generateWorkSummary(start, end, employeeId);
+    }
+
+    public WeeklyWorkSummaryResponse generateWorkSummary(LocalDate startDate, LocalDate endDate, Long employeeId) {
+        if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+            throw new BusinessException("Invalid date range for work summary");
+        }
+        final int totalPeriodDays = (int) java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
 
         // 1. Fetch active employees (or specific filtered employee)
         List<Employee> employees;
@@ -239,9 +258,9 @@ public class WorkDayReportService {
             employees = employeeRepository.findByActiveTrueOrderByIdAsc();
         }
 
-        // 2. Fetch all active holidays in week [monday, sunday]
+        // 2. Fetch all active holidays in date range
         List<Holiday> holidays = holidayRepository != null
-                ? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(monday, sunday)
+                ? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(startDate, endDate)
                 : Collections.emptyList();
 
         Map<LocalDate, Holiday> holidayMap = new HashMap<>();
@@ -251,15 +270,15 @@ public class WorkDayReportService {
             }
         }
 
-        // 3. Fetch approved leaves overlapping [monday, sunday]
+        // 3. Fetch approved leaves overlapping date range
         List<LeaveRequest> approvedLeaves = leaveRepository.findApprovedLeavesInCycle(
-                LeaveStatus.APPROVED, monday, sunday);
+                LeaveStatus.APPROVED, startDate, endDate);
 
         Map<Long, List<LeaveRequest>> leavesByEmp = approvedLeaves.stream()
                 .collect(Collectors.groupingBy(l -> l.getEmployee().getId()));
 
-        // 4. Fetch assignments in week with duplicate protection
-        List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(monday, sunday);
+        // 4. Fetch assignments in date range with duplicate protection
+        List<RosterAssignment> assignments = assignmentRepository.findByRosterDateBetweenOrderByRosterDateAsc(startDate, endDate);
         Map<Long, Map<LocalDate, RosterAssignment>> assignmentsByEmpAndDate = new HashMap<>();
         for (RosterAssignment a : assignments) {
             if (a.getEmployee() != null && a.getRosterDate() != null) {
@@ -288,10 +307,14 @@ public class WorkDayReportService {
             int empHolidays = 0;
             int empWeeklyOffs = 0;
             int empAbsent = 0;
+            int morningCount = 0;
+            int generalCount = 0;
+            int eveningCount = 0;
+            int nightCount = 0;
 
             List<EmployeeDailyRecord> dailyRecords = new ArrayList<>();
 
-            for (LocalDate d = monday; !d.isAfter(sunday); d = d.plusDays(1)) {
+            for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
                 LocalDate currentDate = d;
                 String dow = currentDate.getDayOfWeek().name();
 
@@ -334,6 +357,10 @@ public class WorkDayReportService {
                     } else if (assignment.getShift() != null && assignment.getShift().getShiftType() != ShiftType.OFF) {
                         ShiftType st = assignment.getShift().getShiftType();
                         empWorked++;
+                        if (st == ShiftType.MORNING) morningCount++;
+                        else if (st == ShiftType.GENERAL) generalCount++;
+                        else if (st == ShiftType.EVENING) eveningCount++;
+                        else if (st == ShiftType.NIGHT) nightCount++;
                         dailyRecords.add(new EmployeeDailyRecord(
                                 currentDate, dow, "WORKED", st.name(), st, assignment.getAssignmentReason() != null ? assignment.getAssignmentReason() : "Assigned Working Shift"
                         ));
@@ -344,11 +371,18 @@ public class WorkDayReportService {
                         ));
                     }
                 } else {
-                    // Priority 5: Absent / Unassigned
-                    empAbsent++;
-                    dailyRecords.add(new EmployeeDailyRecord(
-                            currentDate, dow, "ABSENT", "Unassigned", null, "No Roster Assignment"
-                    ));
+                    // Priority 5: Ineligible or Absent / Unassigned
+                    if (!emp.isEligibleForDate(currentDate)) {
+                        dailyRecords.add(new EmployeeDailyRecord(
+                                currentDate, dow, "INELIGIBLE", "Not Employed", null,
+                                (emp.getJoiningDate() != null && currentDate.isBefore(emp.getJoiningDate())) ? "Pre-Joining Date" : "Post-Resignation Date"
+                        ));
+                    } else {
+                        empAbsent++;
+                        dailyRecords.add(new EmployeeDailyRecord(
+                                currentDate, dow, "ABSENT", "Unassigned", null, "No Roster Assignment"
+                        ));
+                    }
                 }
             }
 
@@ -365,6 +399,10 @@ public class WorkDayReportService {
                     empWeeklyOffs,
                     empAbsent,
                     empTotal,
+                    morningCount,
+                    generalCount,
+                    eveningCount,
+                    nightCount,
                     dailyRecords
             ));
 
@@ -378,8 +416,8 @@ public class WorkDayReportService {
         int totalDaysAccounted = totalWorked + totalLeaves + totalHolidays + totalWeeklyOffs + totalAbsent;
 
         return new WeeklyWorkSummaryResponse(
-                monday,
-                sunday,
+                startDate,
+                endDate,
                 totalPeriodDays,
                 summaries.size(),
                 totalWorked,

@@ -46,4 +46,25 @@ public class AdminWorkReportController {
         LocalDate start = weekStart != null ? weekStart : startDate;
         return ResponseEntity.ok(workDayReportService.generateWeeklyWorkSummary(start, employeeId));
     }
+
+    @GetMapping({"/api/admin/reports/monthly-work-summary", "/api/admin/monthly-work-summary"})
+    @Operation(summary = "Generate Admin Monthly Employee Work Summary")
+    public ResponseEntity<WeeklyWorkSummaryResponse> getMonthlyWorkSummary(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Long employeeId) {
+        LocalDate now = LocalDate.now();
+        int y = (year != null && year > 2000) ? year : now.getYear();
+        int m = (month != null && month >= 1 && month <= 12) ? month : now.getMonthValue();
+        return ResponseEntity.ok(workDayReportService.generateMonthlyWorkSummary(y, m, employeeId));
+    }
+
+    @GetMapping({"/api/admin/reports/overall-work-summary", "/api/admin/overall-work-summary"})
+    @Operation(summary = "Generate Admin Overall / Custom Range Employee Work Summary")
+    public ResponseEntity<WeeklyWorkSummaryResponse> getOverallWorkSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long employeeId) {
+        return ResponseEntity.ok(workDayReportService.generateOverallWorkSummary(startDate, endDate, employeeId));
+    }
 }

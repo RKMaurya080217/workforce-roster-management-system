@@ -18,17 +18,25 @@ public record EmployeeRequest(
         String contactNumber,
         String shiftPreference,
         LocalDate joiningDate,
-        LocalDate resignationDate
+        LocalDate resignationDate,
+        String department,
+        Boolean developmentTeam,
+        Integer maxNightsPerWeek,
+        Long pairedEmployeeId
 ) {
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, null, null, null, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, null, null, null, null, null, null, null, null);
     }
 
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, null, null, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, null, null, null, null, null, null, null);
     }
 
     public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber, String shiftPreference) {
-        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, shiftPreference, null, null);
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, shiftPreference, null, null, null, null, null, null);
+    }
+
+    public EmployeeRequest(String employeeCode, String firstName, String lastName, String email, Gender gender, String username, String password, String contactNumber, String shiftPreference, LocalDate joiningDate, LocalDate resignationDate) {
+        this(employeeCode, firstName, lastName, email, gender, username, password, contactNumber, shiftPreference, joiningDate, resignationDate, null, null, null, null);
     }
 }

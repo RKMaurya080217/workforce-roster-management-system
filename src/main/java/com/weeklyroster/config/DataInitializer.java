@@ -133,7 +133,86 @@ public class DataInitializer {
 				employeeRepository.save(emp);
 				System.out.println("  -> Synchronized user credentials for: " + uname);
 			}
+
+			// BATCH 116: Seed employee scheduling configurations (Department, Dev Team, Night Caps, Pairing)
+			seedEmployeeSchedulingAttributes(employeeRepository);
 		};
+	}
+
+	private void seedEmployeeSchedulingAttributes(EmployeeRepository employeeRepository) {
+		List<Employee> allEmployees = employeeRepository.findAll();
+		Employee rajat = null;
+		Employee prachi = null;
+		for (Employee emp : allEmployees) {
+			boolean changed = false;
+			String code = emp.getEmployeeCode() != null ? emp.getEmployeeCode().toUpperCase() : "";
+			String first = emp.getFirstName() != null ? emp.getFirstName().toLowerCase() : "";
+
+			if (code.equals("EMP004") || code.equals("EMP006") || first.contains("sapna") || first.contains("divyansh")) {
+				if (!"DEVELOPMENT".equalsIgnoreCase(emp.getDepartment()) || !emp.isDevelopmentTeam()) {
+					emp.setDepartment("DEVELOPMENT");
+					emp.setDevelopmentTeam(true);
+					changed = true;
+				}
+			} else {
+				if (emp.getDepartment() == null) {
+					emp.setDepartment("OPERATIONS");
+					emp.setDevelopmentTeam(false);
+					changed = true;
+				}
+			}
+
+			if (code.equals("EMP001") || first.contains("rajat")) {
+				rajat = emp;
+				if (emp.getMaxNightsPerWeek() == null || emp.getMaxNightsPerWeek() != 1) {
+					emp.setMaxNightsPerWeek(1);
+					changed = true;
+				}
+			} else if (code.equals("EMP002") || first.contains("prachi")) {
+				prachi = emp;
+			} else if (code.equals("EMP007") || first.contains("sambhav")) {
+				if (emp.getMaxNightsPerWeek() == null || emp.getMaxNightsPerWeek() != 1) {
+					emp.setMaxNightsPerWeek(1);
+					changed = true;
+				}
+			} else if (code.equals("EMP003") || first.contains("shriram") || first.contains("sriram")) {
+				if (emp.getMaxNightsPerWeek() == null || emp.getMaxNightsPerWeek() != 2) {
+					emp.setMaxNightsPerWeek(2);
+					changed = true;
+				}
+			} else if (code.equals("EMP005") || first.contains("tushar")) {
+				if (emp.getMaxNightsPerWeek() == null || emp.getMaxNightsPerWeek() != 2) {
+					emp.setMaxNightsPerWeek(2);
+					changed = true;
+				}
+			} else if (first.contains("jeevan")) {
+				if (emp.getMaxNightsPerWeek() == null) {
+					emp.setMaxNightsPerWeek(3);
+					changed = true;
+				}
+			}
+
+			if (changed) {
+				employeeRepository.save(emp);
+			}
+		}
+
+		if (rajat != null && prachi != null) {
+			boolean changedPair = false;
+			if (rajat.getPairedEmployeeId() == null || !rajat.getPairedEmployeeId().equals(prachi.getId())) {
+				rajat.setPairedEmployeeId(prachi.getId());
+				employeeRepository.save(rajat);
+				changedPair = true;
+			}
+			if (prachi.getPairedEmployeeId() == null || !prachi.getPairedEmployeeId().equals(rajat.getId())) {
+				prachi.setPairedEmployeeId(rajat.getId());
+				employeeRepository.save(prachi);
+				changedPair = true;
+			}
+			if (changedPair) {
+				System.out.println("  -> Synchronized pairing attributes for EMP001 & EMP002");
+			}
+		}
 	}
 
 	private void setShiftTimingDefaults(Shift shift, ShiftType type) {
@@ -252,6 +331,22 @@ public class DataInitializer {
 		try {
 			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN resignation_date DATE NULL");
 			System.out.println(">>> Added resignation_date column to employees <<<");
+		} catch (Exception ignored) {}
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN department VARCHAR(80) DEFAULT 'OPERATIONS'");
+			System.out.println(">>> Added department column to employees <<<");
+		} catch (Exception ignored) {}
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN development_team BOOLEAN DEFAULT 0");
+			System.out.println(">>> Added development_team column to employees <<<");
+		} catch (Exception ignored) {}
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN max_nights_per_week INT NULL");
+			System.out.println(">>> Added max_nights_per_week column to employees <<<");
+		} catch (Exception ignored) {}
+		try {
+			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN paired_employee_id BIGINT NULL");
+			System.out.println(">>> Added paired_employee_id column to employees <<<");
 		} catch (Exception ignored) {}
 	}
 }

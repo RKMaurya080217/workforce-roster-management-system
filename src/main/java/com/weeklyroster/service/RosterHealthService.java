@@ -77,7 +77,7 @@ public class RosterHealthService {
                     1, 0, 0, 0, 0, conflicts,
                     0.0, 0.0, "0 / 0", "INVALID",
                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                    "INVALID — HARD CONSTRAINT FAILURE",
+                    "INVALID â€” HARD CONSTRAINT FAILURE",
                     Map.of("Coverage", "FAILED", "12-hour Rest", "FAILED", "Night Rule", "FAILED", "Female Shift Restrictions", "FAILED", "Approved Leave", "FAILED"),
                     null, null, null, null, null
             );
@@ -120,11 +120,11 @@ public class RosterHealthService {
             if (l.isEmpty()) continue;
             Employee emp = l.get(0).getEmployee();
             if (emp.getGender() != Gender.MALE || !emp.isActive() || isDevelopmentTeam(emp)) continue;
-            if (matchesName(emp, "rajat") || matchesName(emp, "sambhav")) {
-                totalMaleNightCapacity += (nonDevEligibleMales <= 3) ? 2 : 1;
-            } else {
-                totalMaleNightCapacity += 2;
+            int cap = emp.getMaxNightsPerWeek() != null ? emp.getMaxNightsPerWeek() : 2;
+            if (nonDevEligibleMales <= 3 && emp.getMaxNightsPerWeek() != null) {
+                cap = Math.max(cap, 2);
             }
+            totalMaleNightCapacity += cap;
         }
         int workingDays = (cycle != null && cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
         int maxNightsAllowed = 2;
@@ -493,7 +493,7 @@ public class RosterHealthService {
 
                     if (prevPrevType != null && prevPrevType == curType && lastType != curType) {
                         continuityIssues.add(new RosterHealthReport.ContinuityIssueItem(
-                                empName, prevPrevType.name().substring(0, 1) + " → " + lastType.name().substring(0, 1) + " → " + curType.name().substring(0, 1),
+                                empName, prevPrevType.name().substring(0, 1) + " â†’ " + lastType.name().substring(0, 1) + " â†’ " + curType.name().substring(0, 1),
                                 "Frequent switching pattern on " + a.getRosterDate()
                         ));
                     }
@@ -532,10 +532,10 @@ public class RosterHealthService {
 
             if (reason.toLowerCase().contains("preferred")) {
                 prefCompatibleCount++;
-                prefItems.add(new RosterHealthReport.PreferenceDetailItem(empName, empCode, a.getRosterDate(), stName, "PREFERRED", "✓ Preferred shift"));
+                prefItems.add(new RosterHealthReport.PreferenceDetailItem(empName, empCode, a.getRosterDate(), stName, "PREFERRED", "âœ“ Preferred shift"));
             } else if (reason.toLowerCase().contains("avoid")) {
                 prefConflictCount++;
-                prefItems.add(new RosterHealthReport.PreferenceDetailItem(empName, empCode, a.getRosterDate(), stName, "AVOIDED", "⚠ Avoided shift assigned for coverage"));
+                prefItems.add(new RosterHealthReport.PreferenceDetailItem(empName, empCode, a.getRosterDate(), stName, "AVOIDED", "âš  Avoided shift assigned for coverage"));
             } else {
                 prefCompatibleCount++;
                 prefItems.add(new RosterHealthReport.PreferenceDetailItem(empName, empCode, a.getRosterDate(), stName, "COMPATIBLE", "Operational duty within skills"));
@@ -575,7 +575,7 @@ public class RosterHealthService {
         String overallValidationStatus;
         if (hasHardConstraintFailure) {
             overallValidationStatus = "INVALID";
-            healthScoreStatus = "INVALID — HARD CONSTRAINT FAILURE";
+            healthScoreStatus = "INVALID â€” HARD CONSTRAINT FAILURE";
         } else {
             overallValidationStatus = highCount > 0 ? "WARNING" : "VALID";
             if (healthScore >= 90.0) {
@@ -616,8 +616,8 @@ public class RosterHealthService {
         RosterHealthReport.WorkloadHealthDetails workloadDetails = new RosterHealthReport.WorkloadHealthDetails(workloadItems);
 
         String nightMsg = femaleNightCount == 0
-                ? "✓ Eligible male employees received required Night allocation. Female staff have 0 night duties."
-                : "🔴 Night allocation conflict: Female employee assigned to night shift.";
+                ? "âœ“ Eligible male employees received required Night allocation. Female staff have 0 night duties."
+                : "ðŸ”´ Night allocation conflict: Female employee assigned to night shift.";
         RosterHealthReport.NightHealthDetails nightDetails = new RosterHealthReport.NightHealthDetails(
                 totalNightDuties, nightItems, femaleNightCount, femaleNightCount == 0 && compliantMales == nightItems.size(), nightMsg
         );
@@ -648,17 +648,7 @@ public class RosterHealthService {
         );
     }
 
-    private boolean matchesName(Employee e, String keyword) {
-        if (e == null || keyword == null) return false;
-        String name = (e.getFirstName() + " " + (e.getLastName() == null ? "" : e.getLastName())).toLowerCase();
-        String code = e.getEmployeeCode() != null ? e.getEmployeeCode().toLowerCase() : "";
-        return name.contains(keyword.toLowerCase()) || code.contains(keyword.toLowerCase());
-    }
-
     private boolean isDevelopmentTeam(Employee e) {
-        if (e == null) return false;
-        String name = (e.getFirstName() + " " + (e.getLastName() == null ? "" : e.getLastName())).toLowerCase();
-        String code = e.getEmployeeCode() != null ? e.getEmployeeCode().toLowerCase() : "";
-        return name.contains("sapna") || name.contains("divyansh") || code.contains("emp006") || code.contains("emp007");
+        return e != null && e.isDevelopmentTeam();
     }
 }

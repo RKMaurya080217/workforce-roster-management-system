@@ -331,6 +331,18 @@ public class EmployeeService {
 		if (request.resignationDate() != null) {
 			employee.setResignationDate(request.resignationDate());
 		}
+		if (request.department() != null) {
+			employee.setDepartment(request.department());
+		}
+		if (request.developmentTeam() != null) {
+			employee.setDevelopmentTeam(request.developmentTeam());
+		}
+		if (request.maxNightsPerWeek() != null) {
+			employee.setMaxNightsPerWeek(request.maxNightsPerWeek());
+		}
+		if (request.pairedEmployeeId() != null) {
+			employee.setPairedEmployeeId(request.pairedEmployeeId());
+		}
 	}
 
 	public EmployeeResponse toResponse(Employee employee) {
@@ -350,7 +362,9 @@ public class EmployeeService {
 		return new EmployeeResponse(employee.getId(), employee.getEmployeeCode(), employee.getFirstName(),
 				employee.getLastName(), employee.getEmail(), employee.getGender(), employee.isActive(),
 				employee.getUser() == null ? null : employee.getUser().getUsername(),
-				employee.getContactNumber(), shiftPreference, employee.getJoiningDate(), resDate);
+				employee.getContactNumber(), shiftPreference, employee.getJoiningDate(), resDate,
+				employee.getDepartment() != null ? employee.getDepartment() : "OPERATIONS",
+				employee.isDevelopmentTeam(), employee.getMaxNightsPerWeek(), employee.getPairedEmployeeId());
 	}
 
 	@Transactional(readOnly = true)
@@ -417,7 +431,9 @@ public class EmployeeService {
 				emp.getUser() != null ? emp.getUser().getUsername() : null, role,
 				emp.getJoiningDate(), emp.getResignationDate(), emp.isActive(),
 				shiftPref, recList, dateList, leaveList,
-				totalAssignments, totalNight, totalOffs
+				totalAssignments, totalNight, totalOffs,
+				emp.getDepartment() != null ? emp.getDepartment() : "OPERATIONS",
+				emp.isDevelopmentTeam(), emp.getMaxNightsPerWeek(), emp.getPairedEmployeeId()
 		);
 	}
 }

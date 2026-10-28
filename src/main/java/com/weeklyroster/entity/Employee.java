@@ -48,6 +48,18 @@ public class Employee {
 	@Column(name = "resignation_date")
 	private LocalDate resignationDate;
 
+	@Column(length = 80)
+	private String department = "OPERATIONS";
+
+	@Column(name = "development_team", columnDefinition = "BOOLEAN DEFAULT 0")
+	private boolean developmentTeam = false;
+
+	@Column(name = "max_nights_per_week")
+	private Integer maxNightsPerWeek;
+
+	@Column(name = "paired_employee_id")
+	private Long pairedEmployeeId;
+
 	@OneToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "user_id")
 	private User user;
@@ -130,6 +142,38 @@ public class Employee {
 
 	public void setResignationDate(LocalDate resignationDate) {
 		this.resignationDate = resignationDate;
+	}
+
+	public String getDepartment() {
+		return department;
+	}
+
+	public void setDepartment(String department) {
+		this.department = department;
+	}
+
+	public boolean isDevelopmentTeam() {
+		return developmentTeam || "DEVELOPMENT".equalsIgnoreCase(department);
+	}
+
+	public void setDevelopmentTeam(boolean developmentTeam) {
+		this.developmentTeam = developmentTeam;
+	}
+
+	public Integer getMaxNightsPerWeek() {
+		return maxNightsPerWeek;
+	}
+
+	public void setMaxNightsPerWeek(Integer maxNightsPerWeek) {
+		this.maxNightsPerWeek = maxNightsPerWeek;
+	}
+
+	public Long getPairedEmployeeId() {
+		return pairedEmployeeId;
+	}
+
+	public void setPairedEmployeeId(Long pairedEmployeeId) {
+		this.pairedEmployeeId = pairedEmployeeId;
 	}
 
 	public User getUser() {
