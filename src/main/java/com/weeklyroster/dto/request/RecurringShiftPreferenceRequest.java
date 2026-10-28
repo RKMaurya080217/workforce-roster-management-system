@@ -16,7 +16,6 @@ public record RecurringShiftPreferenceRequest(
         @NotNull(message = "Shift type is required")
         ShiftType shiftType,
 
-        @NotNull(message = "Start date is required")
         LocalDate startDate,
 
         LocalDate endDate,

@@ -8823,6 +8823,19 @@ async function renderEmployeePreferenceDetailView() {
           <!-- Dynamically populated by renderEmployeeDatePrefSection() -->
         </div>
       </div>
+
+      <!-- 2c. RECURRING WEEKLY SHIFT PREFERENCES (Batch 123) -->
+      <div class="card" style="margin-bottom:24px; border-left:4px solid var(--success, #10b981);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">Recurring Weekly Shift Preferences</h3>
+            <span style="font-size:0.78rem; color:var(--text-muted);">Configure a default shift for a specific day of every week. This preference remains active until the Admin changes or deactivates it.</span>
+          </div>
+        </div>
+        <div class="card-body" id="prefDetailRecurringCardBody" style="padding:20px 24px;">
+          <!-- Dynamically populated by renderEmployeeRecurringPrefSection() -->
+        </div>
+      </div>
     `;
 
     document.getElementById("prefBackToEmployeesBtn").addEventListener("click", () => navigateTo("employees"));
@@ -9019,140 +9032,232 @@ async function renderEmployeePreferenceDetailView() {
       cardBody.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;"><span class="spinner"></span> Loading recurring preferences...</div>`;
       try {
         const recurringRules = await apiRequest(`/api/admin/preferences/recurring?employeeId=${empId}`).catch(() => []);
-        const todayStr = new Date().toISOString().split('T')[0];
+        
+        // Map rules by day of week
+        const ruleMap = {};
+        recurringRules.forEach(r => {
+          if (r.dayOfWeek) ruleMap[r.dayOfWeek] = r;
+        });
+
+        const ALL_DAYS = [
+          { key: "MONDAY", label: "Monday" },
+          { key: "TUESDAY", label: "Tuesday" },
+          { key: "WEDNESDAY", label: "Wednesday" },
+          { key: "THURSDAY", label: "Thursday" },
+          { key: "FRIDAY", label: "Friday" },
+          { key: "SATURDAY", label: "Saturday" },
+          { key: "SUNDAY", label: "Sunday" }
+        ];
+
         cardBody.innerHTML = `
-          <!-- Add Recurring Preference Form -->
-          <form id="prefDetailRecurringForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:14px 16px; border-radius:6px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:16px;">
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Day of Week <span class="req">*</span></label>
-              <select id="recurringDaySelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem; font-weight:600;">
-                <option value="MONDAY">Every Monday</option>
-                <option value="TUESDAY">Every Tuesday</option>
-                <option value="WEDNESDAY">Every Wednesday</option>
-                <option value="THURSDAY">Every Thursday</option>
-                <option value="FRIDAY">Every Friday</option>
-                <option value="SATURDAY" selected>Every Saturday</option>
-                <option value="SUNDAY">Every Sunday</option>
+          <div class="alert-info-box" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534; font-size:0.84rem; margin-bottom:16px;">
+            Configure a default shift for a specific day of every week. This preference remains active until the Admin changes or deactivates it.
+            <div style="font-size:0.78rem; color:#15803d; margin-top:4px;">
+              <strong>Priority Order:</strong> Date-Specific Preference &rarr; Recurring Weekly Preference &rarr; Normal Roster Algorithm. Mandatory rules (12h rest, female safety, single weekly off) are strictly preserved.
+            </div>
+          </div>
+
+          <!-- Quick Day Selector / Add-Edit Form -->
+          <form id="prefDetailRecurringForm" style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; background:var(--bg-subtle, #f8fafc); padding:16px; border-radius:8px; border:1px solid var(--border-color, #e2e8f0); margin-bottom:20px;">
+            <input type="hidden" id="recurringRuleId" value="">
+            
+            <div style="min-width:140px;">
+              <label for="recurringDaySelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Day of Week <span class="req">*</span></label>
+              <select id="recurringDaySelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; font-weight:600; border-radius:6px;">
+                ${ALL_DAYS.map(d => `<option value="${d.key}">${d.label}</option>`).join('')}
               </select>
             </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Preferred Shift <span class="req">*</span></label>
-              <select id="recurringShiftSelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem; font-weight:600;">
+
+            <div style="min-width:180px;">
+              <label for="recurringShiftSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Default Shift <span class="req">*</span></label>
+              <select id="recurringShiftSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; font-weight:600; border-radius:6px;">
                 <option value="MORNING">Morning (07:00 – 15:30)</option>
-                <option value="GENERAL">General (09:30 – 18:00)</option>
+                <option value="GENERAL" selected>General (09:30 – 18:00)</option>
                 <option value="EVENING">Evening (14:00 – 22:30)</option>
                 <option value="NIGHT">Night (22:00 – 07:00)</option>
                 <option value="OFF">Weekly OFF</option>
               </select>
             </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Effective From <span class="req">*</span></label>
-              <input type="date" id="recurringStartDateInput" class="form-control" required value="${todayStr}" style="padding:6px 10px; font-size:0.88rem;">
+
+            <div style="min-width:120px;">
+              <label for="recurringActiveSelect" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Status <span class="req">*</span></label>
+              <select id="recurringActiveSelect" class="form-control" required style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
+                <option value="true" selected>Active</option>
+                <option value="false">Inactive</option>
+              </select>
             </div>
-            <div>
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Effective To <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
-              <input type="date" id="recurringEndDateInput" class="form-control" style="padding:6px 10px; font-size:0.88rem;">
+
+            <div style="flex:1; min-width:180px;">
+              <label for="recurringReasonInput" style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
+              <input type="text" id="recurringReasonInput" class="form-control" placeholder="e.g. Standard day shift / recurring duty" style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
             </div>
-            <div style="flex:1; min-width:160px;">
-              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason / Note</label>
-              <input type="text" id="recurringReasonInput" class="form-control" placeholder="e.g. Study schedule / recurring duty" style="width:100%; padding:6px 10px; font-size:0.88rem;">
-            </div>
-            <div>
-              <button type="submit" class="btn btn-primary btn-sm" id="recurringSaveBtn" style="padding:7px 16px; background:#10b981; border-color:#059669;">
-                + Add Recurring Rule
+
+            <div style="display:flex; gap:8px;">
+              <button type="submit" class="btn btn-primary btn-sm" id="recurringSaveBtn" style="padding:8px 18px; font-weight:600;">
+                Save Preference
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" id="recurringCancelBtn" style="padding:8px 12px;">
+                Cancel
               </button>
             </div>
           </form>
 
-          <!-- Table of recurring rules -->
+          <!-- Weekly Day Selector Table (Monday through Sunday) -->
           <div class="table-wrap">
             <table class="data-table" style="font-size:0.88rem;">
               <thead>
                 <tr>
-                  <th>Recurring Day</th>
-                  <th>Assigned Preference</th>
-                  <th>Effective Period</th>
-                  <th>Status</th>
+                  <th style="width:140px;">Day</th>
+                  <th style="width:180px;">Default Shift</th>
+                  <th style="width:110px;">Status</th>
                   <th>Reason</th>
-                  <th>Configured By</th>
-                  <th style="text-align:right;">Actions</th>
+                  <th style="text-align:right; width:180px;">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                ${recurringRules.length === 0 ? `
-                  <tr>
-                    <td colspan="7" class="text-center text-muted" style="padding:20px;">No recurring weekly preferences configured for this employee.</td>
-                  </tr>
-                ` : recurringRules.map(rr => `
-                  <tr>
-                    <td style="font-weight:700; color:var(--text-primary, #1e293b);">Every ${escapeHTML(rr.dayOfWeek)}</td>
-                    <td>
-                      <span class="badge ${formatShiftBadgeClass(rr.shiftType)}">
-                        ${escapeHTML(formatShiftName(rr.shiftType))}
-                      </span>
-                    </td>
-                    <td style="font-size:0.82rem; color:var(--text-muted);">
-                      ${formatDate(rr.startDate)} &rarr; ${rr.endDate ? formatDate(rr.endDate) : 'Indefinite'}
-                    </td>
-                    <td>
-                      <span class="status-pill ${rr.active ? 'active' : 'inactive'}" style="cursor:pointer;" data-toggle-recurring="${rr.id}" title="Click to toggle active status">
-                        <span class="badge-dot"></span> ${rr.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(rr.reason || '-')}</td>
-                    <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(rr.createdBy || 'Admin')}</td>
-                    <td style="text-align:right;">
-                      <button type="button" class="btn btn-ghost btn-xs" data-toggle-recurring="${rr.id}" style="color:var(--primary); padding:3px 8px; margin-right:4px;">
-                        ${rr.active ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button type="button" class="btn btn-ghost btn-xs" data-delete-recurring="${rr.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
-                        &times; Remove
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
+                ${ALL_DAYS.map(d => {
+                  const rule = ruleMap[d.key];
+                  if (rule) {
+                    return `
+                      <tr data-day-row="${d.key}">
+                        <td style="font-weight:700; color:var(--text-primary, #1e293b);">${d.label}</td>
+                        <td>
+                          <span class="badge ${formatShiftBadgeClass(rule.shiftType)}" style="font-size:0.84rem; padding:4px 10px;">
+                            ${escapeHTML(formatShiftName(rule.shiftType))}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="status-pill ${rule.active ? 'active' : 'inactive'}" style="cursor:pointer;" data-toggle-recurring="${rule.id}" title="Click to toggle active status">
+                            <span class="badge-dot"></span> ${rule.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(rule.reason || '—')}</td>
+                        <td style="text-align:right;">
+                          <button type="button" class="btn btn-secondary btn-xs" data-edit-day="${d.key}" data-rule-id="${rule.id}" data-shift="${rule.shiftType}" data-active="${rule.active}" data-reason="${escapeHTML(rule.reason || '')}" style="padding:3px 8px; margin-right:4px;">
+                            Edit
+                          </button>
+                          <button type="button" class="btn btn-ghost btn-xs" data-toggle-recurring="${rule.id}" style="color:var(--primary); padding:3px 8px; margin-right:4px;">
+                            ${rule.active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button type="button" class="btn btn-ghost btn-xs" data-delete-recurring="${rule.id}" style="color:var(--danger, #ef4444); padding:3px 8px;">
+                            &times;
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  } else {
+                    return `
+                      <tr data-day-row="${d.key}">
+                        <td style="font-weight:600; color:var(--text-muted);">${d.label}</td>
+                        <td style="color:var(--text-muted); font-style:italic;">Not Configured</td>
+                        <td style="color:var(--text-muted);">&mdash;</td>
+                        <td style="color:var(--text-muted);">&mdash;</td>
+                        <td style="text-align:right;">
+                          <button type="button" class="btn btn-ghost btn-xs" data-edit-day="${d.key}" style="color:var(--primary); padding:3px 10px; font-weight:600;">
+                            + Add
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }
+                }).join('')}
               </tbody>
             </table>
           </div>
         `;
 
-        // Handle Add Recurring Rule
+        // Handle Add/Edit Form submit
         const form = document.getElementById("prefDetailRecurringForm");
+        const cancelBtn = document.getElementById("recurringCancelBtn");
+        const daySelect = document.getElementById("recurringDaySelect");
+        const shiftSelect = document.getElementById("recurringShiftSelect");
+        const activeSelect = document.getElementById("recurringActiveSelect");
+        const reasonInput = document.getElementById("recurringReasonInput");
+        const ruleIdInput = document.getElementById("recurringRuleId");
+        const saveBtn = document.getElementById("recurringSaveBtn");
+
+        function resetForm() {
+          ruleIdInput.value = "";
+          daySelect.value = "MONDAY";
+          shiftSelect.value = "GENERAL";
+          activeSelect.value = "true";
+          reasonInput.value = "";
+          saveBtn.textContent = "Save Preference";
+        }
+
+        if (cancelBtn) {
+          cancelBtn.addEventListener("click", resetForm);
+        }
+
         if (form) {
           form.addEventListener("submit", async (e) => {
             e.preventDefault();
-            const btn = document.getElementById("recurringSaveBtn");
-            const dayOfWeek = document.getElementById("recurringDaySelect").value;
-            const shiftType = document.getElementById("recurringShiftSelect").value;
-            const startDate = document.getElementById("recurringStartDateInput").value;
-            const endDate = document.getElementById("recurringEndDateInput").value || null;
-            const reason = document.getElementById("recurringReasonInput").value.trim() || null;
+            const dayOfWeek = daySelect.value;
+            const shiftType = shiftSelect.value;
+            const active = activeSelect.value === "true";
+            const reason = reasonInput.value.trim() || null;
+            const existingId = ruleIdInput.value;
 
-            btn.disabled = true;
-            btn.textContent = "Saving...";
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Saving...";
             try {
-              await apiRequest("/api/admin/preferences/recurring", {
-                method: "POST",
-                body: JSON.stringify({
-                  employeeId: empId,
-                  dayOfWeek,
-                  shiftType,
-                  startDate,
-                  endDate,
-                  active: true,
-                  reason
-                })
-              });
-              toast(`Saved recurring rule for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
+              if (existingId) {
+                // Update
+                await apiRequest(`/api/admin/preferences/recurring/${existingId}`, {
+                  method: "PUT",
+                  body: JSON.stringify({
+                    employeeId: empId,
+                    dayOfWeek,
+                    shiftType,
+                    active,
+                    reason
+                  })
+                });
+                toast(`Updated recurring preference for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
+              } else {
+                // Create or Update
+                await apiRequest("/api/admin/preferences/recurring", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    employeeId: empId,
+                    dayOfWeek,
+                    shiftType,
+                    active,
+                    reason
+                  })
+                });
+                toast(`Saved recurring preference for Every ${dayOfWeek} &rarr; ${shiftType}`, "success");
+              }
               await renderEmployeeRecurringPrefSection();
             } catch (err) {
               toast(err.message || "Failed to save recurring preference", "error");
             } finally {
-              btn.disabled = false;
-              btn.textContent = "+ Add Recurring Rule";
+              saveBtn.disabled = false;
+              saveBtn.textContent = "Save Preference";
             }
           });
         }
+
+        // Handle clicking Edit / Add on any day
+        cardBody.querySelectorAll("[data-edit-day]").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const day = btn.getAttribute("data-edit-day");
+            const ruleId = btn.getAttribute("data-rule-id") || "";
+            const shift = btn.getAttribute("data-shift") || "GENERAL";
+            const active = btn.getAttribute("data-active") !== "false";
+            const reason = btn.getAttribute("data-reason") || "";
+
+            daySelect.value = day;
+            shiftSelect.value = shift;
+            activeSelect.value = active ? "true" : "false";
+            reasonInput.value = reason;
+            ruleIdInput.value = ruleId;
+            saveBtn.textContent = ruleId ? "Update Preference" : "Save Preference";
+
+            form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            shiftSelect.focus();
+          });
+        });
 
         // Handle Toggle Active
         cardBody.querySelectorAll("[data-toggle-recurring]").forEach(el => {
