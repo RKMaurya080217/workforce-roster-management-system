@@ -212,6 +212,7 @@ public class FairnessEvaluationService {
         List<RosterFairnessReport.EmployeeFairnessDetail> details = new ArrayList<>();
         List<String> explanations = new ArrayList<>();
         List<String> mandatoryViolations = new ArrayList<>();
+        List<LocalDate> shortageModeDates = new ArrayList<>();
 
         int totalApplicablePrefs = 0;
         int totalSatisfiedPrefs = 0;
@@ -443,6 +444,9 @@ public class FairnessEvaluationService {
                 if (mCount != 1 || eCount != 1 || nCount != 1 || gCount != 0) {
                     mandatoryViolations.add("3-employee mode staffing violation on " + d + ": expected M=1,E=1,N=1,G=0; actual M="
                             + mCount + ",E=" + eCount + ",N=" + nCount + ",G=" + gCount);
+                } else {
+                    shortageModeDates.add(d);
+                    explanations.add(String.format("Supported 3-employee shortage mode active on %s: Morning 1, Evening 1, Night 1, General 0", d));
                 }
             } else if (totalWorking >= 4) {
                 if (mCount < 1 || mCount > 2) {
@@ -517,7 +521,17 @@ public class FairnessEvaluationService {
             infeasibilityReason = "Hard constraints violated: " + String.join("; ", mandatoryViolations);
         }
 
+        String solverStatus;
+        if (mandatoryViolations.isEmpty()) {
+            solverStatus = "VALIDATED_FEASIBLE";
+        } else if (infeasible) {
+            solverStatus = "PROVEN_INFEASIBLE";
+        } else {
+            solverStatus = "SEARCH_TIMEOUT_FALLBACK";
+        }
+
         explanations.add(String.format("Overall fairness score: %d/6000 (Fairness: %s)", totalScore, fair ? "EXCELLENT" : "ACCEPTABLE"));
+        explanations.add(String.format("Solver status: %s | Mandatory rule violations: %d", solverStatus, mandatoryViolations.size()));
         explanations.add(String.format("Preference satisfaction rate: %.1f%% (%d of %d active preferences fulfilled)",
                 overallPrefRate, totalSatisfiedPrefs, totalApplicablePrefs));
         explanations.add(String.format("Night shift distribution variance: %.4f (Multi-week rolling balance across eligible males)", nightVariance));
@@ -525,6 +539,10 @@ public class FairnessEvaluationService {
         explanations.add(String.format("Avoidable shift transitions: %d across entire weekly roster", totalAvoidableTransitions));
         explanations.add(String.format("Weekly Off distribution: exactly 1 Off per employee; maximum %d simultaneous offs on any calendar day",
                 dailyOffCounts.values().stream().mapToInt(Integer::intValue).max().orElse(0)));
+        if (!shortageModeDates.isEmpty()) {
+            explanations.add(String.format("Supported 3-employee shortage mode utilized on %d date(s): %s",
+                    shortageModeDates.size(), shortageModeDates));
+        }
 
         return new RosterFairnessReport(
                 startDate,
@@ -541,7 +559,11 @@ public class FairnessEvaluationService {
                 explanations,
                 mandatoryViolations,
                 infeasible,
-                infeasibilityReason
+                infeasibilityReason,
+                solverStatus,
+                1,
+                0L,
+                shortageModeDates
         );
     }
 

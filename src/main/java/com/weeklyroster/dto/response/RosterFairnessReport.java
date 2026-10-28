@@ -18,8 +18,40 @@ public record RosterFairnessReport(
         List<String> explanations,
         List<String> mandatoryConstraintViolations,
         boolean infeasible,
-        String infeasibilityReason
+        String infeasibilityReason,
+        String solverStatus,
+        int candidatesEvaluated,
+        long searchDurationMs,
+        List<LocalDate> shortageModeDates
 ) {
+    public boolean fullyValidated() {
+        return "VALIDATED_FEASIBLE".equalsIgnoreCase(solverStatus) && mandatoryConstraintViolations.isEmpty();
+    }
+
+    public RosterFairnessReport(
+            LocalDate startDate,
+            LocalDate endDate,
+            int overallScore,
+            FairnessScoreBreakdown scoreBreakdown,
+            List<EmployeeFairnessDetail> employeeDetails,
+            double overallPreferenceSatisfactionRate,
+            int totalAvoidableTransitions,
+            double nightVariance,
+            double eveningVariance,
+            double workloadVariance,
+            boolean fair,
+            List<String> explanations,
+            List<String> mandatoryConstraintViolations,
+            boolean infeasible,
+            String infeasibilityReason
+    ) {
+        this(startDate, endDate, overallScore, scoreBreakdown, employeeDetails,
+                overallPreferenceSatisfactionRate, totalAvoidableTransitions,
+                nightVariance, eveningVariance, workloadVariance, fair,
+                explanations, mandatoryConstraintViolations, infeasible, infeasibilityReason,
+                mandatoryConstraintViolations.isEmpty() ? "VALIDATED_FEASIBLE" : (infeasible ? "PROVEN_INFEASIBLE" : "SEARCH_TIMEOUT_FALLBACK"),
+                1, 0L, java.util.Collections.emptyList());
+    }
     public record FairnessScoreBreakdown(
             int totalScore,
             int preferenceScore,

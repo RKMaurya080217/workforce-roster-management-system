@@ -470,6 +470,8 @@ public class RosterService {
 		}
 
 		int maxAttempts = 50;
+		long solverStartTime = System.currentTimeMillis();
+		int candidatesEvaluated = 0;
 		List<RosterAssignment> bestNonDuplicateGenerated = null;
 		List<DailyCoverageReport> bestNonDuplicateDailyReports = null;
 		int bestNonDuplicateScore = Integer.MIN_VALUE;
@@ -490,6 +492,7 @@ public class RosterService {
 		FairnessEvaluationService.RollingHistoryContext rollingContext = getFairnessService().loadRollingHistoryContext(startDate, employees, 4);
 
 		for (int attempt = 0; attempt < maxAttempts; attempt++) {
+			candidatesEvaluated++;
 			long baseSeed = startDate.toEpochDay() * 10007L + (long) validWorkingDays * 389L;
 			int cycleSalt = (int) (Math.abs(baseSeed + (long) attempt * 7919L) % 100000L);
 
@@ -646,23 +649,30 @@ public class RosterService {
 
 		List<RosterAssignment> bestGenerated;
 		FinalValidationResult bestValidation;
+		long searchDurationMs = System.currentTimeMillis() - solverStartTime;
+		String solverStatus;
 
 		if (bestNonDuplicateGenerated != null) {
 			bestGenerated = bestNonDuplicateGenerated;
 			bestValidation = bestNonDuplicateValidation;
 			bestChosenAttempt = bestNonDuplicateAttempt;
-			log.info("[BATCH 89] Selected non-duplicate candidate on attempt {} with score {}", bestChosenAttempt, bestNonDuplicateScore);
+			solverStatus = "VALIDATED_FEASIBLE";
+			log.info("[BATCH 120] Selected non-duplicate candidate on attempt {} with score {} (Evaluated {} candidates in {} ms, solverStatus: {})",
+					bestChosenAttempt, bestNonDuplicateScore, candidatesEvaluated, searchDurationMs, solverStatus);
 		} else if (bestDuplicateGenerated != null) {
 			bestGenerated = bestDuplicateGenerated;
 			bestValidation = bestDuplicateValidation;
 			bestChosenAttempt = bestDuplicateAttempt;
-			log.info("[BATCH 89] All valid candidates repeated previous fingerprints; selected best duplicate candidate on attempt {} with score {}", bestChosenAttempt, bestDuplicateScore);
+			solverStatus = "VALIDATED_FEASIBLE";
+			log.info("[BATCH 120] All valid candidates repeated previous fingerprints; selected duplicate candidate on attempt {} with score {} (Evaluated {} candidates in {} ms, solverStatus: {})",
+					bestChosenAttempt, bestDuplicateScore, candidatesEvaluated, searchDurationMs, solverStatus);
 		} else {
 			bestGenerated = leastConflictsGenerated;
 			bestValidation = leastConflictsValidation;
 			bestChosenAttempt = 1;
-			log.info("[BATCH 91] No zero-conflict candidate found in {} attempts; selected candidate with least conflicts ({} critical conflicts)",
-					maxAttempts, (leastConflictsValidation != null ? leastConflictsValidation.criticalConflicts() : 0));
+			solverStatus = employees.size() < 3 ? "PROVEN_INFEASIBLE" : "SEARCH_TIMEOUT_FALLBACK";
+			log.info("[BATCH 120] No zero-conflict candidate found in {} attempts (Evaluated {} candidates in {} ms, solverStatus: {}); selected candidate with least conflicts ({} critical conflicts)",
+					maxAttempts, candidatesEvaluated, searchDurationMs, solverStatus, (leastConflictsValidation != null ? leastConflictsValidation.criticalConflicts() : 0));
 		}
 
 		if (bestGenerated == null || bestGenerated.isEmpty()) {
@@ -5029,6 +5039,31 @@ public class RosterService {
 		return planWeeklyOffs(employees, startDate, endDate, null, 0, 6);
 	}
 
+	private boolean hasRestWithAdjacent(Long empId, LocalDate date, Shift targetShift, RosterAssignment prev, RosterAssignment next) {
+		if (targetShift == null) return true;
+		if (next != null && !next.isWeeklyOff() && !next.isOnLeave() && next.getShift() != null) {
+			if (!hasMinimumRest(date, targetShift, next.getRosterDate(), next.getShift())) {
+				return false;
+			}
+		}
+		if (prev != null) {
+			if (!prev.isWeeklyOff() && !prev.isOnLeave() && prev.getShift() != null) {
+				return hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, targetShift);
+			}
+			return true;
+		}
+		if (assignmentRepository != null && empId != null) {
+			List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(empId, date);
+			if (!prevWorked.isEmpty()) {
+				RosterAssignment lastA = prevWorked.get(0);
+				if (lastA.getRosterDate() != null && lastA.getRosterDate().equals(date.minusDays(1)) && lastA.getShift() != null) {
+					return hasMinimumRest(lastA.getRosterDate(), lastA.getShift(), date, targetShift);
+				}
+			}
+		}
+		return true;
+	}
+
 	private void rebalanceDailyCoverage(RosterCycle cycle, List<RosterAssignment> assignments,
 			List<Employee> employees, Map<ShiftType, Shift> shifts, Map<Long, ApplicablePreference> preferencesMap) {
 		// 0. Ensure no day has fewer working staff than the absolute minimum required capacity
@@ -5191,12 +5226,7 @@ public class RosterService {
 							if (hasOtherOff) continue;
 						}
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, nightShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, nightShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(a.getEmployee().getId(), date, nightShift, prev, next)) {
 							candidateToMove = a;
 							donorShiftType = donorType;
 							break;
@@ -5238,12 +5268,7 @@ public class RosterService {
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 						if (next != null && (next.isManualAssignment() || next.isOverridden() || hasTargetWorkShift(pref, next.getRosterDate()))) continue;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, nightShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, nightShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(male.getId(), date, nightShift, prev, next)) {
 							candidateToMove = todayAssign;
 							donorShiftType = ShiftType.OFF;
 							break;
@@ -5292,12 +5317,7 @@ public class RosterService {
 								if (hasOtherOff) continue;
 							}
 
-							boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-									hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, nightShift));
-							boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-									hasMinimumRest(date, nightShift, next.getRosterDate(), next.getShift()));
-
-							if (restPrev && restNext) {
+							if (hasRestWithAdjacent(emp.getId(), date, nightShift, prev, next)) {
 								candidateToMove = a;
 								donorShiftType = donorType;
 								break;
@@ -5417,12 +5437,7 @@ public class RosterService {
 						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, morningShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, morningShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(emp.getId(), date, morningShift, prev, next)) {
 							candidateToMove = a;
 							donorShiftType = donorType;
 							break;
@@ -5475,12 +5490,7 @@ public class RosterService {
 						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, morningShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, morningShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(emp.getId(), date, morningShift, prev, next)) {
 							candidateToMove = todayAssign;
 							donorShiftType = ShiftType.OFF;
 							break;
@@ -5508,12 +5518,7 @@ public class RosterService {
 						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, morningShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, morningShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(emp.getId(), date, morningShift, prev, next)) {
 							candidateToMove = todayAssign;
 							donorShiftType = ShiftType.OFF;
 							break;
@@ -5597,12 +5602,7 @@ public class RosterService {
 						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, eveningShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, eveningShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(emp.getId(), date, eveningShift, prev, next)) {
 							candidateToMove = a;
 							donorShiftType = donorType;
 							break;
@@ -5656,12 +5656,7 @@ public class RosterService {
 						RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
 						RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
 
-						boolean restPrev = (prev == null || prev.isWeeklyOff() || prev.isOnLeave() || prev.getShift() == null ||
-								hasMinimumRest(prev.getRosterDate(), prev.getShift(), date, eveningShift));
-						boolean restNext = (next == null || next.isWeeklyOff() || next.isOnLeave() || next.getShift() == null ||
-								hasMinimumRest(date, eveningShift, next.getRosterDate(), next.getShift()));
-
-						if (restPrev && restNext) {
+						if (hasRestWithAdjacent(male.getId(), date, eveningShift, prev, next)) {
 							candidateToMove = todayAssign;
 							donorShiftType = ShiftType.OFF;
 							break;
@@ -8029,15 +8024,30 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 					coverageOk = false;
 					conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MIN_COVERAGE_MORNING", mCount + " assigned", ">= " + reqMorning + " assigned", "Morning shift staffing deficit on " + date + " (" + mCount + " assigned, minimum " + reqMorning + " required)", "CRITICAL", "Assign at least " + reqMorning + " staff to Morning", false));
 				}
+			} else if (mCount > 2) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "Morning Staffing", ShiftType.MORNING, "MAX_COVERAGE_MORNING", mCount + " assigned", "<= 2 assigned", "Morning shift staffing exceeds maximum limit on " + date + " (" + mCount + " assigned, maximum 2 allowed)", "CRITICAL", "Reduce Morning shift staffing to at most 2", false));
 			}
-			if (!isWeekend(date) && gCount < 1) {
+
+			if (workingCountOnDate == 3) {
+				if (mCount == 1 && eCount == 1 && nCount == 1 && gCount == 0) {
+					conflicts.add(new ConflictItem(date, null, "Shortage Mode", null, "THREE_EMPLOYEE_SHORTAGE_MODE", "M=1,E=1,N=1,G=0", "Supported shortage staffing", "Supported 3-employee shortage mode active on " + date + ": Morning 1, Evening 1, Night 1, General 0", "INFO", "Operational shortage coverage verified", false));
+				} else {
+					coverageOk = false;
+					conflicts.add(new ConflictItem(date, null, "Shortage Mode", null, "INVALID_SHORTAGE_STAFFING", "M=" + mCount + ",E=" + eCount + ",N=" + nCount + ",G=" + gCount, "M=1,E=1,N=1,G=0", "3-employee shortage mode on " + date + " must be Morning 1, Evening 1, Night 1, General 0", "CRITICAL", "Correct shortage mode allocation", false));
+				}
+			} else if (!isWeekend(date) && gCount < 1) {
 				if (workingCountOnDate < 4) {
 					conflicts.add(new ConflictItem(date, null, "General Staffing", ShiftType.GENERAL, "MIN_COVERAGE_GENERAL", "0 assigned", ">= 1 assigned", "General shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
 				} else {
 					coverageOk = false;
 					conflicts.add(new ConflictItem(date, null, "General Staffing", ShiftType.GENERAL, "MIN_COVERAGE_GENERAL", "0 assigned", ">= 1 assigned", "General shift has 0 assigned staff on " + date, "CRITICAL", "Assign at least 1 staff to General", false));
 				}
+			} else if (workingCountOnDate >= 6 && gCount > 4) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "General Staffing", ShiftType.GENERAL, "MAX_COVERAGE_GENERAL", gCount + " assigned", "<= 4 assigned", "General shift staffing exceeds maximum limit under normal staffing on " + date + " (" + gCount + " assigned, maximum 4 allowed)", "CRITICAL", "Reduce General shift staffing to at most 4", false));
 			}
+
 			if (eCount < reqEvening) {
 				if (workingCountOnDate < 2 || eligibleMaleStaff == 0) {
 					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", eCount + " assigned", ">= " + reqEvening + " assigned", "Evening shift unstaffed on " + date + " due to limited available working staff (" + workingCountOnDate + ")", "WARNING", "Review staffing capacity", false));
@@ -8045,6 +8055,9 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 					coverageOk = false;
 					conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MIN_COVERAGE_EVENING", eCount + " assigned", ">= " + reqEvening + " assigned", "Evening shift has " + eCount + " assigned staff on " + date + " (minimum " + reqEvening + " required)", "CRITICAL", "Assign at least " + reqEvening + " staff to Evening", false));
 				}
+			} else if (eCount > 2) {
+				coverageOk = false;
+				conflicts.add(new ConflictItem(date, null, "Evening Staffing", ShiftType.EVENING, "MAX_COVERAGE_EVENING", eCount + " assigned", "<= 2 assigned", "Evening shift staffing exceeds maximum limit on " + date + " (" + eCount + " assigned, maximum 2 allowed)", "CRITICAL", "Reduce Evening shift staffing to at most 2", false));
 			}
 
 			if (nCount < reqNight) {
@@ -8147,6 +8160,16 @@ public int calculateRosterQualityScore(List<RosterAssignment> assignments) {
 								"Employee " + empName + " has an approved leave/off request on " + d + " but was assigned a duty shift",
 								"CRITICAL", "Reassign to Leave / Off", false
 						));
+					}
+					if (!emp.isEligibleForDate(d)) {
+						coverageOk = false;
+						String reason = (emp.getJoiningDate() != null && d.isBefore(emp.getJoiningDate()))
+								? "prior to joining date (" + emp.getJoiningDate() + ")"
+								: "after resignation date (" + emp.getResignationDate() + ")";
+						conflicts.add(new ConflictItem(d, empId, empName, curr.getShift() != null ? curr.getShift().getShiftType() : null,
+								"INELIGIBLE_DATE_ASSIGNMENT", "Duty Assigned", "Must be INELIGIBLE",
+								"Employee " + empName + " assigned duty shift on " + d + " when ineligible (" + reason + ")",
+								"CRITICAL", "Remove assignment for ineligible date", false));
 					}
 					consecutiveDays++;
 					maxConsecutiveDays = Math.max(maxConsecutiveDays, consecutiveDays);
