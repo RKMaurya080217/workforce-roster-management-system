@@ -4,6 +4,7 @@ import com.weeklyroster.dto.response.RosterValidationFinding;
 import com.weeklyroster.dto.response.RosterValidationResponse;
 import com.weeklyroster.entity.*;
 import com.weeklyroster.exception.ResourceNotFoundException;
+import com.weeklyroster.repository.HolidayRepository;
 import com.weeklyroster.repository.LeaveRequestRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
@@ -28,6 +29,9 @@ public class RosterValidatorService {
     private final LeaveRequestRepository leaveRequestRepository;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private HolidayRepository holidayRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -35,6 +39,10 @@ public class RosterValidatorService {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository;
+
+    public void setHolidayRepository(HolidayRepository holidayRepository) {
+        this.holidayRepository = holidayRepository;
+    }
 
     public void setDateShiftPreferenceRepository(com.weeklyroster.repository.DateShiftPreferenceRepository dateShiftPreferenceRepository) {
         this.dateShiftPreferenceRepository = dateShiftPreferenceRepository;
@@ -79,6 +87,14 @@ public class RosterValidatorService {
         LocalDate start = cycle.getStartDate();
         LocalDate end = cycle.getEndDate();
 
+        List<Holiday> activeHolidays = (holidayRepository != null && start != null && end != null)
+                ? holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(start, end)
+                : Collections.emptyList();
+        Set<LocalDate> holidayDates = activeHolidays.stream()
+                .filter(Holiday::isActive)
+                .map(Holiday::getHolidayDate)
+                .collect(Collectors.toSet());
+
         for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
             checksRun++;
             List<RosterAssignment> dayAssignments = byDate.getOrDefault(d, Collections.emptyList());
@@ -86,8 +102,9 @@ public class RosterValidatorService {
                     .filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null)
                     .collect(Collectors.groupingBy(a -> a.getShift().getShiftType(), Collectors.counting()));
 
+            long workingCountOnDate = counts.values().stream().mapToLong(Long::longValue).sum();
             boolean isWeekend = (d.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
-            int minMorning = isWeekend ? 1 : 2;
+            int minMorning = (isWeekend || workingCountOnDate <= 5) ? 1 : 2;
             long morningCount = counts.getOrDefault(ShiftType.MORNING, 0L);
             if (morningCount < minMorning) {
                 findings.add(new RosterValidationFinding(
@@ -96,14 +113,14 @@ public class RosterValidatorService {
                         ValidationSeverity.ERROR,
                         null, null, d,
                         "Morning shift has " + morningCount + " employees assigned on " + d + " (minimum required is " + minMorning + ").",
-                        "Monday–Friday requires at least 2 employees on Morning shift; weekends require at least 1."
+                        "Monday–Friday requires at least 2 employees on Morning shift; weekends or reduced workforce require at least 1."
                 ));
             }
 
             for (ShiftType st : List.of(ShiftType.GENERAL, ShiftType.EVENING, ShiftType.NIGHT)) {
                 long c = counts.getOrDefault(st, 0L);
                 if (c == 0) {
-                    if (st == ShiftType.GENERAL && isWeekend) {
+                    if (st == ShiftType.GENERAL && (isWeekend || workingCountOnDate <= 3)) {
                         continue;
                     }
                     if (st == ShiftType.NIGHT) {
@@ -245,29 +262,62 @@ public class RosterValidatorService {
                 }
             }
 
+            for (RosterAssignment curr : empAssignments) {
+                if (!emp.isEligibleForDate(curr.getRosterDate())) {
+                    String reason = (emp.getJoiningDate() != null && curr.getRosterDate().isBefore(emp.getJoiningDate()))
+                            ? "prior to joining date (" + emp.getJoiningDate() + ")"
+                            : "after resignation date (" + emp.getResignationDate() + ")";
+                    findings.add(new RosterValidationFinding(
+                            "INELIGIBLE_DATE_ASSIGNMENT",
+                            "Ineligible Date Assignment",
+                            ValidationSeverity.ERROR,
+                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                            "Employee " + empName + " assigned on " + curr.getRosterDate() + " when ineligible (" + reason + ")",
+                            "Employee must be eligible for the date based on joining and resignation dates."
+                    ));
+                }
+                if (holidayDates.contains(curr.getRosterDate()) && curr.isWeeklyOff()) {
+                    findings.add(new RosterValidationFinding(
+                            "HOLIDAY_NOT_WEEKLY_OFF",
+                            "Holiday Converted to Weekly OFF",
+                            ValidationSeverity.ERROR,
+                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                            "Date " + curr.getRosterDate() + " is an official Holiday but marked as Weekly OFF for " + empName + ".",
+                            "Holiday must remain a distinct concept and must never be converted to Weekly OFF."
+                    ));
+                }
+            }
+
             int cycleWorkingDays = (cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
             long leaveCount = empAssignments.stream().filter(RosterAssignment::isOnLeave).count();
-            long workCount = empAssignments.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave()).count();
+            long workCount = empAssignments.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() != ShiftType.OFF).count();
+            long nonWorkedHolidays = empAssignments.stream()
+                    .filter(a -> holidayDates.contains(a.getRosterDate()))
+                    .filter(a -> a.isWeeklyOff() || a.isOnLeave() || a.getShift() == null || a.getShift().getShiftType() == ShiftType.OFF)
+                    .count();
+            int targetExpectedOffs = Math.min(expectedOffs, Math.max(0, 7 - (int) leaveCount));
+            int expectedWorkDays = Math.max(0, cycleWorkingDays - (int) leaveCount - (int) nonWorkedHolidays);
+
             checksRun++;
             if (cycleWorkingDays == 6 && emp.isActive()) {
-                if (offCount != 1) {
+                if (offCount != targetExpectedOffs && leaveCount < 7) {
                     findings.add(new RosterValidationFinding(
                             "INVALID_WEEKLY_OFF_COUNT",
                             "Strict Weekly OFF Count Violation",
                             ValidationSeverity.ERROR,
                             emp.getEmployeeCode(), empName, null,
-                            empName + " has " + offCount + " Weekly OFF assignments in cycle (strictly 1 required for 6-day cycle).",
+                            empName + " has " + offCount + " Weekly OFF assignments in cycle (strictly " + targetExpectedOffs + " required for 6-day cycle).",
                             "Hard invariant: Every active employee in a standard 6-day cycle must have exactly 1 Weekly OFF."
                     ));
                 }
-                if (leaveCount == 0 && workCount != 6) {
+                if (leaveCount == 0 && workCount != expectedWorkDays) {
                     findings.add(new RosterValidationFinding(
                             "INVALID_WORKING_DAYS_COUNT",
                             "Working Days Count Violation",
                             ValidationSeverity.ERROR,
                             emp.getEmployeeCode(), empName, null,
-                            empName + " has " + workCount + " working days in cycle (strictly 6 required when no leave).",
-                            "Hard invariant: Normal employee has 6 working days + 1 Weekly OFF when no leave."
+                            empName + " has " + workCount + " working days in cycle (strictly " + expectedWorkDays + " required when " + nonWorkedHolidays + " non-worked holidays).",
+                            "Hard invariant: Normal employee has 6 working days + 1 Weekly OFF when no leave, adjusted for non-worked official holidays."
                     ));
                 }
             }
@@ -402,7 +452,23 @@ public class RosterValidatorService {
                     }
                 }
 
-                // BATCH 113 & BATCH 115 & BATCH 124: Date-specific shift preference validation (HARD CONSTRAINT)
+                // BATCH 113 & BATCH 115 & BATCH 124 & BATCH 125: Precedence Hierarchy for Preference Checking
+                boolean prevDayWasNight = false;
+                if (i > 0) {
+                    RosterAssignment prevA = empAssignments.get(i - 1);
+                    if (!prevA.isWeeklyOff() && !prevA.isOnLeave() && prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
+                        prevDayWasNight = true;
+                    }
+                } else {
+                    List<RosterAssignment> prevWorked = assignmentRepository.findWorkedAssignmentsBefore(emp.getId(), curr.getRosterDate());
+                    if (!prevWorked.isEmpty() && prevWorked.get(0).getRosterDate() != null
+                            && prevWorked.get(0).getRosterDate().equals(curr.getRosterDate().minusDays(1))
+                            && prevWorked.get(0).getShift() != null && prevWorked.get(0).getShift().getShiftType() == ShiftType.NIGHT) {
+                        prevDayWasNight = true;
+                    }
+                }
+
+                // BATCH 113 & BATCH 115 & BATCH 124 & BATCH 125: Date-specific shift preference validation (HARD CONSTRAINT)
                 boolean hasDateSpecificPref = false;
                 if (dateShiftPreferenceRepository != null) {
                     var dspOpt = dateShiftPreferenceRepository.findByEmployeeIdAndPreferenceDate(emp.getId(), curr.getRosterDate());
@@ -410,33 +476,38 @@ public class RosterValidatorService {
                         hasDateSpecificPref = true;
                         checksRun++;
                         ShiftType expected = dspOpt.get().getShiftType();
-                        if (expected == ShiftType.OFF) {
-                            if (!curr.isWeeklyOff()) {
-                                findings.add(new RosterValidationFinding(
-                                        "DATE_PREFERENCE_VIOLATION",
-                                        "Date Shift Preference Mismatch",
-                                        ValidationSeverity.ERROR,
-                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                        empName + " has Date Preference for OFF on " + curr.getRosterDate() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
-                                        "Admin configured date-specific preference is a mandatory hard constraint."
+                        boolean femaleSafetyConflict = emp.getGender() == Gender.FEMALE && (expected == ShiftType.NIGHT || expected == ShiftType.EVENING);
+                        boolean higherPrecedenceApplies = curr.isOnLeave() || curr.isManualAssignment() || curr.isOverridden() || femaleSafetyConflict || (prevDayWasNight && expected != ShiftType.OFF);
+
+                        if (!higherPrecedenceApplies) {
+                            if (expected == ShiftType.OFF) {
+                                if (!curr.isWeeklyOff()) {
+                                    findings.add(new RosterValidationFinding(
+                                            "DATE_PREFERENCE_VIOLATION",
+                                            "Date Shift Preference Mismatch",
+                                            ValidationSeverity.ERROR,
+                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                            empName + " has Date Preference for OFF on " + curr.getRosterDate() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                            "Admin configured date-specific preference is a mandatory hard constraint."
                                     ));
-                            }
-                        } else {
-                            if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
-                                findings.add(new RosterValidationFinding(
-                                        "DATE_PREFERENCE_VIOLATION",
-                                        "Date Shift Preference Mismatch",
-                                        ValidationSeverity.ERROR,
-                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                        empName + " has Date Preference for " + expected.name() + " on " + curr.getRosterDate() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
-                                        "Admin configured date-specific preference is a mandatory hard constraint."
-                                ));
+                                }
+                            } else {
+                                if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                    findings.add(new RosterValidationFinding(
+                                            "DATE_PREFERENCE_VIOLATION",
+                                            "Date Shift Preference Mismatch",
+                                            ValidationSeverity.ERROR,
+                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                            empName + " has Date Preference for " + expected.name() + " on " + curr.getRosterDate() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                            "Admin configured date-specific preference is a mandatory hard constraint."
+                                    ));
+                                }
                             }
                         }
                     }
                 }
 
-                // BATCH 113 & BATCH 115 & BATCH 124: Recurring weekly shift preference validation (HARD CONSTRAINT)
+                // BATCH 113 & BATCH 115 & BATCH 124 & BATCH 125: Recurring weekly shift preference validation (HARD CONSTRAINT)
                 // Date-specific preference takes precedence over recurring preference
                 if (!hasDateSpecificPref && recurringShiftPreferenceRepository != null) {
                     var recList = recurringShiftPreferenceRepository.findByEmployeeIdAndActiveTrue(emp.getId());
@@ -463,27 +534,32 @@ public class RosterValidatorService {
                                     } else {
                                         // Recurring Positive Preference
                                         ShiftType expected = rp.getShiftType();
-                                        if (expected == ShiftType.OFF) {
-                                            if (!curr.isWeeklyOff()) {
-                                                findings.add(new RosterValidationFinding(
-                                                        "RECURRING_PREFERENCE_VIOLATION",
-                                                        "Recurring Shift Preference Mismatch",
-                                                        ValidationSeverity.ERROR,
-                                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                                        empName + " has Recurring Preference for OFF on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
-                                                        "Admin configured recurring weekly preference is a mandatory hard constraint."
-                                                ));
-                                            }
-                                        } else {
-                                            if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
-                                                findings.add(new RosterValidationFinding(
-                                                        "RECURRING_PREFERENCE_VIOLATION",
-                                                        "Recurring Shift Preference Mismatch",
-                                                        ValidationSeverity.ERROR,
-                                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                                        empName + " has Recurring Preference for " + expected.name() + " on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
-                                                        "Admin configured recurring weekly preference is a mandatory hard constraint."
-                                                ));
+                                        boolean femaleSafetyConflict = emp.getGender() == Gender.FEMALE && (expected == ShiftType.NIGHT || expected == ShiftType.EVENING);
+                                        boolean higherPrecedenceApplies = curr.isOnLeave() || curr.isManualAssignment() || curr.isOverridden() || femaleSafetyConflict || (prevDayWasNight && expected != ShiftType.OFF);
+
+                                        if (!higherPrecedenceApplies) {
+                                            if (expected == ShiftType.OFF) {
+                                                if (!curr.isWeeklyOff()) {
+                                                    findings.add(new RosterValidationFinding(
+                                                            "RECURRING_PREFERENCE_VIOLATION",
+                                                            "Recurring Shift Preference Mismatch",
+                                                            ValidationSeverity.ERROR,
+                                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                            empName + " has Recurring Preference for OFF on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                                            "Admin configured recurring weekly preference is a mandatory hard constraint."
+                                                    ));
+                                                }
+                                            } else {
+                                                if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                                    findings.add(new RosterValidationFinding(
+                                                            "RECURRING_PREFERENCE_VIOLATION",
+                                                            "Recurring Shift Preference Mismatch",
+                                                            ValidationSeverity.ERROR,
+                                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                            empName + " has Recurring Preference for " + expected.name() + " on " + curr.getRosterDate().getDayOfWeek() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                                            "Admin configured recurring weekly preference is a mandatory hard constraint."
+                                                    ));
+                                                }
                                             }
                                         }
                                     }
