@@ -24,7 +24,8 @@ public class DataInitializer {
 	CommandLineRunner seedData(UserRepository userRepository, EmployeeRepository employeeRepository,
 			ShiftRepository shiftRepository, PasswordEncoder passwordEncoder,
 			ShiftCapacityProperties capacityProperties, CsvEmployeeLoader csvEmployeeLoader,
-			org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+			org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
+			@org.springframework.beans.factory.annotation.Autowired(required = false) com.weeklyroster.service.EmployeeMasterSyncService employeeMasterSyncService) {
 		return args -> {
 			fixSqliteAuditActionCheckConstraint(jdbcTemplate);
 			migrateWorkingDaysColumns(jdbcTemplate);
@@ -92,19 +93,23 @@ public class DataInitializer {
 						employeeRepository.delete(e);
 					});
 
-			List<SeedEmployee> employees = csvEmployeeLoader.loadEmployees();
-			for (SeedEmployee seed : employees) {
-				if (!employeeRepository.existsByEmployeeCode(seed.getEmployeeCode())) {
-					Employee emp = new Employee();
-					emp.setEmployeeCode(seed.getEmployeeCode());
-					emp.setFirstName(seed.getFirstName());
-					emp.setLastName(seed.getLastName() == null ? "" : seed.getLastName());
-					emp.setEmail(seed.getEmail());
-					emp.setGender(seed.getGender());
-					if (seed.getContactNumber() != null) {
-						emp.setContactNumber(seed.getContactNumber());
+			if (employeeMasterSyncService != null) {
+				employeeMasterSyncService.syncOnStartup();
+			} else {
+				List<SeedEmployee> employees = csvEmployeeLoader.loadEmployees();
+				for (SeedEmployee seed : employees) {
+					if (!employeeRepository.existsByEmployeeCode(seed.getEmployeeCode())) {
+						Employee emp = new Employee();
+						emp.setEmployeeCode(seed.getEmployeeCode());
+						emp.setFirstName(seed.getFirstName());
+						emp.setLastName(seed.getLastName() == null ? "" : seed.getLastName());
+						emp.setEmail(seed.getEmail());
+						emp.setGender(seed.getGender());
+						if (seed.getContactNumber() != null) {
+							emp.setContactNumber(seed.getContactNumber());
+						}
+						employeeRepository.save(emp);
 					}
-					employeeRepository.save(emp);
 				}
 			}
 

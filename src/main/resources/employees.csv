@@ -1,8 +1,8 @@
-employeeCode,firstName,lastName,email,gender,contactNumber,devPassword
-EMP001,Rajat,Maurya,rkmaurya080217@gmail.com,MALE,8565005534,password123
-EMP002,Prachi,Mishra,prachimishra07070@gmail.com,FEMALE,9876543288,password123
-EMP003,Shriram,IYER,sriramiyer18@gmail.com,MALE,,password123
-EMP004,Sapna,Pandey,sapna@cris.com,FEMALE,,password123
-EMP005,Tushar,Chandila,tushar@cris.com,MALE,,password123
-EMP006,Divyansh,,divyansh@cris.com,MALE,,password123
-EMP007,Sambhav,Jain,sambhav@cris.com,MALE,,password123
+employeeCode,firstName,lastName,email,gender,active,contactNumber,joiningDate,resignationDate,department,developmentTeam,maxNightsPerWeek,pairedEmployeeCode
+EMP001,Rajat,Maurya,rkmaurya080217@gmail.com,MALE,true,9876543201,2026-04-14,,OPERATIONS,false,1,EMP002
+EMP002,Prachi,Mishra,prachimishra07070@gmail.com,FEMALE,true,9876543299,2026-05-02,,OPERATIONS,false,,EMP001
+EMP003,Shriram,IYER,sriramiyer18@gmail.com,MALE,true,,2026-06-18,,OPERATIONS,false,2,
+EMP004,Sapna,Pandey,sapna@cris.com,FEMALE,true,,2026-07-07,,DEVELOPMENT,true,,
+EMP005,Tushar,Chandila,tushar@cris.com,MALE,true,,2026-08-21,,OPERATIONS,false,2,
+EMP006,Divyansh,,divyansh@cris.com,MALE,true,,2026-09-11,,DEVELOPMENT,true,,
+EMP007,Sambhav,Jain,sambhav@cris.com,MALE,true,,2026-10-05,,OPERATIONS,false,1,

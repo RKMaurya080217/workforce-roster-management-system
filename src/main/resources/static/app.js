@@ -3133,6 +3133,7 @@ async function renderEmployeesView() {
 
     state.employees = employees || [];
     const pendingPcrList = pendingPcr || [];
+    const isAdmin = state.profile && state.profile.role === "ROLE_ADMIN";
 
     container.innerHTML = `
       <!-- Admin Pending Profile Change Requests Card -->
@@ -3185,6 +3186,17 @@ async function renderEmployeesView() {
               </select>
             </div>
 
+            ${isAdmin ? `
+              <div class="emp-sync-actions" style="display:flex; gap:6px;">
+                <button class="btn btn-secondary btn-sm" id="syncCsvBtn" title="Sync database with master employee.csv">
+                  <span>🔄 Sync CSV</span>
+                </button>
+                <button class="btn btn-secondary btn-sm" id="exportMasterCsvBtn" title="Export canonical employee.csv from database">
+                  <span>📥 Export CSV</span>
+                </button>
+              </div>
+            ` : ''}
+
             <button class="btn btn-primary btn-sm emp-add-btn" id="openAddEmployeeModalBtn">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               <span>Add Employee</span>
@@ -3215,6 +3227,24 @@ async function renderEmployeesView() {
     });
 
     document.getElementById("openAddEmployeeModalBtn").addEventListener("click", () => openEmployeeModal(null));
+
+    if (document.getElementById("syncCsvBtn")) {
+      document.getElementById("syncCsvBtn").addEventListener("click", async () => {
+        try {
+          const res = await apiRequest("/api/admin/employees/sync/import?applyServerFile=true", { method: "POST" });
+          toast(`✓ Master Data Synced: ${res.recordsInserted} inserted, ${res.recordsUpdated} updated, ${res.recordsPreserved} preserved`, "success");
+          await renderEmployeesView();
+        } catch (e) {
+          toast(`Sync failed: ${e.message}`, "error");
+        }
+      });
+    }
+
+    if (document.getElementById("exportMasterCsvBtn")) {
+      document.getElementById("exportMasterCsvBtn").addEventListener("click", () => {
+        window.location.href = "/api/admin/employees/sync/export";
+      });
+    }
     bindEmployeeRowActions();
 
   } catch (err) {

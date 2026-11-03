@@ -51,6 +51,13 @@ public class EmployeeService {
 	@Autowired(required = false)
 	private RosterAssignmentRepository assignmentRepository;
 
+	@Autowired(required = false)
+	private EmployeeMasterSyncService employeeMasterSyncService;
+
+	public void setEmployeeMasterSyncService(EmployeeMasterSyncService employeeMasterSyncService) {
+		this.employeeMasterSyncService = employeeMasterSyncService;
+	}
+
 	public EmployeeService(EmployeeRepository employeeRepository, UserRepository userRepository,
 			PasswordEncoder passwordEncoder) {
 		this(employeeRepository, userRepository, passwordEncoder, null, null);
@@ -218,6 +225,9 @@ public class EmployeeService {
 		if (devCredentialMirrorService != null) {
 			devCredentialMirrorService.updateProfile(saved, request.password() == null ? "password123" : request.password());
 		}
+		if (employeeMasterSyncService != null) {
+			employeeMasterSyncService.exportCanonicalCsv();
+		}
 		return toResponse(saved);
 	}
 
@@ -236,6 +246,9 @@ public class EmployeeService {
 		Employee saved = employeeRepository.save(employee);
 		if (devCredentialMirrorService != null) {
 			devCredentialMirrorService.updateProfile(saved, request.password());
+		}
+		if (employeeMasterSyncService != null) {
+			employeeMasterSyncService.exportCanonicalCsv();
 		}
 		return toResponse(saved);
 	}
@@ -284,6 +297,9 @@ public class EmployeeService {
 		if (devCredentialMirrorService != null) {
 			devCredentialMirrorService.updateProfile(saved, null);
 		}
+		if (employeeMasterSyncService != null) {
+			employeeMasterSyncService.exportCanonicalCsv();
+		}
 		return toResponse(saved);
 	}
 
@@ -302,6 +318,9 @@ public class EmployeeService {
 		if (emp.getUser() != null) {
 			emp.getUser().setEnabled(false);
 		}
+		if (employeeMasterSyncService != null) {
+			employeeMasterSyncService.exportCanonicalCsv();
+		}
 	}
 
 	@Transactional
@@ -313,6 +332,9 @@ public class EmployeeService {
 
 		if (emp.getUser() != null) {
 			emp.getUser().setEnabled(emp.isActive());
+		}
+		if (employeeMasterSyncService != null) {
+			employeeMasterSyncService.exportCanonicalCsv();
 		}
 	}
 

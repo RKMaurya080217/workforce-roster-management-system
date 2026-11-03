@@ -161,12 +161,12 @@ public class DevCredentialMirrorService {
                cleanQuery.equals("emp" + cleanCode);
     }
 
-    private List<File> resolveCsvFiles() {
+        private List<File> resolveCsvFiles() {
         List<File> files = new ArrayList<>();
-        File srcFile = new File("src/main/resources/employees.csv");
-        if (srcFile.exists()) files.add(srcFile);
-        File targetFile = new File("target/classes/employees.csv");
-        if (targetFile.exists()) files.add(targetFile);
+        File devFile = new File(".local/employee_credentials_dev.csv");
+        if (devFile.exists()) {
+            files.add(devFile);
+        }
         return files;
     }
 

@@ -6,7 +6,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -30,11 +32,16 @@ public class CsvEmployeeLoader {
 
             String line;
             boolean header = true;
+            Map<String, Integer> colIndex = new HashMap<>();
 
             while ((line = reader.readLine()) != null) {
 
                 if (header) {
                     header = false;
+                    String[] hCols = line.split(",", -1);
+                    for (int i = 0; i < hCols.length; i++) {
+                        colIndex.put(hCols[i].trim().toLowerCase(), i);
+                    }
                     continue;
                 }
 
@@ -50,13 +57,21 @@ public class CsvEmployeeLoader {
 
                 SeedEmployee employee = new SeedEmployee();
 
-                employee.setEmployeeCode(cols[0].trim());
-                employee.setFirstName(cols[1].trim());
-                employee.setLastName(cols[2].trim());
-                employee.setEmail(cols[3].trim());
-                employee.setGender(Gender.valueOf(cols[4].trim().toUpperCase()));
-                if (cols.length > 5 && !cols[5].trim().isEmpty()) {
-                    employee.setContactNumber(cols[5].trim());
+                int codeIdx = colIndex.getOrDefault("employeecode", 0);
+                int firstIdx = colIndex.getOrDefault("firstname", 1);
+                int lastIdx = colIndex.getOrDefault("lastname", 2);
+                int emailIdx = colIndex.getOrDefault("email", 3);
+                int genderIdx = colIndex.getOrDefault("gender", 4);
+                int contactIdx = colIndex.getOrDefault("contactnumber", colIndex.containsKey("active") ? 6 : 5);
+
+                employee.setEmployeeCode(cols[codeIdx].trim());
+                employee.setFirstName(cols[firstIdx].trim());
+                employee.setLastName(cols[lastIdx].trim());
+                employee.setEmail(cols[emailIdx].trim());
+                employee.setGender(Gender.valueOf(cols[genderIdx].trim().toUpperCase()));
+
+                if (contactIdx < cols.length && !cols[contactIdx].trim().isEmpty()) {
+                    employee.setContactNumber(cols[contactIdx].trim());
                 }
 
                 employees.add(employee);		

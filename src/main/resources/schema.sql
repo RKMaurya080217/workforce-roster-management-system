@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS employees (
     email VARCHAR(160) NOT NULL UNIQUE,
     gender VARCHAR(20) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    contact_number VARCHAR(30),
+    joining_date DATE,
+    resignation_date DATE,
+    department VARCHAR(80) DEFAULT 'OPERATIONS',
+    development_team BOOLEAN DEFAULT FALSE,
+    max_nights_per_week INT,
+    paired_employee_id BIGINT,
     user_id BIGINT UNIQUE,
     CONSTRAINT fk_employees_users FOREIGN KEY (user_id) REFERENCES users(id)
 );
