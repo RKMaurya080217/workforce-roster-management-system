@@ -1,0 +1,9 @@
+employeeCode,firstName,lastName,email,gender,active,contactNumber,joiningDate,resignationDate,department,developmentTeam,maxNightsPerWeek,pairedEmployeeCode
+EMP001,Rajat,Maurya,rkmaurya080217@gmail.com,MALE,true,8565005534,2026-07-22,,OPERATIONS,false,1,EMP002
+EMP002,Prachi,Mishra,prachimishra0707@gmail.com,FEMALE,true,9876543299,,,OPERATIONS,false,,EMP001
+EMP003,Shriram,IYER,sriramiyer18@gmail.com,MALE,true,,,,OPERATIONS,false,2,
+EMP004,Sapna,Pandey,sapna@cris.com,FEMALE,true,,,,DEVELOPMENT,true,,
+EMP005,Tushar,Chandila,tushar@cris.com,MALE,false,,,,OPERATIONS,false,2,
+EMP006,Divyansh,,divyansh@cris.com,MALE,true,,,,DEVELOPMENT,true,,
+EMP007,Sambhav,Jain,sambhav@cris.com,MALE,true,,,,OPERATIONS,false,1,
+EMP008,Jeevan,Singh,jeevansing@cris.com,MALE,true,,,,OPERATIONS,false,3,
