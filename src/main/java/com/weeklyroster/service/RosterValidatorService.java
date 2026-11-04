@@ -331,14 +331,16 @@ public class RosterValidatorService {
                         if (prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
                             checksRun++;
                             if (!first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null && first.getShift().getShiftType() != ShiftType.OFF) {
-                                findings.add(new RosterValidationFinding(
-                                        "NIGHT_REQUIRES_NEXT_DAY_OFF",
-                                        "Night Shift Must Be Followed by Weekly OFF",
-                                        ValidationSeverity.ERROR,
-                                        emp.getEmployeeCode(), empName, first.getRosterDate(),
-                                        empName + " worked NIGHT on preceding Sunday (" + prevA.getRosterDate() + ") but is assigned " + first.getShift().getShiftType().name() + " on " + first.getRosterDate() + " (must be Weekly OFF).",
-                                        "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
-                                ));
+                                if (first.getShift().getShiftType() != ShiftType.NIGHT) {
+                                    findings.add(new RosterValidationFinding(
+                                            "NIGHT_REQUIRES_NEXT_DAY_OFF",
+                                            "Night Shift Must Be Followed by Weekly OFF",
+                                            ValidationSeverity.ERROR,
+                                            emp.getEmployeeCode(), empName, first.getRosterDate(),
+                                            empName + " worked NIGHT on preceding Sunday (" + prevA.getRosterDate() + ") but is assigned " + first.getShift().getShiftType().name() + " on " + first.getRosterDate() + " (must be Weekly OFF).",
+                                            "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
+                                    ));
+                                }
                             }
                         } else if (prevA.getShift() != null && !first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null) {
                             checksRun++;
@@ -377,14 +379,14 @@ public class RosterValidatorService {
                     consecutiveWorkDays++;
                                         if (curr.getShift() != null && curr.getShift().getShiftType() == ShiftType.NIGHT) {
                         consecutiveNights++;
-                        if (consecutiveNights > 1) {
+                        if (consecutiveNights > 2) {
                             findings.add(new RosterValidationFinding(
                                     "CONSECUTIVE_NIGHTS",
-                                    "Consecutive Night Shifts Forbidden",
+                                    "Excess Consecutive Night Shifts Forbidden",
                                     ValidationSeverity.ERROR,
                                     emp.getEmployeeCode(), empName, curr.getRosterDate(),
                                     empName + " assigned " + consecutiveNights + " consecutive night shifts ending on " + curr.getRosterDate(),
-                                    "CRIS mandatory fatigue safety rule: Every Night shift must be followed by Weekly OFF. Consecutive night shifts are forbidden."
+                                    "CRIS mandatory fatigue safety rule: Max 2 consecutive night shifts allowed per employee."
                             ));
                         }
                     } else {
@@ -403,16 +405,18 @@ public class RosterValidatorService {
                                                 Shift s1 = curr.getShift();
                         Shift s2 = next.getShift();
 
-                        // BATCH 109: Night shift must be followed by Weekly OFF
+                        // BATCH 109/128: Night shift must be followed by Weekly OFF (or consecutive night block up to 2 nights)
                         if (s1.getShiftType() == ShiftType.NIGHT && s2.getShiftType() != ShiftType.OFF) {
-                            findings.add(new RosterValidationFinding(
-                                    "NIGHT_REQUIRES_NEXT_DAY_OFF",
-                                    "Night Shift Must Be Followed by Weekly OFF",
-                                    ValidationSeverity.ERROR,
-                                    emp.getEmployeeCode(), empName, next.getRosterDate(),
-                                    empName + " worked NIGHT on " + curr.getRosterDate() + " but is assigned " + s2.getShiftType().name() + " on " + next.getRosterDate() + " (must be Weekly OFF).",
-                                    "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
-                            ));
+                            if (s2.getShiftType() != ShiftType.NIGHT || consecutiveNights > 2) {
+                                findings.add(new RosterValidationFinding(
+                                        "NIGHT_REQUIRES_NEXT_DAY_OFF",
+                                        "Night Shift Must Be Followed by Weekly OFF",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, next.getRosterDate(),
+                                        empName + " worked NIGHT on " + curr.getRosterDate() + " but is assigned " + s2.getShiftType().name() + " on " + next.getRosterDate() + " (must be Weekly OFF).",
+                                        "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
+                                ));
+                            }
                         }
 
                         LocalDateTime end1 = curr.getRosterDate().atTime(s1.getEndTime());

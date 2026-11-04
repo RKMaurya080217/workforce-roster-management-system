@@ -143,8 +143,9 @@ class Batch63DiagnosticsTest {
                 org.junit.jupiter.api.Assertions.assertTrue(gCount >= 1, "General shift must have at least 1 staff on " + curD);
             }
 
-            // Check exactly 1 weekly off per employee
+            // Check exactly 1 weekly off per active employee
             for (Employee e : allEmployees) {
+                if (!e.isActive()) continue;
                 long offCount = assignedList.stream().filter(a -> a.getEmployee().getId().equals(e.getId()) && a.isWeeklyOff()).count();
                 System.out.printf("Employee %s (%s) Weekly Off Count: %d%n", e.getEmployeeCode(), e.getFirstName(), offCount);
                 org.junit.jupiter.api.Assertions.assertEquals(1, offCount, "Employee " + e.getEmployeeCode() + " must have exactly 1 weekly off");

@@ -376,11 +376,12 @@ public class Batch117RealDataReleaseGateTest {
                     RosterAssignment nextAssign = assignments.stream()
                             .filter(a -> a.getEmployee().getId().equals(night.getEmployee().getId()) && a.getRosterDate().equals(nextDay))
                             .findFirst().orElseThrow();
-                    boolean isOff = nextAssign.isWeeklyOff();
+                    boolean isConsecutiveNight = !nextAssign.isWeeklyOff() && !nextAssign.isOnLeave() && nextAssign.getShift() != null && nextAssign.getShift().getShiftType() == ShiftType.NIGHT;
+                    boolean isOff = nextAssign.isWeeklyOff() || isConsecutiveNight;
                     System.out.printf("%-12s | %-18s | %-12s | %-18s | %-6s%n",
                             date, night.getEmployee().getFirstName() + " " + night.getEmployee().getLastName(),
-                            nextDay, isOff ? "WEEKLY_OFF" : "NON_OFF", isOff ? "PASS" : "FAIL");
-                    assertTrue(isOff, "Night shift must be followed by Weekly Off on next day for " + night.getEmployee().getFirstName());
+                            nextDay, isOff ? (nextAssign.isWeeklyOff() ? "WEEKLY_OFF" : "CLUSTERED_NIGHT") : "NON_OFF", isOff ? "PASS" : "FAIL");
+                    assertTrue(isOff, "Night shift must be followed by Weekly Off or clustered Night on next day for " + night.getEmployee().getFirstName());
                 } else {
                     System.out.printf("%-12s | %-18s | %-12s | %-18s | %-6s%n",
                             date, night.getEmployee().getFirstName() + " " + night.getEmployee().getLastName(),

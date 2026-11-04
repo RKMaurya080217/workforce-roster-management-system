@@ -81,6 +81,22 @@ public class Batch89SmartRosterValidationTest {
         List<Employee> allEmployees = employeeRepository.findByActiveTrueOrderByIdAsc();
         assertTrue(allEmployees.size() >= 4, "Need at least 4 employees for roster generation");
 
+        // Ensure sufficient male workforce (at least 4 non-preference males for 7-night coverage at max 2 nights/male)
+        if (allEmployees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive() && !e.isDevelopmentTeam()).count() < 6) {
+            Employee extraMale = new Employee();
+            extraMale.setEmployeeCode("EMP099");
+            extraMale.setFirstName("Extra");
+            extraMale.setLastName("Male");
+            extraMale.setEmail("extra.male@test.com");
+            extraMale.setGender(Gender.MALE);
+            extraMale.setActive(true);
+            extraMale.setDepartment("OPERATIONS");
+            extraMale.setDevelopmentTeam(false);
+            extraMale.setMaxNightsPerWeek(2);
+            employeeRepository.save(extraMale);
+            allEmployees = employeeRepository.findByActiveTrueOrderByIdAsc();
+        }
+
         // Identify or configure two male employees
         List<Employee> males = allEmployees.stream().filter(e -> e.getGender() == Gender.MALE).toList();
         assertTrue(males.size() >= 2, "Need at least 2 male employees");

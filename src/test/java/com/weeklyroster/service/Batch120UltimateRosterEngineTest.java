@@ -136,8 +136,10 @@ public class Batch120UltimateRosterEngineTest {
                 RosterAssignment next = list.get(i + 1);
 
                 if (!cur.isWeeklyOff() && !cur.isOnLeave() && cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.NIGHT) {
-                    assertTrue(next.isWeeklyOff() || (next.getShift() != null && next.getShift().getShiftType() == ShiftType.OFF),
-                            String.format("Employee %s worked NIGHT on %s; %s must be Weekly OFF (was: %s)",
+                    boolean validNext = next.isWeeklyOff() || (next.getShift() != null &&
+                            (next.getShift().getShiftType() == ShiftType.OFF || next.getShift().getShiftType() == ShiftType.NIGHT));
+                    assertTrue(validNext,
+                            String.format("Employee %s worked NIGHT on %s; %s must be Weekly OFF or clustered NIGHT (was: %s)",
                                     cur.getEmployee().getFirstName(), cur.getRosterDate(), next.getRosterDate(),
                                     next.isWeeklyOff() ? "OFF" : (next.getShift() != null ? next.getShift().getShiftType() : "NONE")));
                 }

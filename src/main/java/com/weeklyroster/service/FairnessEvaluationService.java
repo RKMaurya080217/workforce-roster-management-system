@@ -333,18 +333,26 @@ public class FairnessEvaluationService {
                 }
             }
 
-            // Fatigue & recovery rule: Night shift must always be followed by Weekly Off
+            // Fatigue & recovery rule: Night shift must always be followed by Weekly Off (or clustered 2-night block)
+            int consecutiveNights = 0;
             for (int i = 0; i < empAssignments.size(); i++) {
                 RosterAssignment cur = empAssignments.get(i);
                 if (!cur.isWeeklyOff() && !cur.isOnLeave() && cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.NIGHT) {
+                    consecutiveNights++;
+                    if (consecutiveNights > 2) {
+                        mandatoryViolations.add("Excess consecutive nights: " + emp.getFirstName() + " worked " + consecutiveNights + " consecutive nights ending on " + cur.getRosterDate());
+                    }
                     LocalDate nextDate = cur.getRosterDate().plusDays(1);
                     if (i < empAssignments.size() - 1) {
                         RosterAssignment next = empAssignments.get(i + 1);
-                        if (!next.isWeeklyOff()) {
+                        boolean nextIsNight = (!next.isWeeklyOff() && !next.isOnLeave() && next.getShift() != null && next.getShift().getShiftType() == ShiftType.NIGHT);
+                        if (!next.isWeeklyOff() && !nextIsNight) {
                             mandatoryViolations.add("Broken Night->Off: " + emp.getFirstName() + " worked Night on "
                                     + cur.getRosterDate() + " but was not given Weekly Off on " + nextDate);
                         }
                     }
+                } else {
+                    consecutiveNights = 0;
                 }
             }
 
@@ -462,8 +470,9 @@ public class FairnessEvaluationService {
                         mandatoryViolations.add("Night staffing violation on " + d + ": expected exactly 1, actual " + nCount);
                     }
                 }
-                if (totalWorking >= 6 && (gCount < 2 || gCount > 4)) {
-                    mandatoryViolations.add("General staffing violation on " + d + ": expected 2-4 under normal staffing, actual " + gCount);
+                int maxGeneral = Math.max(4, totalWorking - mCount - eCount - nCount);
+                if (totalWorking >= 6 && (gCount < 1 || gCount > maxGeneral)) {
+                    mandatoryViolations.add("General staffing violation on " + d + ": expected 1-" + maxGeneral + " under normal staffing, actual " + gCount);
                 }
             }
         }

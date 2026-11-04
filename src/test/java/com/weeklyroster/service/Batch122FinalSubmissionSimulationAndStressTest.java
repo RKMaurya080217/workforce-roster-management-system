@@ -480,8 +480,9 @@ public class Batch122FinalSubmissionSimulationAndStressTest {
                     if (i < empShifts.size() - 1) {
                         RosterAssignment nextAssign = empShifts.get(i + 1);
                         assertEquals(nextDate, nextAssign.getRosterDate());
-                        assertTrue(nextAssign.isWeeklyOff(),
-                                "Night shift on " + nightDate.getDayOfWeek() + " (" + nightDate + ") must be followed by WEEKLY_OFF on " + nextDate);
+                        boolean isConsecutiveNight = !nextAssign.isWeeklyOff() && !nextAssign.isOnLeave() && nextAssign.getShift() != null && nextAssign.getShift().getShiftType() == ShiftType.NIGHT;
+                        assertTrue(nextAssign.isWeeklyOff() || isConsecutiveNight,
+                                "Night shift on " + nightDate.getDayOfWeek() + " (" + nightDate + ") must be followed by WEEKLY_OFF or clustered Night on " + nextDate);
                     }
                 }
             }

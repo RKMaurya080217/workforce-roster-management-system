@@ -342,23 +342,7 @@ public class WorkDayReportService {
                 boolean isHoliday = holidayMap.containsKey(currentDate);
                 Holiday h = isHoliday ? holidayMap.get(currentDate) : null;
 
-                // Priority 1: Check if employee worked on this date (including working on a holiday)
-                if (assignment != null && !assignment.isWeeklyOff() && !assignment.isOnLeave()
-                        && assignment.getShift() != null && assignment.getShift().getShiftType() != ShiftType.OFF) {
-                    ShiftType st = assignment.getShift().getShiftType();
-                    empWorked++;
-                    if (st == ShiftType.MORNING) morningCount++;
-                    else if (st == ShiftType.GENERAL) generalCount++;
-                    else if (st == ShiftType.EVENING) eveningCount++;
-                    else if (st == ShiftType.NIGHT) nightCount++;
-                    String reason = isHoliday ? "Worked on Holiday: " + h.getName() : (assignment.getAssignmentReason() != null ? assignment.getAssignmentReason() : "Assigned Working Shift");
-                    dailyRecords.add(new EmployeeDailyRecord(
-                            currentDate, dow, "WORKED", st.name(), st, reason
-                    ));
-                    continue;
-                }
-
-                // Priority 2: Official Holiday (and employee did not work)
+                // Priority 1: Official Holiday
                 if (isHoliday) {
                     empHolidays++;
                     dailyRecords.add(new EmployeeDailyRecord(

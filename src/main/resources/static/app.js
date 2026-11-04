@@ -3425,6 +3425,7 @@ function renderEmployeeTableHTML(list) {
           <th>Email</th>
           <th>Mobile</th>
           <th>Shift Preference</th>
+          <th>Joining Date</th>
           <th>Status</th>
           <th style="text-align:right; min-width: 170px;">Actions</th>
         </tr>
@@ -3455,6 +3456,9 @@ function renderEmployeeTableHTML(list) {
               ` : `
                 <span style="font-size:0.78rem; color:var(--text-subtle);">Not Set</span>
               `}
+            </td>
+            <td>
+              <span style="font-size:0.83rem; color:var(--text-muted);">${emp.joiningDate ? escapeHTML(formatDate(emp.joiningDate)) : '<span style="color:var(--text-subtle);">—</span>'}</span>
             </td>
             <td>
               <span class="status-pill ${emp.active ? 'active' : 'inactive'}">
@@ -7322,6 +7326,34 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
               </div>
             </div>
 
+            <!-- Joining Date (HR Master Record) -->
+            <div class="profile-field-item">
+              <div class="profile-field-meta">
+                <span class="profile-field-label">Joining Date</span>
+                <strong class="profile-field-val">
+                  ${(employee && employee.joiningDate) ? escapeHTML(formatDate(employee.joiningDate)) : (profile && profile.joiningDate ? escapeHTML(formatDate(profile.joiningDate)) : '<span style="color:var(--text-muted); font-size:0.85rem;">Not Set</span>')}
+                </strong>
+              </div>
+              <div class="profile-field-action">
+                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">HR Record</span>
+              </div>
+            </div>
+
+            <!-- Resignation / End Date (HR Separation Record) -->
+            ${(employee && employee.resignationDate) || (profile && profile.resignationDate) ? `
+              <div class="profile-field-item">
+                <div class="profile-field-meta">
+                  <span class="profile-field-label">Resignation / End Date</span>
+                  <strong class="profile-field-val" style="color:var(--danger, #ef4444);">
+                    ${escapeHTML(formatDate((employee && employee.resignationDate) || (profile && profile.resignationDate)))}
+                  </strong>
+                </div>
+                <div class="profile-field-action">
+                  <span style="font-size:0.72rem; color:var(--danger); font-weight:600;">Separation Record</span>
+                </div>
+              </div>
+            ` : ''}
+
           </div>
         </div>
 
@@ -9575,6 +9607,10 @@ async function openEmployeeModal(emp) {
     document.getElementById("empFormEmail").value = emp.email;
     const contactInput = document.getElementById("empFormContactNumber");
     if (contactInput) contactInput.value = emp.contactNumber || "";
+    const joiningInput = document.getElementById("empFormJoiningDate");
+    if (joiningInput) joiningInput.value = emp.joiningDate || "";
+    const resInput = document.getElementById("empFormResignationDate");
+    if (resInput) resInput.value = emp.resignationDate || "";
     const prefSelect = document.getElementById("empFormShiftPreference");
     if (prefSelect) {
       prefSelect.value = (emp.shiftPreference) ? emp.shiftPreference.toUpperCase() : "";
@@ -9585,6 +9621,10 @@ async function openEmployeeModal(emp) {
     document.getElementById("empFormId").value = "";
     const contactInput = document.getElementById("empFormContactNumber");
     if (contactInput) contactInput.value = "";
+    const joiningInput = document.getElementById("empFormJoiningDate");
+    if (joiningInput) joiningInput.value = "";
+    const resInput = document.getElementById("empFormResignationDate");
+    if (resInput) resInput.value = "";
     const prefSelect = document.getElementById("empFormShiftPreference");
     if (prefSelect) {
       prefSelect.value = "";
@@ -9624,6 +9664,8 @@ async function handleSaveEmployee(e) {
   const lastName = document.getElementById("empFormLastName").value.trim();
   const email = document.getElementById("empFormEmail").value.trim();
   const contactNumber = document.getElementById("empFormContactNumber") ? document.getElementById("empFormContactNumber").value.trim() : "";
+  const joiningDate = document.getElementById("empFormJoiningDate") ? document.getElementById("empFormJoiningDate").value : "";
+  const resignationDate = document.getElementById("empFormResignationDate") ? document.getElementById("empFormResignationDate").value : "";
   const username = document.getElementById("empFormUsername").value.trim();
   const password = document.getElementById("empFormPassword").value;
   const prefSelect = document.getElementById("empFormShiftPreference");
@@ -9633,6 +9675,12 @@ async function handleSaveEmployee(e) {
   const payload = { employeeCode, gender, firstName, lastName, email };
   if (contactNumber) {
     payload.contactNumber = contactNumber;
+  }
+  if (joiningDate) {
+    payload.joiningDate = joiningDate;
+  }
+  if (resignationDate) {
+    payload.resignationDate = resignationDate;
   }
   if (!id) {
     if (username) payload.username = username;

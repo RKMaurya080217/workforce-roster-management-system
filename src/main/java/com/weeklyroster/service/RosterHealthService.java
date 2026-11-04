@@ -14,6 +14,7 @@ import com.weeklyroster.entity.Shift;
 import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.EmployeePreferenceRepository;
+import com.weeklyroster.repository.HolidayRepository;
 import com.weeklyroster.repository.LeaveRequestRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
@@ -33,22 +34,32 @@ public class RosterHealthService {
     private final RosterAssignmentRepository assignmentRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final EmployeePreferenceRepository preferenceRepository;
+    private final HolidayRepository holidayRepository;
 
     @Autowired
     public RosterHealthService(RosterCycleRepository cycleRepository,
                                RosterAssignmentRepository assignmentRepository,
                                LeaveRequestRepository leaveRequestRepository,
-                               @Autowired(required = false) EmployeePreferenceRepository preferenceRepository) {
+                               @Autowired(required = false) EmployeePreferenceRepository preferenceRepository,
+                               @Autowired(required = false) HolidayRepository holidayRepository) {
         this.cycleRepository = cycleRepository;
         this.assignmentRepository = assignmentRepository;
         this.leaveRequestRepository = leaveRequestRepository;
         this.preferenceRepository = preferenceRepository;
+        this.holidayRepository = holidayRepository;
+    }
+
+    public RosterHealthService(RosterCycleRepository cycleRepository,
+                               RosterAssignmentRepository assignmentRepository,
+                               LeaveRequestRepository leaveRequestRepository,
+                               EmployeePreferenceRepository preferenceRepository) {
+        this(cycleRepository, assignmentRepository, leaveRequestRepository, preferenceRepository, null);
     }
 
     public RosterHealthService(RosterCycleRepository cycleRepository,
                                RosterAssignmentRepository assignmentRepository,
                                LeaveRequestRepository leaveRequestRepository) {
-        this(cycleRepository, assignmentRepository, leaveRequestRepository, null);
+        this(cycleRepository, assignmentRepository, leaveRequestRepository, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -87,6 +98,18 @@ public class RosterHealthService {
         Map<LocalDate, Map<ShiftType, List<RosterAssignment>>> dateShiftMap = new TreeMap<>();
         Map<Long, List<RosterAssignment>> empMap = new LinkedHashMap<>();
         Map<String, Integer> duplicateCheckMap = new HashMap<>();
+
+        Set<LocalDate> holidayDates = new HashSet<>();
+        if (holidayRepository != null && cycle != null && cycle.getStartDate() != null && cycle.getEndDate() != null) {
+            try {
+                holidayDates = holidayRepository.findByHolidayDateBetweenOrderByHolidayDateAsc(cycle.getStartDate(), cycle.getEndDate())
+                        .stream()
+                        .filter(com.weeklyroster.entity.Holiday::isActive)
+                        .map(com.weeklyroster.entity.Holiday::getHolidayDate)
+                        .collect(Collectors.toSet());
+            } catch (Exception ignored) {
+            }
+        }
 
         for (RosterAssignment a : assignments) {
             LocalDate d = a.getRosterDate();
@@ -271,6 +294,7 @@ public class RosterHealthService {
             int weekendCount = 0;
             int weeklyOffCount = 0;
             int leaveCount = 0;
+            int holidayCount = 0;
             List<LocalDate> offDates = new ArrayList<>();
 
             for (int i = 0; i < empAssignments.size(); i++) {
@@ -278,10 +302,14 @@ public class RosterHealthService {
                 LocalDate d = cur.getRosterDate();
                 boolean isWeekend = (d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY);
                 boolean isLeave = cur.isOnLeave();
-                boolean isWeeklyOff = !isLeave && (cur.isWeeklyOff() || (cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.OFF));
+                boolean isHoliday = !isLeave && ("Official Holiday".equalsIgnoreCase(cur.getAssignmentReason())
+                        || (holidayDates.contains(d) && (cur.isWeeklyOff() || cur.getShift() == null || cur.getShift().getShiftType() == ShiftType.OFF)));
+                boolean isWeeklyOff = !isLeave && !isHoliday && (cur.isWeeklyOff() || (cur.getShift() != null && cur.getShift().getShiftType() == ShiftType.OFF));
 
                 if (isLeave) {
                     leaveCount++;
+                } else if (isHoliday) {
+                    holidayCount++;
                 } else if (isWeeklyOff) {
                     weeklyOffCount++;
                     offDates.add(d);
@@ -318,8 +346,8 @@ public class RosterHealthService {
                             totalTransitionsChecked++;
                             ShiftType nextType = next.getShift().getShiftType();
 
-                                                        // BATCH 109: Night shift strict rule: Every Night duty must be followed by Weekly OFF
-                            if (curType == ShiftType.NIGHT) {
+                                                        // BATCH 109/128: Night shift strict rule: Every Night duty block must be followed by Weekly OFF
+                            if (curType == ShiftType.NIGHT && nextType != ShiftType.NIGHT) {
                                 restOk = false;
                                 nightLimitOk = false;
                                 conflicts.add(new ConflictItem(
@@ -329,6 +357,8 @@ public class RosterHealthService {
                                                 + " but is assigned " + nextType.name() + " on the following calendar day (" + next.getRosterDate() + "). Must receive WEEKLY OFF.",
                                         "CRITICAL", "Schedule Weekly OFF after Night duty", false
                                 ));
+                            } else if (curType == ShiftType.NIGHT && nextType == ShiftType.NIGHT) {
+                                validRestTransitionsCount++;
                             }
                             // Evening (ends 22:00) -> Morning (07:00) = 9h rest
                             else if (curType == ShiftType.EVENING && nextType == ShiftType.MORNING) {
@@ -365,11 +395,13 @@ public class RosterHealthService {
 
             // BATCH 92: Authoritative Weekly OFF check: expectedWeeklyOffs = 7 - workingDays (5-day: 2 offs, 6-day: 1 off)
             int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
-            int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount));
+            int targetOffs = Math.min(expectedOffs, Math.max(0, 7 - leaveCount - holidayCount));
             long postNightOffCount = 0;
             for (int idx = 0; idx < empAssignments.size(); idx++) {
                 RosterAssignment curA = empAssignments.get(idx);
-                if (curA.isWeeklyOff() || (curA.getShift() != null && curA.getShift().getShiftType() == ShiftType.OFF)) {
+                boolean isCurHoliday = "Official Holiday".equalsIgnoreCase(curA.getAssignmentReason())
+                        || (holidayDates.contains(curA.getRosterDate()) && (curA.isWeeklyOff() || curA.getShift() == null || curA.getShift().getShiftType() == ShiftType.OFF));
+                if (!isCurHoliday && (curA.isWeeklyOff() || (curA.getShift() != null && curA.getShift().getShiftType() == ShiftType.OFF))) {
                     if (idx > 0) {
                         RosterAssignment prevA = empAssignments.get(idx - 1);
                         if (!prevA.isWeeklyOff() && !prevA.isOnLeave() && prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
@@ -384,8 +416,8 @@ public class RosterHealthService {
                 }
             }
             int allowableMaxOffs = (expectedOffs == 1) ? 1 : Math.max(targetOffs, (int) postNightOffCount);
-            boolean empOffCompliant = (weeklyOffCount >= targetOffs && weeklyOffCount <= allowableMaxOffs) || (leaveCount >= 7);
-            if (weeklyOffCount > allowableMaxOffs && leaveCount < 7) {
+            boolean empOffCompliant = (weeklyOffCount >= targetOffs && weeklyOffCount <= allowableMaxOffs) || (leaveCount + holidayCount >= 7);
+            if (weeklyOffCount > allowableMaxOffs && (leaveCount + holidayCount) < 7) {
                 weeklyOffOk = false;
                 String datesStr = offDates.stream().map(LocalDate::toString).collect(Collectors.joining(", "));
                 String expectedStr = "<= " + allowableMaxOffs + " Weekly OFF" + (allowableMaxOffs > 1 ? "s" : "");
@@ -395,7 +427,7 @@ public class RosterHealthService {
                         "Employee " + empName + " has " + weeklyOffCount + " weekly OFF assignments in cycle (allowable max " + allowableMaxOffs + "). OFF dates: " + datesStr,
                         "CRITICAL", "Reassign excess Weekly OFF days to working shifts", false
                 ));
-            } else if (weeklyOffCount < targetOffs && leaveCount < 7) {
+            } else if (weeklyOffCount < targetOffs && (leaveCount + holidayCount) < 7) {
                 weeklyOffOk = false;
                 String expectedStr = "Exactly " + targetOffs + " Weekly OFF" + (targetOffs > 1 ? "s" : "");
                 conflicts.add(new ConflictItem(
@@ -407,7 +439,7 @@ public class RosterHealthService {
             }
 
             // Workload status classification based on cycle working days
-            int expectedDutyDays = 7 - targetOffs - leaveCount;
+            int expectedDutyDays = Math.max(0, 7 - targetOffs - leaveCount - holidayCount);
             String workloadStatus = dutyDays == expectedDutyDays ? "Balanced" : (dutyDays > expectedDutyDays ? "Higher" : "Lower");
             workloadItems.add(new RosterHealthReport.WorkloadEmployeeItem(
                     empName, emp.getEmployeeCode(), dutyDays, dutyHours, nightCount, eveningCount, weekendCount, workloadStatus

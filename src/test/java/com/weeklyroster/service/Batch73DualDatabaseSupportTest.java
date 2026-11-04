@@ -139,6 +139,8 @@ public class Batch73DualDatabaseSupportTest {
 
         // 1. Local environment (no remote host)
         MockEnvironment localEnv = new MockEnvironment();
+        localEnv.setProperty("spring.profiles.active", "");
+        localEnv.setProperty("SPRING_PROFILES_ACTIVE", "");
         processor.postProcessEnvironment(localEnv, null);
         assertEquals("local", localEnv.getActiveProfiles()[0], "Local environment must activate 'local' profile");
         assertEquals("jdbc:sqlite:data/wrms.db", localEnv.getProperty("spring.datasource.url"));

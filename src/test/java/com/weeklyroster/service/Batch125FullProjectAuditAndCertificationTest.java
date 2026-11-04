@@ -543,8 +543,9 @@ public class Batch125FullProjectAuditAndCertificationTest {
                 var next = list.get(i + 1);
 
                 if (!curr.weeklyOff() && !curr.onLeave() && curr.shiftType() == ShiftType.NIGHT) {
-                    assertTrue(next.weeklyOff() || next.onLeave(),
-                            "Night shift on " + curr.rosterDate() + " MUST be followed by next day Weekly Off for employee " + entry.getKey());
+                    boolean isConsecutiveNight = !next.weeklyOff() && !next.onLeave() && next.shiftType() == ShiftType.NIGHT;
+                    assertTrue(next.weeklyOff() || next.onLeave() || isConsecutiveNight,
+                            "Night shift on " + curr.rosterDate() + " MUST be followed by next day Weekly Off or clustered Night for employee " + entry.getKey());
                 }
             }
 

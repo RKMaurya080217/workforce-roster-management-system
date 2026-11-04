@@ -204,7 +204,7 @@ public class Batch92WeeklyOffValidationIntegrationTest {
 
         boolean hasExcessConflict = health.conflicts().stream()
                 .anyMatch(c -> "EXCESS_WEEKLY_OFF".equals(c.ruleName())
-                        && c.employeeId().equals(emp.getId())
+                        && Objects.equals(c.employeeId(), emp.getId())
                         && c.reason().contains("3 weekly OFF assignments in cycle"));
 
         assertTrue(hasExcessConflict, "3 weekly offs in 5-day mode must be flagged as EXCESS_WEEKLY_OFF");
@@ -287,7 +287,7 @@ public class Batch92WeeklyOffValidationIntegrationTest {
 
         RosterHealthReport health = rosterHealthService.evaluateHealth(cycle, assignments);
         boolean hasFalseOffConflict = health.conflicts().stream()
-                .anyMatch(c -> c.employeeId().equals(empWithLeave.getId())
+                .anyMatch(c -> Objects.equals(c.employeeId(), empWithLeave.getId())
                         && ("DUPLICATE_WEEKLY_OFF".equals(c.ruleName()) || "EXCESS_WEEKLY_OFF".equals(c.ruleName())));
         assertFalse(hasFalseOffConflict, "1-day leave must NOT cause Weekly OFF conflict");
     }

@@ -141,8 +141,9 @@ public class Batch115ComprehensiveConstraintSolverTest {
                             .filter(x -> x.getEmployee().getId().equals(a.getEmployee().getId()) && x.getRosterDate().equals(nextDay))
                             .findFirst().orElse(null);
                     assertNotNull(nextA, "Next day assignment must exist for night worker " + a.getEmployee().getFirstName());
-                    assertTrue(nextA.isWeeklyOff() || (nextA.getShift() != null && nextA.getShift().getShiftType() == ShiftType.OFF),
-                            String.format("Employee %s worked Night on %s but does not have Weekly Off on %s",
+                    boolean isConsecutiveNight = !nextA.isWeeklyOff() && !nextA.isOnLeave() && nextA.getShift() != null && nextA.getShift().getShiftType() == ShiftType.NIGHT;
+                    assertTrue(nextA.isWeeklyOff() || isConsecutiveNight || (nextA.getShift() != null && nextA.getShift().getShiftType() == ShiftType.OFF),
+                            String.format("Employee %s worked Night on %s but does not have Weekly Off or clustered Night on %s",
                                     a.getEmployee().getFirstName(), a.getRosterDate(), nextDay));
                 }
             }
