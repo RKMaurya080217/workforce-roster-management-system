@@ -48,7 +48,9 @@ echo [INFO] Starting web application on http://localhost:8080 ...
 start /b cmd /c "timeout /t 6 /nobreak >nul & start http://localhost:8080"
 
 :: 5. Launch Application Jar
-if exist "%~dp0WRMS-Client-1.0.2.jar" (
+if exist "%~dp0WRMS-Client-1.0.3.jar" (
+    set "JAR_FILE=%~dp0WRMS-Client-1.0.3.jar"
+) else if exist "%~dp0WRMS-Client-1.0.2.jar" (
     set "JAR_FILE=%~dp0WRMS-Client-1.0.2.jar"
 ) else if exist "%~dp0WRMS-Client-1.0.1.jar" (
     set "JAR_FILE=%~dp0WRMS-Client-1.0.1.jar"

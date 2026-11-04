@@ -1,0 +1,78 @@
+================================================================================
+WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
+BATCH 128: INTELLIGENT ROSTER ENGINE + DATA SYNC + FRESH JAR
+================================================================================
+
+1. ARTIFACT INFORMATION
+--------------------------------------------------------------------------------
+Artifact Name           : WRMS-BATCH-128-FRESH.jar
+Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
+Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
+Build Timestamp         : 2026-11-04 07:10:32 IST
+File Size               : 74,519,711 bytes
+SHA-256 Checksum        : 8532C3E4C8CB9C11D0F70FF5E72AD1A079FC7283F33B60D828ABDC350127707C
+Original Previous Build : WRMS-Client-1.0.2.jar (SHA-256: DE91CE8D4DC0212C2CA38670ADF196BB7F574FB2645E65CF1FB94BB5F514FADD)
+Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
+
+2. COMPILER & RUNTIME ENVIRONMENT
+--------------------------------------------------------------------------------
+JDK Version             : Java 25.0.2 (Build release target: 17)
+Spring Boot Version     : 3.3.5
+Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
+Build Tool              : Apache Maven 3.x
+Native Libraries        : Bundled in JAR
+
+3. CORE ARCHITECTURAL INVARIANTS & UPGRADES
+--------------------------------------------------------------------------------
+[PASS] Weekly Off Exact Invariant:
+       Every active eligible employee receives EXACTLY 1 Weekly Off in a standard 7-day week.
+       Mathematical constraint: WeeklyOffCount(employee) == 1. Never 0, 2, or 3.
+[PASS] Global Weekly Off Count:
+       Total Weekly Off assignments across workforce strictly equals N (active eligible employees).
+[PASS] Clustered Consecutive Night Shifts:
+       Maximum 2 night shifts per week.
+       When 2 nights are scheduled, they form a contiguous block (Night -> Night -> Weekly Off).
+       Single nights: Night -> Weekly Off.
+       Scattered nights (Night -> Day -> Night) are strictly prohibited.
+[PASS] Single Recovery Off Day:
+       The recovery day following night shifts is the employee's ONE Weekly Off. No extra off added.
+[PASS] Leave & Holiday Independence:
+       Working shifts = 7 - WeeklyOff(1) - Leave - Holiday.
+       Approved leaves and official holidays are preserved and never counted as Weekly Off.
+[PASS] 100% Database-Driven Shift Capacities:
+       app.shift-capacity.* properties excised from application.properties.
+       Capacities are dynamically queried from the 'shifts' table managed by Admin.
+[PASS] Regeneration Diversity on Deleted Rosters:
+       Draft deletion stores rejected assignment fingerprints.
+       Regenerating for the same week evaluates distinct candidate structures.
+[PASS] Employee Profile & Workforce Directory Dates:
+       Joining Date and Resignation Date added to Employee Modal, Directory Table, and Profile UI.
+[PASS] Authoritative Data Sync Layer:
+       Bidirectional master synchronization between CSV, SQLite, and MySQL.
+
+4. AUTOMATED TEST SUITE PASS EVIDENCE
+--------------------------------------------------------------------------------
+- Batch128FinalRosterEngineRebuildTest          : 6 / 6   PASSED (100%)
+- Batch126EmployeeMasterDataSyncTest            : 20 / 20 PASSED (100%)
+- Batch125FullProjectAuditAndCertificationTest  : 25 / 25 PASSED (100%)
+- Batch120UltimateRosterEngineTest              : 20 / 20 PASSED (100%)
+- Batch119FairRosterOptimizationTest            : 16 / 16 PASSED (100%)
+- Batch113ComprehensiveRosterTest               : 18 / 18 PASSED (100%)
+- RosterWeeklyOffOptimizationTest               : 5 / 5   PASSED (100%)
+- Batch91, Batch92, Batch94, Batch72, Batch73   : 33 / 33 PASSED (100%)
+
+5. STANDALONE RUNTIME SMOKE TEST
+--------------------------------------------------------------------------------
+Command Line            : java -jar target/weekly-roster-management-system-1.0.0.jar --server.port=8089
+Tomcat Initialization   : Port 8089 (http)
+JPA Initialization      : Persistence unit 'default' initialized in 3525 ms
+Data Sync               : SQLite data/wrms.db synchronized with CSV
+HTTP UI Endpoint Check  : http://localhost:8089/index.html -> HTTP/1.1 200 OK (Content-Length: 126547)
+Spring Security Status  : http://localhost:8089/api/health -> HTTP/1.1 401 Unauthorized (Protected)
+Shutdown & Cleanup      : Port 8089 released cleanly
+
+6. DEPLOYMENT RESTRICTION
+--------------------------------------------------------------------------------
+Railway Deployment      : STRICTLY ZERO REMOTE DEPLOYMENTS PERFORMED (Policy Enforced)
+Local Release Ready     : YES
+================================================================================
