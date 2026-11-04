@@ -586,19 +586,30 @@ function bindGlobalEvents() {
   }
 
   // Role Selector Switch
+  let currentLoginRole = "ADMIN";
   function setLoginRole(selectedRole, shouldClearUsername = false) {
-    const isAdmin = selectedRole === "ADMIN";
+    const targetRole = (selectedRole || "ADMIN").toUpperCase();
+    const isAdmin = targetRole === "ADMIN";
+    const roleChanged = currentLoginRole !== targetRole;
+    currentLoginRole = targetRole;
+
     if (dom.roleAdmin) dom.roleAdmin.checked = isAdmin;
     if (dom.roleEmployee) dom.roleEmployee.checked = !isAdmin;
-    if (dom.roleCardAdmin) dom.roleCardAdmin.classList.toggle("selected", isAdmin);
-    if (dom.roleCardEmployee) dom.roleCardEmployee.classList.toggle("selected", !isAdmin);
+    if (dom.roleCardAdmin) {
+      dom.roleCardAdmin.classList.toggle("selected", isAdmin);
+      dom.roleCardAdmin.setAttribute("aria-checked", isAdmin ? "true" : "false");
+    }
+    if (dom.roleCardEmployee) {
+      dom.roleCardEmployee.classList.toggle("selected", !isAdmin);
+      dom.roleCardEmployee.setAttribute("aria-checked", !isAdmin ? "true" : "false");
+    }
 
     if (dom.loginUsernameLabel) {
-      dom.loginUsernameLabel.textContent = isAdmin ? "Admin Username" : "Employee Code";
+      dom.loginUsernameLabel.textContent = isAdmin ? "Admin Username" : "Employee Code / Email";
     }
     if (dom.loginUsername) {
-      dom.loginUsername.placeholder = isAdmin ? "Enter admin username" : "Enter employee code";
-      if (shouldClearUsername) {
+      dom.loginUsername.placeholder = isAdmin ? "Enter admin username" : "Enter employee code or email";
+      if (shouldClearUsername && roleChanged) {
         dom.loginUsername.value = "";
       }
     }
@@ -625,10 +636,14 @@ function bindGlobalEvents() {
     });
   }
   if (dom.roleCardAdmin) {
-    dom.roleCardAdmin.addEventListener("click", () => setLoginRole("ADMIN", false));
+    dom.roleCardAdmin.addEventListener("click", () => {
+      setLoginRole("ADMIN", false);
+    });
   }
   if (dom.roleCardEmployee) {
-    dom.roleCardEmployee.addEventListener("click", () => setLoginRole("EMPLOYEE", false));
+    dom.roleCardEmployee.addEventListener("click", () => {
+      setLoginRole("EMPLOYEE", false);
+    });
   }
 
   // Logout
@@ -9340,11 +9355,6 @@ async function renderEmployeePreferenceDetailView() {
             reasonInput.value = reason;
             ruleIdInput.value = ruleId;
             saveBtn.textContent = ruleId ? "Update Rule" : "Save Rule";
-
-            form.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            shiftSelect.focus();
-          });
-        });
 
             form.scrollIntoView({ behavior: "smooth", block: "nearest" });
             shiftSelect.focus();

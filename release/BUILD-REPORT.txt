@@ -1,17 +1,18 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 128: INTELLIGENT ROSTER ENGINE + DATA SYNC + FRESH JAR
+BATCH 129: EMERGENCY UI + AUTHENTICATION RESTORATION & DUAL-ROLE LOGIN
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-128-FRESH.jar
+Artifact Name           : WRMS-BATCH-129-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Build Timestamp         : 2026-11-04 07:10:32 IST
-File Size               : 74,519,711 bytes
-SHA-256 Checksum        : 8532C3E4C8CB9C11D0F70FF5E72AD1A079FC7283F33B60D828ABDC350127707C
-Original Previous Build : WRMS-Client-1.0.2.jar (SHA-256: DE91CE8D4DC0212C2CA38670ADF196BB7F574FB2645E65CF1FB94BB5F514FADD)
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.4.jar
+Build Timestamp         : 2026-11-04 10:30:44 IST
+File Size               : 74,520,491 bytes
+SHA-256 Checksum        : 6AAF5DFEBD006ED5E7595B333A9BEAF75092D07240DB33354772B18B7A3DB36C
+Original Previous Build : WRMS-BATCH-128-FRESH.jar (SHA-256: 8532C3E4C8CB9C11D0F70FF5E72AD1A079FC7283F33B60D828ABDC350127707C)
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -22,57 +23,54 @@ Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (productio
 Build Tool              : Apache Maven 3.x
 Native Libraries        : Bundled in JAR
 
-3. CORE ARCHITECTURAL INVARIANTS & UPGRADES
+3. ROOT CAUSE & EMERGENCY FIX SUMMARY
 --------------------------------------------------------------------------------
-[PASS] Weekly Off Exact Invariant:
-       Every active eligible employee receives EXACTLY 1 Weekly Off in a standard 7-day week.
-       Mathematical constraint: WeeklyOffCount(employee) == 1. Never 0, 2, or 3.
-[PASS] Global Weekly Off Count:
-       Total Weekly Off assignments across workforce strictly equals N (active eligible employees).
-[PASS] Clustered Consecutive Night Shifts:
-       Maximum 2 night shifts per week.
-       When 2 nights are scheduled, they form a contiguous block (Night -> Night -> Weekly Off).
-       Single nights: Night -> Weekly Off.
-       Scattered nights (Night -> Day -> Night) are strictly prohibited.
-[PASS] Single Recovery Off Day:
-       The recovery day following night shifts is the employee's ONE Weekly Off. No extra off added.
-[PASS] Leave & Holiday Independence:
-       Working shifts = 7 - WeeklyOff(1) - Leave - Holiday.
-       Approved leaves and official holidays are preserved and never counted as Weekly Off.
-[PASS] 100% Database-Driven Shift Capacities:
-       app.shift-capacity.* properties excised from application.properties.
-       Capacities are dynamically queried from the 'shifts' table managed by Admin.
-[PASS] Regeneration Diversity on Deleted Rosters:
-       Draft deletion stores rejected assignment fingerprints.
-       Regenerating for the same week evaluates distinct candidate structures.
-[PASS] Employee Profile & Workforce Directory Dates:
-       Joining Date and Resignation Date added to Employee Modal, Directory Table, and Profile UI.
-[PASS] Authoritative Data Sync Layer:
-       Bidirectional master synchronization between CSV, SQLite, and MySQL.
+[FIXED] Root Cause in static/app.js:
+        A dangling duplicate closing code block with orphaned braces at line 9348
+        caused a SyntaxError ("Missing catch or finally after try"). This crashed the
+        JS parser upon page load, completely preventing DOMContentLoaded event listeners
+        from executing. As a result, Admin/Employee role selection cards and login form
+        submit listeners failed to register, leaving the user interface in a frozen state.
+        Syntax error resolved and validated with Node.js parser (code 0).
+
+[FIXED] Frontend Cache Busting:
+        Updated script & style cache queries in static/index.html to v=2.8.11 for:
+        - /styles.css?v=2.8.11
+        - /fcm-client.js?v=2.8.11
+        - /app.js?v=2.8.11
+        - /enterprise-app.js?v=2.8.11
+        Ensures client browsers and WebViews never load stale, broken JS caches.
+
+[FIXED] Dual-Role Selection & State Resilience:
+        Enhanced setLoginRole in static/app.js to track currentLoginRole and cleanly
+        toggle active styles, radio checked states, and aria attributes without
+        accidentally erasing input credentials when the current role is clicked.
+
+[FIXED] Multi-Identifier Employee Authentication:
+        Updated CustomUserDetailsService.java to support seamless login via:
+        1. Direct username lookup (e.g., "emp001", "admin")
+        2. Employee Code fallback (e.g., "EMP001", "emp001")
+        3. Email address fallback (e.g., "rkmaurya080217@gmail.com")
+        Employees can now sign in using whichever credential they have on hand.
 
 4. AUTOMATED TEST SUITE PASS EVIDENCE
 --------------------------------------------------------------------------------
-- Batch128FinalRosterEngineRebuildTest          : 6 / 6   PASSED (100%)
+- CustomUserDetailsServiceTest                  : 6 / 6   PASSED (100%)
+- AuthServiceTest                               : 4 / 4   PASSED (100%)
+- Batch44LoginPageRoleSelectionTest             : 3 / 3   PASSED (100%)
+- Batch45ProductionLoginAndSharedLayoutTest     : 4 / 4   PASSED (100%)
 - Batch126EmployeeMasterDataSyncTest            : 20 / 20 PASSED (100%)
-- Batch125FullProjectAuditAndCertificationTest  : 25 / 25 PASSED (100%)
-- Batch120UltimateRosterEngineTest              : 20 / 20 PASSED (100%)
-- Batch119FairRosterOptimizationTest            : 16 / 16 PASSED (100%)
-- Batch113ComprehensiveRosterTest               : 18 / 18 PASSED (100%)
-- RosterWeeklyOffOptimizationTest               : 5 / 5   PASSED (100%)
-- Batch91, Batch92, Batch94, Batch72, Batch73   : 33 / 33 PASSED (100%)
+- Batch128FinalRosterEngineRebuildTest          : 6 / 6   PASSED (100%)
+Total Tests Executed                            : 43 / 43 PASSED (100%)
+Test Failures / Errors                          : 0 / 0
 
-5. STANDALONE RUNTIME SMOKE TEST
+5. INDEPENDENT RUNTIME SMOKE TEST
 --------------------------------------------------------------------------------
-Command Line            : java -jar target/weekly-roster-management-system-1.0.0.jar --server.port=8089
-Tomcat Initialization   : Port 8089 (http)
-JPA Initialization      : Persistence unit 'default' initialized in 3525 ms
-Data Sync               : SQLite data/wrms.db synchronized with CSV
-HTTP UI Endpoint Check  : http://localhost:8089/index.html -> HTTP/1.1 200 OK (Content-Length: 126547)
-Spring Security Status  : http://localhost:8089/api/health -> HTTP/1.1 401 Unauthorized (Protected)
-Shutdown & Cleanup      : Port 8089 released cleanly
-
-6. DEPLOYMENT RESTRICTION
---------------------------------------------------------------------------------
-Railway Deployment      : STRICTLY ZERO REMOTE DEPLOYMENTS PERFORMED (Policy Enforced)
-Local Release Ready     : YES
+Port                    : 8089 (Isolated non-default port)
+Process ID              : Verified via standalone java -jar execution
+Static Index UI Check   : HTTP 200 OK (Clean HTML + v=2.8.11 assets)
+Admin Auth Endpoint     : HTTP 200 OK -> ROLE_ADMIN verified
+Employee Auth Endpoint  : HTTP 200 OK -> ROLE_EMPLOYEE verified
+Shutdown Status         : Port 8089 process cleanly terminated
+Railway Deployment      : ZERO deployments executed in accordance with Batch 129 rules.
 ================================================================================
