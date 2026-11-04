@@ -893,13 +893,20 @@ public class RosterService {
 	public Map<Long, ApplicablePreference> loadApprovedPreferences(List<Employee> employees, LocalDate startDate, LocalDate endDate) {
 		Map<Long, ApplicablePreference> map = new HashMap<>();
 		Map<Long, Map<LocalDate, ShiftType>> dateShiftMap = new HashMap<>();
+		Map<Long, Map<LocalDate, Set<ShiftType>>> dateAvoidMap = new HashMap<>();
 		if (dateShiftPreferenceRepository != null && startDate != null && endDate != null) {
 			try {
 				List<com.weeklyroster.entity.DateShiftPreference> datePrefs = dateShiftPreferenceRepository.findByPreferenceDateBetween(startDate, endDate);
 				for (com.weeklyroster.entity.DateShiftPreference dp : datePrefs) {
 					if (dp.getEmployee() != null && dp.getPreferenceDate() != null && dp.getShiftType() != null) {
-						dateShiftMap.computeIfAbsent(dp.getEmployee().getId(), k -> new HashMap<>())
-								.put(dp.getPreferenceDate(), dp.getShiftType());
+						if (dp.getPreferenceType() == com.weeklyroster.entity.RecurringPreferenceType.DO_NOT_ASSIGN) {
+							dateAvoidMap.computeIfAbsent(dp.getEmployee().getId(), k -> new HashMap<>())
+									.computeIfAbsent(dp.getPreferenceDate(), k -> new HashSet<>())
+									.add(dp.getShiftType());
+						} else {
+							dateShiftMap.computeIfAbsent(dp.getEmployee().getId(), k -> new HashMap<>())
+									.put(dp.getPreferenceDate(), dp.getShiftType());
+						}
 					}
 				}
 			} catch (Exception e) {
@@ -935,10 +942,11 @@ public class RosterService {
 
 		for (Employee emp : employees) {
 			Map<LocalDate, ShiftType> empDateShifts = dateShiftMap.getOrDefault(emp.getId(), Collections.emptyMap());
+			Map<LocalDate, Set<ShiftType>> empDateAvoids = dateAvoidMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			Map<DayOfWeek, ShiftType> empRecurringShifts = recurringShiftMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			Map<DayOfWeek, Set<ShiftType>> empRecurringAvoids = recurringAvoidMap.getOrDefault(emp.getId(), Collections.emptyMap());
 			if (preferenceRepository == null) {
-				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts, empRecurringAvoids));
+				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empDateAvoids, empRecurringShifts, empRecurringAvoids));
 				continue;
 			}
 			List<EmployeePreference> prefs = preferenceRepository.findByEmployeeIdOrderByCreatedAtDesc(emp.getId());
@@ -950,27 +958,31 @@ public class RosterService {
 					.orElse(null);
 
 			if (active != null) {
-				map.put(emp.getId(), parseApplicablePreference(active, empDateShifts, empRecurringShifts, empRecurringAvoids));
+				map.put(emp.getId(), parseApplicablePreference(active, empDateShifts, empDateAvoids, empRecurringShifts, empRecurringAvoids));
 			} else {
-				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empRecurringShifts, empRecurringAvoids));
+				map.put(emp.getId(), ApplicablePreference.withDateAndRecurringShifts(emp.getId(), empDateShifts, empDateAvoids, empRecurringShifts, empRecurringAvoids));
 			}
 		}
 		return map;
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p) {
-		return parseApplicablePreference(p, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
+		return parseApplicablePreference(p, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts) {
-		return parseApplicablePreference(p, dateShifts, Collections.emptyMap(), Collections.emptyMap());
+		return parseApplicablePreference(p, dateShifts, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts, Map<DayOfWeek, ShiftType> recurringShifts) {
-		return parseApplicablePreference(p, dateShifts, recurringShifts, Collections.emptyMap());
+		return parseApplicablePreference(p, dateShifts, Collections.emptyMap(), recurringShifts, Collections.emptyMap());
 	}
 
 	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts, Map<DayOfWeek, ShiftType> recurringShifts, Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
+		return parseApplicablePreference(p, dateShifts, Collections.emptyMap(), recurringShifts, recurringAvoidShifts);
+	}
+
+	private ApplicablePreference parseApplicablePreference(EmployeePreference p, Map<LocalDate, ShiftType> dateShifts, Map<LocalDate, Set<ShiftType>> dateSpecificAvoidShifts, Map<DayOfWeek, ShiftType> recurringShifts, Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
 		List<ShiftType> preferredShiftOrder = parseShiftTypesList(p.getPreferredShiftTypes());
 		Set<ShiftType> preferredShifts = new LinkedHashSet<>(preferredShiftOrder);
 		Set<ShiftType> avoidShifts = parseShiftTypes(p.getAvoidShiftTypes());
@@ -994,6 +1006,7 @@ public class RosterService {
 				p.getTemporaryRestrictions(),
 				true,
 				dateShifts != null ? dateShifts : Collections.emptyMap(),
+				dateSpecificAvoidShifts != null ? dateSpecificAvoidShifts : Collections.emptyMap(),
 				recurringShifts != null ? recurringShifts : Collections.emptyMap(),
 				recurringAvoidShifts != null ? recurringAvoidShifts : Collections.emptyMap()
 		);

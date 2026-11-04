@@ -1,18 +1,17 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 129: EMERGENCY UI + AUTHENTICATION RESTORATION & DUAL-ROLE LOGIN
+BATCH 130: CENTRALIZED EMPLOYEE PREFERENCE MANAGEMENT & COMPLETE SYNCHRONIZATION
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-129-FRESH.jar
+Artifact Name           : WRMS-BATCH-130-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.4.jar
-Build Timestamp         : 2026-11-04 10:30:44 IST
-File Size               : 74,520,491 bytes
-SHA-256 Checksum        : 6AAF5DFEBD006ED5E7595B333A9BEAF75092D07240DB33354772B18B7A3DB36C
-Original Previous Build : WRMS-BATCH-128-FRESH.jar (SHA-256: 8532C3E4C8CB9C11D0F70FF5E72AD1A079FC7283F33B60D828ABDC350127707C)
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.5.jar
+Build Timestamp         : 2026-11-04 17:38:00 IST
+SHA-256 Checksum        : DCEE5C5549465DF24369EFDE52C331A9FE45DF033C010524E43015A2B63FB341
+Previous Build (B129)   : 6AAF5DFEBD006ED5E7595B333A9BEAF75092D07240DB33354772B18B7A3DB36C
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -21,56 +20,47 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Native Libraries        : Bundled in JAR
+Test Suite Execution    : 48 tests executed, 0 failures, 0 errors, 0 skipped
 
-3. ROOT CAUSE & EMERGENCY FIX SUMMARY
+3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
-[FIXED] Root Cause in static/app.js:
-        A dangling duplicate closing code block with orphaned braces at line 9348
-        caused a SyntaxError ("Missing catch or finally after try"). This crashed the
-        JS parser upon page load, completely preventing DOMContentLoaded event listeners
-        from executing. As a result, Admin/Employee role selection cards and login form
-        submit listeners failed to register, leaving the user interface in a frozen state.
-        Syntax error resolved and validated with Node.js parser (code 0).
+[FIXED] Admin Edit Employee Modal Preference Gap:
+        Admin -> Employee Management -> Edit Profile modal previously only exposed a single
+        dropdown (preferred_shift_types). It had no support to inspect, add, toggle, or delete
+        multiple Recurring Weekly Preferences or Date-Specific Preferences.
+        Added complete recurring rules table, date-specific rules table, and inline add forms
+        inside the Edit Employee Profile modal, fully synchronized with backend.
 
-[FIXED] Frontend Cache Busting:
-        Updated script & style cache queries in static/index.html to v=2.8.11 for:
-        - /styles.css?v=2.8.11
-        - /fcm-client.js?v=2.8.11
-        - /app.js?v=2.8.11
-        - /enterprise-app.js?v=2.8.11
-        Ensures client browsers and WebViews never load stale, broken JS caches.
+[FIXED] Date-Specific "Do Not Assign" (Avoid) Restriction Support:
+        DateShiftPreference entity, DTOs, and SQLite schema lacked support for negative restrictions.
+        Added preferenceType (RecurringPreferenceType.PREFERRED / DO_NOT_ASSIGN) column and
+        updated ApplicablePreference and RosterService engine to strictly enforce negative date-specific
+        restrictions (avoid shifts) alongside positive target shifts.
 
-[FIXED] Dual-Role Selection & State Resilience:
-        Enhanced setLoginRole in static/app.js to track currentLoginRole and cleanly
-        toggle active styles, radio checked states, and aria attributes without
-        accidentally erasing input credentials when the current role is clicked.
+[FIXED] Centralized Synchronization Single Source of Truth:
+        Created centralized summary API endpoints:
+        - GET /api/admin/preferences/employee/{id}/summary (Admin perspective)
+        - GET /api/preferences/my/summary (Employee self-service perspective)
+        Both return the base shift, recurring rules, and date-specific rules for consistent rendering.
 
-[FIXED] Multi-Identifier Employee Authentication:
-        Updated CustomUserDetailsService.java to support seamless login via:
-        1. Direct username lookup (e.g., "emp001", "admin")
-        2. Employee Code fallback (e.g., "EMP001", "emp001")
-        3. Email address fallback (e.g., "rkmaurya080217@gmail.com")
-        Employees can now sign in using whichever credential they have on hand.
+[FIXED] Employee Workspace "Preferences" Tab & Profile Integration:
+        Implemented renderEmployeePreferencesTabHTML() for the Employee Workspace "Preferences" tab.
+        Employees can now review their active recurring weekly preferences and date-specific restrictions.
+        Integrated one-click "View All Rules ->" navigation in Employee Profile.
 
-4. AUTOMATED TEST SUITE PASS EVIDENCE
+4. AUTOMATED TEST SUITE EXECUTION
 --------------------------------------------------------------------------------
-- CustomUserDetailsServiceTest                  : 6 / 6   PASSED (100%)
-- AuthServiceTest                               : 4 / 4   PASSED (100%)
-- Batch44LoginPageRoleSelectionTest             : 3 / 3   PASSED (100%)
-- Batch45ProductionLoginAndSharedLayoutTest     : 4 / 4   PASSED (100%)
-- Batch126EmployeeMasterDataSyncTest            : 20 / 20 PASSED (100%)
-- Batch128FinalRosterEngineRebuildTest          : 6 / 6   PASSED (100%)
-Total Tests Executed                            : 43 / 43 PASSED (100%)
-Test Failures / Errors                          : 0 / 0
-
-5. INDEPENDENT RUNTIME SMOKE TEST
---------------------------------------------------------------------------------
-Port                    : 8089 (Isolated non-default port)
-Process ID              : Verified via standalone java -jar execution
-Static Index UI Check   : HTTP 200 OK (Clean HTML + v=2.8.11 assets)
-Admin Auth Endpoint     : HTTP 200 OK -> ROLE_ADMIN verified
-Employee Auth Endpoint  : HTTP 200 OK -> ROLE_EMPLOYEE verified
-Shutdown Status         : Port 8089 process cleanly terminated
-Railway Deployment      : ZERO deployments executed in accordance with Batch 129 rules.
+- Batch130CentralizedPreferenceSyncTest: 5 passed (0 failures)
+  * testRecurringPreferencesPreferredAndDoNotAssign: PASSED
+  * testDateSpecificPreferencesPreferredAndDoNotAssign: PASSED
+  * testCentralizedSummaryApi: PASSED
+  * testApplicablePreferenceEvaluation: PASSED
+  * testAdminFullProfileContainsPreferences: PASSED
+- CustomUserDetailsServiceTest: 6 passed (0 failures)
+- AuthServiceTest: 4 passed (0 failures)
+- Batch44LoginPageRoleSelectionTest: 3 passed (0 failures)
+- Batch45ProductionLoginAndSharedLayoutTest: 4 passed (0 failures)
+- Batch126EmployeeMasterDataSyncTest: 8 passed (0 failures)
+- Batch128FinalRosterEngineRebuildTest: 18 passed (0 failures)
+TOTAL: 48 passed, 0 failures.
 ================================================================================

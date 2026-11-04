@@ -5,17 +5,23 @@ import com.weeklyroster.dto.response.PreferenceResponse;
 import com.weeklyroster.entity.Employee;
 import com.weeklyroster.exception.ResourceNotFoundException;
 import com.weeklyroster.repository.EmployeeRepository;
+import com.weeklyroster.service.DateShiftPreferenceService;
 import com.weeklyroster.service.EmployeePreferenceService;
+import com.weeklyroster.service.RecurringShiftPreferenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/preferences")
@@ -24,11 +30,23 @@ public class EmployeePreferenceController {
 
     private final EmployeePreferenceService preferenceService;
     private final EmployeeRepository employeeRepository;
+    private final RecurringShiftPreferenceService recurringShiftPreferenceService;
+    private final DateShiftPreferenceService dateShiftPreferenceService;
 
     public EmployeePreferenceController(EmployeePreferenceService preferenceService,
                                        EmployeeRepository employeeRepository) {
+        this(preferenceService, employeeRepository, null, null);
+    }
+
+    @Autowired
+    public EmployeePreferenceController(EmployeePreferenceService preferenceService,
+                                       EmployeeRepository employeeRepository,
+                                       @Autowired(required = false) RecurringShiftPreferenceService recurringShiftPreferenceService,
+                                       @Autowired(required = false) DateShiftPreferenceService dateShiftPreferenceService) {
         this.preferenceService = preferenceService;
         this.employeeRepository = employeeRepository;
+        this.recurringShiftPreferenceService = recurringShiftPreferenceService;
+        this.dateShiftPreferenceService = dateShiftPreferenceService;
     }
 
     @GetMapping
@@ -52,6 +70,26 @@ public class EmployeePreferenceController {
         return preferenceService.getMyActiveApprovedPreference(emp.getId())
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.noContent().build());
+    }
+
+    @GetMapping("/my/summary")
+    @Operation(summary = "Get full shift preferences summary for authenticated employee")
+    public ResponseEntity<Map<String, Object>> getMyPreferenceSummary(Authentication auth) {
+        Employee emp = resolveEmployee(auth);
+        var recurring = (recurringShiftPreferenceService != null)
+                ? recurringShiftPreferenceService.getByEmployee(emp.getId())
+                : Collections.emptyList();
+        var dateSpecific = (dateShiftPreferenceService != null)
+                ? dateShiftPreferenceService.getDatePreferencesByEmployee(emp.getId())
+                : Collections.emptyList();
+        var general = preferenceService.getMyActiveApprovedPreference(emp.getId()).orElse(null);
+        Map<String, Object> result = new HashMap<>();
+        result.put("employeeId", emp.getId());
+        result.put("employeeCode", emp.getEmployeeCode());
+        result.put("recurringPreferences", recurring);
+        result.put("dateSpecificPreferences", dateSpecific);
+        result.put("generalPreference", general != null ? general : preferenceService.getEmptyPreferenceResponse(emp.getId()));
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping

@@ -20,9 +20,40 @@ public record ApplicablePreference(
         String temporaryRestrictions,
         boolean isApproved,
         Map<LocalDate, ShiftType> dateSpecificShifts,
+        Map<LocalDate, Set<ShiftType>> dateSpecificAvoidShifts,
         Map<DayOfWeek, ShiftType> recurringWeeklyShifts,
         Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts
 ) {
+    public ApplicablePreference(
+            Long preferenceId,
+            Long employeeId,
+            Set<ShiftType> preferredShifts,
+            List<ShiftType> preferredShiftOrder,
+            Set<ShiftType> avoidShifts,
+            Set<DayOfWeek> preferredOffDays,
+            Set<DayOfWeek> preferredWorkingDays,
+            String temporaryRestrictions,
+            boolean isApproved,
+            Map<LocalDate, ShiftType> dateSpecificShifts,
+            Map<DayOfWeek, ShiftType> recurringWeeklyShifts,
+            Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
+        this(
+                preferenceId,
+                employeeId,
+                preferredShifts,
+                preferredShiftOrder,
+                avoidShifts,
+                preferredOffDays,
+                preferredWorkingDays,
+                temporaryRestrictions,
+                isApproved,
+                dateSpecificShifts != null ? dateSpecificShifts : Collections.emptyMap(),
+                Collections.emptyMap(),
+                recurringWeeklyShifts != null ? recurringWeeklyShifts : Collections.emptyMap(),
+                recurringAvoidShifts != null ? recurringAvoidShifts : Collections.emptyMap()
+        );
+    }
+
     public ApplicablePreference(
             Long preferenceId,
             Long employeeId,
@@ -46,6 +77,7 @@ public record ApplicablePreference(
                 temporaryRestrictions,
                 isApproved,
                 dateSpecificShifts != null ? dateSpecificShifts : Collections.emptyMap(),
+                Collections.emptyMap(),
                 recurringWeeklyShifts != null ? recurringWeeklyShifts : Collections.emptyMap(),
                 Collections.emptyMap()
         );
@@ -176,7 +208,17 @@ public record ApplicablePreference(
             Map<LocalDate, ShiftType> dateShifts,
             Map<DayOfWeek, ShiftType> recurringShifts,
             Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
+        return withDateAndRecurringShifts(employeeId, dateShifts, Collections.emptyMap(), recurringShifts, recurringAvoidShifts);
+    }
+
+    public static ApplicablePreference withDateAndRecurringShifts(
+            Long employeeId,
+            Map<LocalDate, ShiftType> dateShifts,
+            Map<LocalDate, Set<ShiftType>> dateSpecificAvoidShifts,
+            Map<DayOfWeek, ShiftType> recurringShifts,
+            Map<DayOfWeek, Set<ShiftType>> recurringAvoidShifts) {
         boolean hasAny = (dateShifts != null && !dateShifts.isEmpty())
+                || (dateSpecificAvoidShifts != null && !dateSpecificAvoidShifts.isEmpty())
                 || (recurringShifts != null && !recurringShifts.isEmpty())
                 || (recurringAvoidShifts != null && !recurringAvoidShifts.isEmpty());
         return new ApplicablePreference(
@@ -190,6 +232,7 @@ public record ApplicablePreference(
                 null,
                 hasAny,
                 dateShifts != null ? dateShifts : Collections.emptyMap(),
+                dateSpecificAvoidShifts != null ? dateSpecificAvoidShifts : Collections.emptyMap(),
                 recurringShifts != null ? recurringShifts : Collections.emptyMap(),
                 recurringAvoidShifts != null ? recurringAvoidShifts : Collections.emptyMap()
         );
@@ -224,6 +267,17 @@ public record ApplicablePreference(
         return avoidShifts != null && avoidShifts.contains(shiftType);
     }
 
+    public boolean hasDateSpecificAvoidShift(LocalDate date, ShiftType shiftType) {
+        return dateSpecificAvoidShifts != null && date != null && shiftType != null
+                && dateSpecificAvoidShifts.containsKey(date)
+                && dateSpecificAvoidShifts.get(date).contains(shiftType);
+    }
+
+    public Set<ShiftType> getDateSpecificAvoidShifts(LocalDate date) {
+        if (dateSpecificAvoidShifts == null || date == null) return Collections.emptySet();
+        return dateSpecificAvoidShifts.getOrDefault(date, Collections.emptySet());
+    }
+
     public boolean hasRecurringAvoidShift(DayOfWeek dayOfWeek) {
         return recurringAvoidShifts != null && dayOfWeek != null && recurringAvoidShifts.containsKey(dayOfWeek)
                 && !recurringAvoidShifts.get(dayOfWeek).isEmpty();
@@ -236,12 +290,22 @@ public record ApplicablePreference(
 
     public boolean isShiftAvoidedOnDate(ShiftType shiftType, LocalDate date) {
         if (shiftType == null) return false;
-        // BATCH 124 Authoritative Precedence:
-        // Date-specific preference takes precedence over recurring negative preferences
+
+        // 1. Authoritative: Date-specific negative preference (Do Not Assign)
+        if (date != null && hasDateSpecificAvoidShift(date, shiftType)) {
+            return true;
+        }
+
+        // 2. BATCH 124 & BATCH 130 Authoritative Precedence:
+        // Date-specific positive preference takes precedence over recurring negative preferences
         if (date != null && hasDateSpecificShift(date)) {
             return getDateSpecificShift(date) != shiftType && isShiftAvoided(shiftType);
         }
+
+        // 3. General avoid
         if (isShiftAvoided(shiftType)) return true;
+
+        // 4. Recurring weekly negative preference
         if (date != null && hasRecurringAvoidShift(date.getDayOfWeek())) {
             return getRecurringAvoidShifts(date.getDayOfWeek()).contains(shiftType);
         }
@@ -275,16 +339,24 @@ public record ApplicablePreference(
     }
 
     /**
-     * BATCH 113 & BATCH 124: Authoritative Target Shift for Date.
-     * Priority: Date-Specific takes precedence over Recurring Weekly.
+     * BATCH 113, BATCH 124 & BATCH 130: Authoritative Target Shift for Date.
+     * Priority:
+     * 1. Date-Specific positive takes precedence over Recurring Weekly.
+     * 2. If date has a negative preference for a candidate shift, it is never targeted.
      */
     public ShiftType getTargetShiftForDate(LocalDate date) {
         if (date == null) return null;
         if (hasDateSpecificShift(date)) {
-            return getDateSpecificShift(date);
+            ShiftType dateTarget = getDateSpecificShift(date);
+            if (!hasDateSpecificAvoidShift(date, dateTarget)) {
+                return dateTarget;
+            }
         }
         if (hasRecurringShift(date.getDayOfWeek())) {
-            return getRecurringShift(date.getDayOfWeek());
+            ShiftType recTarget = getRecurringShift(date.getDayOfWeek());
+            if (!hasDateSpecificAvoidShift(date, recTarget)) {
+                return recTarget;
+            }
         }
         return null;
     }

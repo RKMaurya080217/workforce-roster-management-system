@@ -7,6 +7,7 @@ import com.weeklyroster.dto.response.EmployeeResponse;
 import com.weeklyroster.dto.response.LeaveResponse;
 import com.weeklyroster.dto.response.RecurringShiftPreferenceResponse;
 import com.weeklyroster.entity.Employee;
+import com.weeklyroster.entity.RecurringPreferenceType;
 import com.weeklyroster.entity.Role;
 import com.weeklyroster.entity.ShiftType;
 import com.weeklyroster.entity.User;
@@ -397,12 +398,14 @@ public class EmployeeService {
 		String shiftPref = loadShiftPreference(emp.getId());
 		List<RecurringShiftPreferenceResponse> recList = Collections.emptyList();
 		if (recurringShiftPreferenceRepository != null) {
-			recList = recurringShiftPreferenceRepository.findByEmployeeIdAndActiveTrue(emp.getId()).stream()
+			recList = recurringShiftPreferenceRepository.findByEmployeeId(emp.getId()).stream()
 					.map(rp -> new RecurringShiftPreferenceResponse(
 							rp.getId(), rp.getEmployee().getId(),
 							rp.getEmployee().getEmployeeCode(),
-							rp.getEmployee().getFirstName() + " " + rp.getEmployee().getLastName(),
-							rp.getDayOfWeek(), rp.getShiftType(), rp.getStartDate(), rp.getEndDate(),
+							rp.getEmployee().getFirstName() + " " + (rp.getEmployee().getLastName() != null ? rp.getEmployee().getLastName() : ""),
+							rp.getDayOfWeek(), rp.getShiftType(),
+							rp.getPreferenceType(),
+							rp.getStartDate(), rp.getEndDate(),
 							rp.isActive(), rp.getReason(), rp.getCreatedBy(), rp.getCreatedAt(), rp.getUpdatedAt()
 					)).toList();
 		}
@@ -413,9 +416,11 @@ public class EmployeeService {
 					.map(dp -> new DateShiftPreferenceResponse(
 							dp.getId(), dp.getEmployee().getId(),
 							dp.getEmployee().getEmployeeCode(),
-							dp.getEmployee().getFirstName() + " " + dp.getEmployee().getLastName(),
+							dp.getEmployee().getFirstName() + " " + (dp.getEmployee().getLastName() != null ? dp.getEmployee().getLastName() : ""),
 							dp.getPreferenceDate(), dp.getShiftType(),
-							dp.getReason(), dp.getCreatedBy(), dp.getCreatedAt(), dp.getUpdatedAt()
+							dp.getPreferenceType() != null ? dp.getPreferenceType() : RecurringPreferenceType.PREFERRED,
+							dp.getReason(), dp.getCreatedBy(), dp.getCreatedAt(), dp.getUpdatedAt(),
+							"VALID", null
 					)).toList();
 		}
 

@@ -30,6 +30,10 @@ public class DateShiftPreference {
     @Column(name = "shift_type", nullable = false, length = 30)
     private ShiftType shiftType;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preference_type", length = 30)
+    private RecurringPreferenceType preferenceType = RecurringPreferenceType.PREFERRED;
+
     @Column(name = "reason", length = 500)
     private String reason;
 
@@ -45,9 +49,15 @@ public class DateShiftPreference {
     public DateShiftPreference() {}
 
     public DateShiftPreference(Employee employee, LocalDate preferenceDate, ShiftType shiftType, String reason, String createdBy) {
+        this(employee, preferenceDate, shiftType, RecurringPreferenceType.PREFERRED, reason, createdBy);
+    }
+
+    public DateShiftPreference(Employee employee, LocalDate preferenceDate, ShiftType shiftType,
+                               RecurringPreferenceType preferenceType, String reason, String createdBy) {
         this.employee = employee;
         this.preferenceDate = preferenceDate;
         this.shiftType = shiftType;
+        this.preferenceType = preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
         this.reason = reason;
         this.createdBy = createdBy;
         this.createdAt = LocalDateTime.now();
@@ -84,6 +94,14 @@ public class DateShiftPreference {
 
     public void setShiftType(ShiftType shiftType) {
         this.shiftType = shiftType;
+    }
+
+    public RecurringPreferenceType getPreferenceType() {
+        return preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
+    }
+
+    public void setPreferenceType(RecurringPreferenceType preferenceType) {
+        this.preferenceType = preferenceType != null ? preferenceType : RecurringPreferenceType.PREFERRED;
     }
 
     public String getReason() {

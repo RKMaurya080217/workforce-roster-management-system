@@ -776,6 +776,7 @@ function bindGlobalEvents() {
 
   // Forms in Modals
   document.getElementById("employeeModalForm").addEventListener("submit", handleSaveEmployee);
+  initEmployeeModalPreferenceListeners();
   document.getElementById("generateRosterForm").addEventListener("submit", handleTriggerGenerateRoster);
   document.getElementById("emailRosterForm")?.addEventListener("submit", handleTriggerEmailRoster);
   document.getElementById("shiftOverrideForm").addEventListener("submit", handleSaveShiftOverride);
@@ -5664,6 +5665,16 @@ function renderWorkspaceCurrentTabHTML(tab, data) {
       return renderWorkspaceRosterHTML(data.roster, data.empId);
     case "leaves":
       return renderWorkspaceLeaveManagementHTML(data.leaves, data.roster, data.empId);
+    case "preferences":
+      setTimeout(() => {
+        if (typeof renderEmployeePreferencesTabHTML === "function") {
+          const contentDiv = document.getElementById("workspaceTabContent");
+          if (contentDiv) {
+            renderEmployeePreferencesTabHTML().then(html => { contentDiv.innerHTML = html; });
+          }
+        }
+      }, 0);
+      return `<div class="empty-state-box"><div class="spinner"></div><p>Loading shift preferences...</p></div>`;
     case "notifications":
       return renderWorkspaceNotificationsHTML(data.notifications);
     case "activity":
@@ -7337,7 +7348,9 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 </strong>
               </div>
               <div class="profile-field-action">
-                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Managed by Admin (Read-Only)</span>
+                <button type="button" class="btn btn-ghost btn-xs" onclick="switchWorkspaceTab('preferences')" style="font-size:0.75rem; color:var(--primary); font-weight:600; text-decoration:underline; padding:2px 6px;">
+                  View All Rules &rarr;
+                </button>
               </div>
             </div>
 
@@ -7694,6 +7707,120 @@ function renderUpcomingShiftsTableHTML(list) {
     </table>
   `;
 }
+
+async function renderEmployeePreferencesTabHTML() {
+  try {
+    const summary = await apiRequest("/api/preferences/my/summary").catch(() => null);
+    const recList = (summary && Array.isArray(summary.recurringPreferences)) ? summary.recurringPreferences : [];
+    const dateList = (summary && Array.isArray(summary.dateSpecificPreferences)) ? summary.dateSpecificPreferences : [];
+    const basePref = summary ? summary.basePreferredShift : null;
+
+    return `
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h3 style="margin:0;">My Shift Preferences</h3>
+            <span class="card-subtext">View your active shift preferences and scheduled restrictions</span>
+          </div>
+          <div>
+            <span class="badge ${formatShiftBadgeClass(basePref || '')}" style="font-size:0.85rem; padding:6px 12px;">
+              Default: ${formatShiftName(basePref) || 'No Preference'}
+            </span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="alert-info-box" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:12px 14px; color:#166534; font-size:0.84rem; margin-bottom:20px;">
+            <div style="font-weight:700; margin-bottom:4px;">How Shift Preferences Work in Roster Generation:</div>
+            <div>1. <strong>Hard Rules</strong> (1 Weekly Off, Max 2 Nights/Week, Leave &amp; Public Holiday safety) are strictly enforced and cannot be violated.</div>
+            <div>2. <strong>Date-Specific Preferences</strong> (both Preferred shifts and "Do Not Assign" restrictions) take absolute priority on matching dates.</div>
+            <div>3. <strong>Recurring Weekly Preferences</strong> guide day-by-day shift allocation each week.</div>
+            <div>4. If no specific preference applies, your default shift preference is used during fair optimization.</div>
+          </div>
+
+          <!-- Section 1: Recurring Weekly Shift Preferences -->
+          <div style="margin-bottom:24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h4 style="margin:0; font-size:0.96rem; font-weight:700; color:var(--text-main);">
+                📅 Recurring Weekly Shift Preferences
+              </h4>
+              <span class="badge general" style="font-size:0.75rem;">${recList.length} Active Rule${recList.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" style="font-size:0.88rem;">
+                <thead>
+                  <tr>
+                    <th>Day of Week</th>
+                    <th>Shift</th>
+                    <th>Preference Type</th>
+                    <th>Status</th>
+                    <th>Active Cycle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${recList.length === 0 ? `
+                    <tr><td colspan="5" class="text-center text-muted" style="padding:16px;">No recurring weekly preferences configured. Contact your Admin to set recurring preferences.</td></tr>
+                  ` : recList.map(r => `
+                    <tr>
+                      <td style="font-weight:600;">${escapeHTML(r.dayOfWeek)}</td>
+                      <td><span class="badge ${formatShiftBadgeClass(r.shiftType)}">${escapeHTML(formatShiftName(r.shiftType))}</span></td>
+                      <td>${r.preferenceType === 'DO_NOT_ASSIGN' ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.75rem;">Do Not Assign</span>' : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.75rem;">Preferred</span>'}</td>
+                      <td>${r.active ? '<span style="color:#16a34a; font-weight:600; font-size:0.78rem;">Active</span>' : '<span style="color:#94a3b8; font-size:0.78rem;">Inactive</span>'}</td>
+                      <td style="color:var(--text-muted); font-size:0.82rem;">${r.startDate ? `${formatDate(r.startDate)} to ${r.endDate ? formatDate(r.endDate) : 'Indefinite'}` : 'All ongoing cycles'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Section 2: Date-Specific Shift Preferences -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h4 style="margin:0; font-size:0.96rem; font-weight:700; color:var(--text-main);">
+                📌 Date-Specific Shift Preferences &amp; Restrictions
+              </h4>
+              <span class="badge general" style="font-size:0.75rem;">${dateList.length} Rule${dateList.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" style="font-size:0.88rem;">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Shift</th>
+                    <th>Type</th>
+                    <th>Reason / Remark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateList.length === 0 ? `
+                    <tr><td colspan="4" class="text-center text-muted" style="padding:16px;">No date-specific shift preferences configured. Contact your Admin to request specific date shifts.</td></tr>
+                  ` : dateList.map(d => `
+                    <tr>
+                      <td style="font-weight:600;">${formatDate(d.preferenceDate)}</td>
+                      <td><span class="badge ${formatShiftBadgeClass(d.shiftType)}">${escapeHTML(formatShiftName(d.shiftType))}</span></td>
+                      <td>${d.preferenceType === 'DO_NOT_ASSIGN' ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.75rem;">Do Not Assign</span>' : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.75rem;">Preferred</span>'}</td>
+                      <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(d.reason || '-')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    return `
+      <div class="card">
+        <div class="empty-state-box">
+          <p style="color:var(--danger)">Failed to load preferences: ${escapeHTML(err.message)}</p>
+        </div>
+      </div>
+    `;
+  }
+}
+window.renderEmployeePreferencesTabHTML = renderEmployeePreferencesTabHTML;
 
 function renderWorkspaceLeaveManagementHTML(leaves, roster, empId) {
   const activeAndPendingLeaves = leaves.filter(l => l.status === "APPROVED" || l.status === "PENDING" || l.status === "PENDING_MODIFICATION" || l.status === "PENDING_CANCELLATION");
@@ -9417,6 +9544,13 @@ async function renderEmployeePreferenceDetailView() {
                 <option value="NIGHT">Night (22:00 – 07:00)</option>
               </select>
             </div>
+            <div>
+              <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Type <span class="req">*</span></label>
+              <select id="prefDetailDateTypeSelect" class="form-control" required style="padding:6px 10px; font-size:0.88rem;">
+                <option value="PREFERRED">Preferred</option>
+                <option value="DO_NOT_ASSIGN">Do Not Assign</option>
+              </select>
+            </div>
             <div style="flex:1; min-width:180px;">
               <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Reason <small style="color:var(--text-muted); font-weight:normal;">(Optional)</small></label>
               <input type="text" id="prefDetailReasonInput" class="form-control" placeholder="Optional remark" style="width:100%; padding:6px 10px; font-size:0.88rem;">
@@ -9435,6 +9569,7 @@ async function renderEmployeePreferenceDetailView() {
                 <tr>
                   <th>Date</th>
                   <th>Shift</th>
+                  <th>Type</th>
                   <th>Reason</th>
                   <th>Configured By</th>
                   <th style="text-align:right;">Actions</th>
@@ -9443,12 +9578,13 @@ async function renderEmployeePreferenceDetailView() {
               <tbody>
                 ${datePrefs.length === 0 ? `
                   <tr>
-                    <td colspan="5" class="text-center text-muted" style="padding:20px;">No date-specific shift preferences configured for this employee.</td>
+                    <td colspan="6" class="text-center text-muted" style="padding:20px;">No date-specific shift preferences configured for this employee.</td>
                   </tr>
                 ` : datePrefs.map(dp => `
                   <tr>
                     <td style="font-weight:600;">${formatDate(dp.preferenceDate)}</td>
                     <td><span class="badge ${formatShiftBadgeClass(dp.shiftType)}">${escapeHTML(formatShiftName(dp.shiftType))}</span></td>
+                    <td>${dp.preferenceType === 'DO_NOT_ASSIGN' ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.75rem;">Do Not Assign</span>' : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.75rem;">Preferred</span>'}</td>
                     <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.reason || '-')}</td>
                     <td style="color:var(--text-muted); font-size:0.82rem;">${escapeHTML(dp.createdBy || 'Admin')}</td>
                     <td style="text-align:right;">
@@ -9469,6 +9605,7 @@ async function renderEmployeePreferenceDetailView() {
             e.preventDefault();
             const dateVal = document.getElementById("prefDetailDateInput").value;
             const shiftVal = document.getElementById("prefDetailShiftSelect").value;
+            const typeVal = document.getElementById("prefDetailDateTypeSelect") ? document.getElementById("prefDetailDateTypeSelect").value : "PREFERRED";
             const reasonVal = document.getElementById("prefDetailReasonInput").value;
             const saveBtn = document.getElementById("prefDetailSaveDatePrefBtn");
             if (!dateVal || !shiftVal) return;
@@ -9483,6 +9620,7 @@ async function renderEmployeePreferenceDetailView() {
                   employeeId: empId,
                   preferenceDate: dateVal,
                   shiftType: shiftVal,
+                  preferenceType: typeVal,
                   reason: reasonVal || null
                 }
               });
@@ -9601,10 +9739,321 @@ window.openHolidayModal = openHolidayModal;
 window.closeHolidayModal = closeHolidayModal;
 
 // Add/Edit Employee Modal
+let modalPrefListenersInitialized = false;
+
+function initEmployeeModalPreferenceListeners() {
+  if (modalPrefListenersInitialized) return;
+  modalPrefListenersInitialized = true;
+
+  const addRecBtn = document.getElementById("empModalAddRecurringBtn");
+  if (addRecBtn) {
+    addRecBtn.addEventListener("click", () => {
+      const inlineForm = document.getElementById("empModalRecurringInlineForm");
+      if (inlineForm) {
+        inlineForm.style.display = (inlineForm.style.display === "none" || !inlineForm.style.display) ? "block" : "none";
+        const ruleIdInput = document.getElementById("empModalRecurringRuleId");
+        if (ruleIdInput) ruleIdInput.value = "";
+      }
+    });
+  }
+  const cancelRecBtn = document.getElementById("empModalRecurringCancelBtn");
+  if (cancelRecBtn) {
+    cancelRecBtn.addEventListener("click", () => {
+      const inlineForm = document.getElementById("empModalRecurringInlineForm");
+      if (inlineForm) inlineForm.style.display = "none";
+    });
+  }
+  const saveRecBtn = document.getElementById("empModalRecurringSaveBtn");
+  if (saveRecBtn) {
+    saveRecBtn.addEventListener("click", handleSaveModalRecurringRule);
+  }
+
+  const addDateBtn = document.getElementById("empModalAddDateBtn");
+  if (addDateBtn) {
+    addDateBtn.addEventListener("click", () => {
+      const inlineForm = document.getElementById("empModalDateInlineForm");
+      if (inlineForm) {
+        inlineForm.style.display = (inlineForm.style.display === "none" || !inlineForm.style.display) ? "block" : "none";
+        const dateInput = document.getElementById("empModalDateInput");
+        if (dateInput) dateInput.value = "";
+        const reasonInput = document.getElementById("empModalDateReason");
+        if (reasonInput) reasonInput.value = "";
+      }
+    });
+  }
+  const cancelDateBtn = document.getElementById("empModalDateCancelBtn");
+  if (cancelDateBtn) {
+    cancelDateBtn.addEventListener("click", () => {
+      const inlineForm = document.getElementById("empModalDateInlineForm");
+      if (inlineForm) inlineForm.style.display = "none";
+    });
+  }
+  const saveDateBtn = document.getElementById("empModalDateSaveBtn");
+  if (saveDateBtn) {
+    saveDateBtn.addEventListener("click", handleSaveModalDateRule);
+  }
+}
+
+async function handleSaveModalRecurringRule() {
+  const empId = document.getElementById("empFormId").value;
+  if (!empId) {
+    toast("Please save the employee first before adding preferences", "warning");
+    return;
+  }
+  const dayOfWeek = document.getElementById("empModalRecurringDay").value;
+  const shiftType = document.getElementById("empModalRecurringShift").value;
+  const preferenceType = document.getElementById("empModalRecurringType").value;
+  const active = document.getElementById("empModalRecurringActive").value === "true";
+  const ruleId = document.getElementById("empModalRecurringRuleId").value;
+
+  const btn = document.getElementById("empModalRecurringSaveBtn");
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+    }
+    if (ruleId) {
+      await apiRequest(`/api/admin/preferences/recurring/${ruleId}`, {
+        method: "PUT",
+        body: { employeeId: empId, dayOfWeek, shiftType, preferenceType, active }
+      });
+      toast("Recurring rule updated successfully", "success");
+    } else {
+      await apiRequest("/api/admin/preferences/recurring", {
+        method: "POST",
+        body: { employeeId: empId, dayOfWeek, shiftType, preferenceType, active }
+      });
+      toast("Recurring rule added successfully", "success");
+    }
+    const inlineForm = document.getElementById("empModalRecurringInlineForm");
+    if (inlineForm) inlineForm.style.display = "none";
+    await loadAndRenderModalPreferences(empId);
+  } catch (err) {
+    toast(err.message || "Failed to save recurring preference", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Save Rule";
+    }
+  }
+}
+
+async function handleSaveModalDateRule() {
+  const empId = document.getElementById("empFormId").value;
+  if (!empId) {
+    toast("Please save the employee first before adding preferences", "warning");
+    return;
+  }
+  const preferenceDate = document.getElementById("empModalDateInput").value;
+  const shiftType = document.getElementById("empModalDateShift").value;
+  const preferenceType = document.getElementById("empModalDateType").value;
+  const reason = document.getElementById("empModalDateReason").value.trim();
+
+  if (!preferenceDate) {
+    toast("Please select a date", "warning");
+    return;
+  }
+
+  const btn = document.getElementById("empModalDateSaveBtn");
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+    }
+    await apiRequest("/api/admin/preferences/date-specific", {
+      method: "POST",
+      body: {
+        employeeId: empId,
+        preferenceDate,
+        shiftType,
+        preferenceType,
+        reason: reason || null
+      }
+    });
+    toast("Date-specific preference saved successfully", "success");
+    const inlineForm = document.getElementById("empModalDateInlineForm");
+    if (inlineForm) inlineForm.style.display = "none";
+    const reasonInput = document.getElementById("empModalDateReason");
+    if (reasonInput) reasonInput.value = "";
+    await loadAndRenderModalPreferences(empId);
+  } catch (err) {
+    toast(err.message || "Failed to save date preference", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Add Rule";
+    }
+  }
+}
+
+async function loadAndRenderModalPreferences(empId) {
+  initEmployeeModalPreferenceListeners();
+  const recContainer = document.getElementById("empModalRecurringListContainer");
+  const dateContainer = document.getElementById("empModalDateListContainer");
+  const recForm = document.getElementById("empModalRecurringInlineForm");
+  const dateForm = document.getElementById("empModalDateInlineForm");
+
+  if (recForm) recForm.style.display = "none";
+  if (dateForm) dateForm.style.display = "none";
+
+  if (recContainer) {
+    recContainer.innerHTML = `<div style="font-size:0.82rem; color:var(--text-muted);"><span class="spinner"></span> Loading recurring rules...</div>`;
+  }
+  if (dateContainer) {
+    dateContainer.innerHTML = `<div style="font-size:0.82rem; color:var(--text-muted);"><span class="spinner"></span> Loading date-specific rules...</div>`;
+  }
+
+  try {
+    let summary = null;
+    try {
+      summary = await apiRequest(`/api/admin/preferences/employee/${empId}/summary`);
+    } catch (e) {
+      const [recList, dateList] = await Promise.all([
+        apiRequest(`/api/admin/preferences/recurring?employeeId=${empId}`).catch(() => []),
+        apiRequest(`/api/admin/preferences/date-specific?employeeId=${empId}`).catch(() => [])
+      ]);
+      summary = { recurringPreferences: recList, dateSpecificPreferences: dateList };
+    }
+
+    if (summary && summary.basePreferredShift) {
+      const prefSelect = document.getElementById("empFormShiftPreference");
+      if (prefSelect && (!prefSelect.value || prefSelect.value === "")) {
+        prefSelect.value = summary.basePreferredShift;
+      }
+    }
+
+    const recList = (summary && Array.isArray(summary.recurringPreferences)) ? summary.recurringPreferences : [];
+    const dateList = (summary && Array.isArray(summary.dateSpecificPreferences)) ? summary.dateSpecificPreferences : [];
+
+    // Render Recurring Rules Table
+    if (recContainer) {
+      if (recList.length === 0) {
+        recContainer.innerHTML = `<div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">No recurring weekly preferences configured.</div>`;
+      } else {
+        recContainer.innerHTML = `
+          <table class="data-table" style="font-size:0.82rem; width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border-color, #e2e8f0); text-align:left;">
+                <th style="padding:4px 6px;">Day</th>
+                <th style="padding:4px 6px;">Shift</th>
+                <th style="padding:4px 6px;">Type</th>
+                <th style="padding:4px 6px;">Status</th>
+                <th style="padding:4px 6px; text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${recList.map(r => `
+                <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
+                  <td style="font-weight:600; padding:4px 6px;">${escapeHTML(r.dayOfWeek)}</td>
+                  <td style="padding:4px 6px;"><span class="badge ${formatShiftBadgeClass(r.shiftType)}">${escapeHTML(formatShiftName(r.shiftType))}</span></td>
+                  <td style="padding:4px 6px;">${r.preferenceType === 'DO_NOT_ASSIGN' ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.72rem; padding:2px 5px;">Do Not Assign</span>' : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.72rem; padding:2px 5px;">Preferred</span>'}</td>
+                  <td style="padding:4px 6px;">${r.active ? '<span style="color:#16a34a; font-weight:600; font-size:0.75rem;">Active</span>' : '<span style="color:#94a3b8; font-size:0.75rem;">Inactive</span>'}</td>
+                  <td style="padding:4px 6px; text-align:right; white-space:nowrap;">
+                    <button type="button" class="btn btn-ghost btn-xs" data-toggle-modal-rec="${r.id}" style="padding:2px 6px; font-size:0.75rem; margin-right:4px;">
+                      ${r.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button type="button" class="btn btn-ghost btn-xs" data-delete-modal-rec="${r.id}" style="color:var(--danger, #ef4444); padding:2px 6px; font-size:0.75rem;">
+                      &times;
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        recContainer.querySelectorAll("[data-toggle-modal-rec]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const ruleId = btn.getAttribute("data-toggle-modal-rec");
+            try {
+              btn.disabled = true;
+              await apiRequest(`/api/admin/preferences/recurring/${ruleId}/toggle`, { method: "PUT" });
+              await loadAndRenderModalPreferences(empId);
+            } catch (err) {
+              toast(err.message || "Failed to toggle rule", "error");
+              btn.disabled = false;
+            }
+          });
+        });
+
+        recContainer.querySelectorAll("[data-delete-modal-rec]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const ruleId = btn.getAttribute("data-delete-modal-rec");
+            try {
+              btn.disabled = true;
+              await apiRequest(`/api/admin/preferences/recurring/${ruleId}`, { method: "DELETE" });
+              toast("Recurring rule removed", "success");
+              await loadAndRenderModalPreferences(empId);
+            } catch (err) {
+              toast(err.message || "Failed to delete rule", "error");
+              btn.disabled = false;
+            }
+          });
+        });
+      }
+    }
+
+    // Render Date-Specific Rules Table
+    if (dateContainer) {
+      if (dateList.length === 0) {
+        dateContainer.innerHTML = `<div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">No date-specific preferences configured.</div>`;
+      } else {
+        dateContainer.innerHTML = `
+          <table class="data-table" style="font-size:0.82rem; width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border-color, #e2e8f0); text-align:left;">
+                <th style="padding:4px 6px;">Date</th>
+                <th style="padding:4px 6px;">Shift</th>
+                <th style="padding:4px 6px;">Type</th>
+                <th style="padding:4px 6px;">Reason</th>
+                <th style="padding:4px 6px; text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${dateList.map(d => `
+                <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
+                  <td style="font-weight:600; padding:4px 6px;">${formatDate(d.preferenceDate)}</td>
+                  <td style="padding:4px 6px;"><span class="badge ${formatShiftBadgeClass(d.shiftType)}">${escapeHTML(formatShiftName(d.shiftType))}</span></td>
+                  <td style="padding:4px 6px;">${d.preferenceType === 'DO_NOT_ASSIGN' ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.72rem; padding:2px 5px;">Do Not Assign</span>' : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.72rem; padding:2px 5px;">Preferred</span>'}</td>
+                  <td style="color:var(--text-muted); font-size:0.75rem; padding:4px 6px;">${escapeHTML(d.reason || '-')}</td>
+                  <td style="padding:4px 6px; text-align:right;">
+                    <button type="button" class="btn btn-ghost btn-xs" data-delete-modal-date="${d.id}" style="color:var(--danger, #ef4444); padding:2px 6px; font-size:0.75rem;">
+                      &times;
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        dateContainer.querySelectorAll("[data-delete-modal-date]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const ruleId = btn.getAttribute("data-delete-modal-date");
+            try {
+              btn.disabled = true;
+              await apiRequest(`/api/admin/preferences/date-specific/${ruleId}`, { method: "DELETE" });
+              toast("Date preference removed", "success");
+              await loadAndRenderModalPreferences(empId);
+            } catch (err) {
+              toast(err.message || "Failed to delete date preference", "error");
+              btn.disabled = false;
+            }
+          });
+        });
+      }
+    }
+  } catch (err) {
+    if (recContainer) recContainer.innerHTML = `<div style="color:var(--danger); font-size:0.82rem;">Error: ${escapeHTML(err.message)}</div>`;
+    if (dateContainer) dateContainer.innerHTML = `<div style="color:var(--danger); font-size:0.82rem;">Error: ${escapeHTML(err.message)}</div>`;
+  }
+}
+
 async function openEmployeeModal(emp) {
   const form = document.getElementById("employeeModalForm");
   form.reset();
   const codeInput = document.getElementById("empFormCode");
+  const prefSection = document.getElementById("empModalPreferencesSection");
 
   if (emp) {
     document.getElementById("employeeModalTitle").textContent = `Edit Employee (${emp.employeeCode})`;
@@ -9626,6 +10075,11 @@ async function openEmployeeModal(emp) {
       prefSelect.value = (emp.shiftPreference) ? emp.shiftPreference.toUpperCase() : "";
     }
     document.getElementById("empAccountFields").style.display = "none";
+
+    if (prefSection) {
+      prefSection.style.display = "block";
+      loadAndRenderModalPreferences(emp.id);
+    }
   } else {
     document.getElementById("employeeModalTitle").textContent = "Add New Employee";
     document.getElementById("empFormId").value = "";
@@ -9640,6 +10094,9 @@ async function openEmployeeModal(emp) {
       prefSelect.value = "";
     }
     document.getElementById("empAccountFields").style.display = "grid";
+    if (prefSection) {
+      prefSection.style.display = "none";
+    }
     codeInput.value = "Generating ID...";
     codeInput.readOnly = true;
     openModal("employeeModal");

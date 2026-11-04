@@ -79,6 +79,20 @@ public class AdminPreferenceController {
                 .orElseGet(() -> ResponseEntity.ok(preferenceService.getEmptyPreferenceResponse(employeeId)));
     }
 
+    @GetMapping("/employee/{employeeId}/summary")
+    @Operation(summary = "Get all shift preferences (recurring, date-specific, general) for an employee")
+    public ResponseEntity<java.util.Map<String, Object>> getEmployeePreferenceSummary(@PathVariable Long employeeId) {
+        var recurring = recurringShiftPreferenceService.getByEmployee(employeeId);
+        var dateSpecific = dateShiftPreferenceService.getDatePreferencesByEmployee(employeeId);
+        var general = preferenceService.getMyActiveApprovedPreference(employeeId).orElse(null);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("employeeId", employeeId);
+        result.put("recurringPreferences", recurring);
+        result.put("dateSpecificPreferences", dateSpecific);
+        result.put("generalPreference", general != null ? general : preferenceService.getEmptyPreferenceResponse(employeeId));
+        return ResponseEntity.ok(result);
+    }
+
     @PutMapping("/employee/{employeeId}")
     @Operation(summary = "Set or update employee shift preference by Admin")
     public ResponseEntity<PreferenceResponse> setEmployeePreference(

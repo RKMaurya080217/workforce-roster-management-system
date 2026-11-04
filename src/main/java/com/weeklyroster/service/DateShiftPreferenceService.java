@@ -64,6 +64,7 @@ public class DateShiftPreferenceService {
         Employee employee = employeeRepository.findById(req.employeeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee not found with id: " + req.employeeId()));
 
+        RecurringPreferenceType prefType = req.preferenceType() != null ? req.preferenceType() : RecurringPreferenceType.PREFERRED;
         Optional<DateShiftPreference> existingOpt = dateShiftPreferenceRepository
                 .findByEmployeeIdAndPreferenceDate(req.employeeId(), req.preferenceDate());
 
@@ -73,21 +74,23 @@ public class DateShiftPreferenceService {
             pref = existingOpt.get();
             oldShift = pref.getShiftType().name();
             pref.setShiftType(req.shiftType());
+            pref.setPreferenceType(prefType);
             pref.setReason(req.reason() != null ? req.reason().trim() : null);
             pref.setCreatedBy(adminUsername);
             pref.setUpdatedAt(LocalDateTime.now());
-            log.info("[BATCH 80] Updated date-specific preference for employee {} on {}: {} -> {}",
-                    employee.getEmployeeCode(), req.preferenceDate(), oldShift, req.shiftType());
+            log.info("[BATCH 130] Updated date-specific preference for employee {} on {}: {} -> {} ({})",
+                    employee.getEmployeeCode(), req.preferenceDate(), oldShift, req.shiftType(), prefType);
         } else {
             pref = new DateShiftPreference(
                     employee,
                     req.preferenceDate(),
                     req.shiftType(),
+                    prefType,
                     req.reason() != null ? req.reason().trim() : null,
                     adminUsername
             );
-            log.info("[BATCH 80] Created date-specific preference for employee {} on {}: {}",
-                    employee.getEmployeeCode(), req.preferenceDate(), req.shiftType());
+            log.info("[BATCH 130] Created date-specific preference for employee {} on {}: {} ({})",
+                    employee.getEmployeeCode(), req.preferenceDate(), req.shiftType(), prefType);
         }
 
         DateShiftPreference saved = dateShiftPreferenceRepository.save(pref);
@@ -351,6 +354,7 @@ public class DateShiftPreferenceService {
                 e != null ? (e.getFirstName() + " " + (e.getLastName() != null ? e.getLastName() : "")).trim() : null,
                 p.getPreferenceDate(),
                 p.getShiftType(),
+                p.getPreferenceType() != null ? p.getPreferenceType() : RecurringPreferenceType.PREFERRED,
                 p.getReason(),
                 p.getCreatedBy(),
                 p.getCreatedAt(),

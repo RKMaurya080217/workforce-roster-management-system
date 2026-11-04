@@ -611,7 +611,7 @@
 
   <!-- Modal 1: Add / Edit Employee Modal -->
   <div id="employeeModal" class="modal-backdrop hidden">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:720px;">
       <div class="modal-header">
         <h3 id="employeeModalTitle">Add New Employee</h3>
         <button class="modal-close" data-close-modal="employeeModal">&times;</button>
@@ -677,15 +677,138 @@
           </div>
         </div>
 
-        <div class="form-group" id="empShiftPreferenceGroup">
-          <label for="empFormShiftPreference">Shift Preference <small style="color:var(--text-muted); font-weight:normal;">(Admin Managed)</small></label>
-          <select id="empFormShiftPreference" name="shiftPreference">
-            <option value="">No Preference / Not Set</option>
-            <option value="MORNING">Morning</option>
-            <option value="GENERAL">General</option>
-            <option value="EVENING">Evening</option>
-            <option value="NIGHT">Night</option>
-          </select>
+        <!-- BATCH 130: Dedicated Shift Preferences Section in Edit Profile -->
+        <div id="empModalPreferencesSection" style="display:none; margin-top:8px; border-top:1px solid var(--border-color, #e2e8f0); padding-top:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <h4 style="margin:0; font-size:0.98rem; font-weight:700; color:var(--text-main);">Employee Shift Preferences</h4>
+              <span style="font-size:0.75rem; color:var(--text-muted);">Centralized sync with Roster Engine &amp; Preference View</span>
+            </div>
+            <span class="badge general" style="font-size:0.75rem;">Centralized Service</span>
+          </div>
+
+          <!-- Base Preference Selector -->
+          <div class="form-group" id="empShiftPreferenceGroup" style="margin-bottom:14px;">
+            <label for="empFormShiftPreference" style="font-weight:600; font-size:0.84rem;">Default Shift Preference</label>
+            <select id="empFormShiftPreference" name="shiftPreference" class="form-control" style="width:100%; padding:7px 10px; font-size:0.88rem; border-radius:6px;">
+              <option value="">No Preference / Not Set</option>
+              <option value="MORNING">Morning (07:00 – 15:30)</option>
+              <option value="GENERAL">General (09:30 – 18:00)</option>
+              <option value="EVENING">Evening (14:00 – 22:30)</option>
+              <option value="NIGHT">Night (22:00 – 07:00)</option>
+            </select>
+          </div>
+
+          <!-- A. Recurring Weekly Preferences Sub-Section -->
+          <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-weight:700; font-size:0.86rem; color:var(--text-main);">Recurring Weekly Preferences</span>
+              <button type="button" class="btn btn-secondary btn-xs" id="empModalAddRecurringBtn" style="padding:3px 8px; font-size:0.78rem;">
+                + Add Weekly Preference
+              </button>
+            </div>
+
+            <!-- Inline Add/Edit Recurring Form -->
+            <div id="empModalRecurringInlineForm" style="display:none; background:#ffffff; border:1px solid var(--border-color, #cbd5e1); border-radius:6px; padding:10px; margin-bottom:10px;">
+              <input type="hidden" id="empModalRecurringRuleId" value="">
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin-bottom:8px;">
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Weekday</label>
+                  <select id="empModalRecurringDay" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="MONDAY">Monday</option>
+                    <option value="TUESDAY">Tuesday</option>
+                    <option value="WEDNESDAY">Wednesday</option>
+                    <option value="THURSDAY">Thursday</option>
+                    <option value="FRIDAY">Friday</option>
+                    <option value="SATURDAY">Saturday</option>
+                    <option value="SUNDAY">Sunday</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Shift</label>
+                  <select id="empModalRecurringShift" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="GENERAL" selected>General</option>
+                    <option value="MORNING">Morning</option>
+                    <option value="EVENING">Evening</option>
+                    <option value="NIGHT">Night</option>
+                    <option value="OFF">Weekly OFF</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Type</label>
+                  <select id="empModalRecurringType" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="PREFERRED" selected>Preferred</option>
+                    <option value="DO_NOT_ASSIGN">Do Not Assign</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Status</label>
+                  <select id="empModalRecurringActive" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="true" selected>Active</option>
+                    <option value="false">Inactive</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button type="button" class="btn btn-ghost btn-xs" id="empModalRecurringCancelBtn">Cancel</button>
+                <button type="button" class="btn btn-primary btn-xs" id="empModalRecurringSaveBtn">Save Rule</button>
+              </div>
+            </div>
+
+            <!-- Recurring Rules Table -->
+            <div id="empModalRecurringListContainer">
+              <div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">No recurring weekly preferences configured.</div>
+            </div>
+          </div>
+
+          <!-- B. Date-Specific Preferences Sub-Section -->
+          <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-weight:700; font-size:0.86rem; color:var(--text-main);">Date-Specific Preferences</span>
+              <button type="button" class="btn btn-secondary btn-xs" id="empModalAddDateBtn" style="padding:3px 8px; font-size:0.78rem;">
+                + Add Date-Specific Preference
+              </button>
+            </div>
+
+            <!-- Inline Add Date Preference Form -->
+            <div id="empModalDateInlineForm" style="display:none; background:#ffffff; border:1px solid var(--border-color, #cbd5e1); border-radius:6px; padding:10px; margin-bottom:10px;">
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin-bottom:8px;">
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Date</label>
+                  <input type="date" id="empModalDateInput" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Shift</label>
+                  <select id="empModalDateShift" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="GENERAL" selected>General</option>
+                    <option value="MORNING">Morning</option>
+                    <option value="EVENING">Evening</option>
+                    <option value="NIGHT">Night</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Type</label>
+                  <select id="empModalDateType" class="form-control" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                    <option value="PREFERRED" selected>Preferred</option>
+                    <option value="DO_NOT_ASSIGN">Do Not Assign</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:0.75rem; font-weight:600; display:block;">Reason (Opt)</label>
+                  <input type="text" id="empModalDateReason" class="form-control" placeholder="Optional remark" style="font-size:0.82rem; padding:4px 6px; width:100%;">
+                </div>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button type="button" class="btn btn-ghost btn-xs" id="empModalDateCancelBtn">Cancel</button>
+                <button type="button" class="btn btn-primary btn-xs" id="empModalDateSaveBtn">Add Rule</button>
+              </div>
+            </div>
+
+            <!-- Date Rules Table -->
+            <div id="empModalDateListContainer">
+              <div style="color:var(--text-muted); font-size:0.82rem; font-style:italic;">No date-specific preferences configured.</div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">

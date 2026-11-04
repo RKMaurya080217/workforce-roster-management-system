@@ -31,6 +31,7 @@ public class DataInitializer {
 			migrateWorkingDaysColumns(jdbcTemplate);
 			migrateRosterAssignmentColumns(jdbcTemplate);
 			migrateEmployeeDatesColumns(jdbcTemplate);
+			migrateDateShiftPreferenceColumns(jdbcTemplate);
 			System.out.println(">>> SEED DATA EXECUTING <<<");
 			capacityProperties.asMap().forEach((type, defaultCapacity) -> {
 				var existingOpt = shiftRepository.findByShiftType(type);
@@ -352,6 +353,13 @@ public class DataInitializer {
 		try {
 			jdbcTemplate.execute("ALTER TABLE employees ADD COLUMN paired_employee_id BIGINT NULL");
 			System.out.println(">>> Added paired_employee_id column to employees <<<");
+		} catch (Exception ignored) {}
+	}
+
+	private void migrateDateShiftPreferenceColumns(org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
+		try {
+			jdbcTemplate.execute("ALTER TABLE date_shift_preferences ADD COLUMN preference_type VARCHAR(30) DEFAULT 'PREFERRED'");
+			System.out.println(">>> Added preference_type column to date_shift_preferences <<<");
 		} catch (Exception ignored) {}
 	}
 }
