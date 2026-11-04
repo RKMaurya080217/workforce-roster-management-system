@@ -639,10 +639,22 @@ function bindGlobalEvents() {
     dom.roleCardAdmin.addEventListener("click", () => {
       setLoginRole("ADMIN", false);
     });
+    dom.roleCardAdmin.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setLoginRole("ADMIN", false);
+      }
+    });
   }
   if (dom.roleCardEmployee) {
     dom.roleCardEmployee.addEventListener("click", () => {
       setLoginRole("EMPLOYEE", false);
+    });
+    dom.roleCardEmployee.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setLoginRole("EMPLOYEE", false);
+      }
     });
   }
 
@@ -1282,11 +1294,13 @@ async function handleLogin(e) {
     });
 
     // Verify authenticated user's role against selected role
-    const actualRole = res.user && res.user.role ? res.user.role : "";
-    if (selectedRole === "ADMIN" && actualRole !== "ROLE_ADMIN") {
+    const actualRole = (res.user && res.user.role ? String(res.user.role) : (res.role ? String(res.role) : "")).toUpperCase();
+    const isAdminRole = actualRole === "ROLE_ADMIN" || actualRole === "ADMIN";
+    const isEmpRole = actualRole === "ROLE_EMPLOYEE" || actualRole === "EMPLOYEE";
+    if (selectedRole === "ADMIN" && !isAdminRole) {
       throw new Error("Invalid Admin credentials.");
     }
-    if (selectedRole === "EMPLOYEE" && actualRole !== "ROLE_EMPLOYEE") {
+    if (selectedRole === "EMPLOYEE" && !isEmpRole) {
       throw new Error("Invalid employee credentials.");
     }
 

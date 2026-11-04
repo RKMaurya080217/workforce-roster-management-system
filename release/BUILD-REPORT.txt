@@ -1,17 +1,17 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 130: CENTRALIZED EMPLOYEE PREFERENCE MANAGEMENT & COMPLETE SYNCHRONIZATION
+BATCH 131: COMPLETE REGRESSION AUDIT, LOGIN RESTORATION & PREFERENCE DATA CONSISTENCY
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-130-FRESH.jar
+Artifact Name           : WRMS-BATCH-131-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.5.jar
-Build Timestamp         : 2026-11-04 17:38:00 IST
-SHA-256 Checksum        : DCEE5C5549465DF24369EFDE52C331A9FE45DF033C010524E43015A2B63FB341
-Previous Build (B129)   : 6AAF5DFEBD006ED5E7595B333A9BEAF75092D07240DB33354772B18B7A3DB36C
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.6.jar
+Build Timestamp         : 2026-11-04 21:13:44 IST
+SHA-256 Checksum        : F66BE61976352E3CAE95C4DF06401FD1F8C1D82DD5EAFC285FC8C545DDD41CAE
+Previous Build (B130)   : DCEE5C5549465DF24369EFDE52C331A9FE45DF033C010524E43015A2B63FB341
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -20,47 +20,57 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Test Suite Execution    : 48 tests executed, 0 failures, 0 errors, 0 skipped
+Test Suite Execution    : 59 tests executed across 8 regression suites, 0 failures, 0 errors, 0 skipped
 
 3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
-[FIXED] Admin Edit Employee Modal Preference Gap:
-        Admin -> Employee Management -> Edit Profile modal previously only exposed a single
-        dropdown (preferred_shift_types). It had no support to inspect, add, toggle, or delete
-        multiple Recurring Weekly Preferences or Date-Specific Preferences.
-        Added complete recurring rules table, date-specific rules table, and inline add forms
-        inside the Edit Employee Profile modal, fully synchronized with backend.
+[FIXED] Login & Role Selection Accessibility & Resilience:
+        - Added tabindex="0" and keydown (Enter/Space) event handlers to #roleCardAdmin and #roleCardEmployee.
+        - Hardened handleLogin() role comparison to seamlessly accept both normalized ("ADMIN", "EMPLOYEE")
+          and prefixed ("ROLE_ADMIN", "ROLE_EMPLOYEE") authority roles returned by JWT response.
+        - Resolved Hibernate proxy LazyInitializationException in CustomUserDetailsService when looking up
+          employees by secondary identifier (email / employeeCode) by resolving the User directly via UserRepository
+          and annotating CustomUserDetailsService with @Transactional(readOnly = true).
 
-[FIXED] Date-Specific "Do Not Assign" (Avoid) Restriction Support:
-        DateShiftPreference entity, DTOs, and SQLite schema lacked support for negative restrictions.
-        Added preferenceType (RecurringPreferenceType.PREFERRED / DO_NOT_ASSIGN) column and
-        updated ApplicablePreference and RosterService engine to strictly enforce negative date-specific
-        restrictions (avoid shifts) alongside positive target shifts.
+[VERIFIED] Centralized Preference Consistency:
+        - Admin -> Employee Management -> Edit Profile Modal now loads and synchronizes all recurring weekly
+          preferences and date-specific preferences.
+        - Admin -> Shift Preference Inspector (View 8 / 8b) and Employee Self-Service Workspace Preferences
+          display consistent data backed by centralized GET /api/admin/preferences/employee/{id}/summary and
+          GET /api/preferences/my/summary endpoints.
+        - Negative restrictions (DO_NOT_ASSIGN) are strictly enforced in ApplicablePreference and RosterService.
 
-[FIXED] Centralized Synchronization Single Source of Truth:
-        Created centralized summary API endpoints:
-        - GET /api/admin/preferences/employee/{id}/summary (Admin perspective)
-        - GET /api/preferences/my/summary (Employee self-service perspective)
-        Both return the base shift, recurring rules, and date-specific rules for consistent rendering.
+[VERIFIED] Database Consistency & Migrations:
+        - Verified backward-compatible DDL in schema.sql for recurring_shift_preferences and date_shift_preferences.
+        - Verified SQLite WAL mode and safe migration without dropping or altering existing tables.
+        - Preserved all employee records, passwords, roles, and roster histories.
 
-[FIXED] Employee Workspace "Preferences" Tab & Profile Integration:
-        Implemented renderEmployeePreferencesTabHTML() for the Employee Workspace "Preferences" tab.
-        Employees can now review their active recurring weekly preferences and date-specific restrictions.
-        Integrated one-click "View All Rules ->" navigation in Employee Profile.
+[VERIFIED] Master Data Sync & Roster Engine:
+        - Verified Employee CSV <-> SQLite sync preserving stable identities.
+        - Verified joining_date and resignation_date boundary constraints via Employee.isEligibleForDate.
+        - Verified all hard roster constraints: single night per day, max 2 nights/week, night followed by weekly off,
+          12h rest interval, female day protection, leave/holiday safety, exact 1 weekly off in normal 6-day week.
 
 4. AUTOMATED TEST SUITE EXECUTION
 --------------------------------------------------------------------------------
+- Batch131RegressionAuditTest: 11 passed (0 failures, 0 errors)
+  * testAdminLoginSuccess: PASSED
+  * testEmployeeLoginSuccessByEmployeeCode: PASSED
+  * testEmployeeLoginSuccessByEmail: PASSED
+  * testLoginBadPasswordRejected: PASSED
+  * testLoginUnknownUsernameRejected: PASSED
+  * testInactiveEmployeeLoginBlocked: PASSED
+  * testCentralizedPreferenceLifecycle: PASSED
+  * testApplicablePreferenceEvaluationAndAvoidance: PASSED
+  * testEmployeeDateEligibilityBoundaries: PASSED
+  * testDataPrivacyNoExposedPasswords: PASSED
+  * testRoleCardAccessibilityMarkup: PASSED
 - Batch130CentralizedPreferenceSyncTest: 5 passed (0 failures)
-  * testRecurringPreferencesPreferredAndDoNotAssign: PASSED
-  * testDateSpecificPreferencesPreferredAndDoNotAssign: PASSED
-  * testCentralizedSummaryApi: PASSED
-  * testApplicablePreferenceEvaluation: PASSED
-  * testAdminFullProfileContainsPreferences: PASSED
 - CustomUserDetailsServiceTest: 6 passed (0 failures)
 - AuthServiceTest: 4 passed (0 failures)
+- Batch126EmployeeMasterDataSyncTest: 20 passed (0 failures)
+- Batch128FinalRosterEngineRebuildTest: 6 passed (0 failures)
 - Batch44LoginPageRoleSelectionTest: 3 passed (0 failures)
 - Batch45ProductionLoginAndSharedLayoutTest: 4 passed (0 failures)
-- Batch126EmployeeMasterDataSyncTest: 8 passed (0 failures)
-- Batch128FinalRosterEngineRebuildTest: 18 passed (0 failures)
-TOTAL: 48 passed, 0 failures.
+TOTAL: 59 passed, 0 failures, 0 errors, 0 skipped.
 ================================================================================

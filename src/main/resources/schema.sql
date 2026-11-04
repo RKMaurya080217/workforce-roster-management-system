@@ -275,3 +275,36 @@ CREATE TABLE IF NOT EXISTS roster_generation_history (
     INDEX idx_rgh_fingerprint (fingerprint)
 );
 
+
+
+CREATE TABLE IF NOT EXISTS recurring_shift_preferences (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    employee_id BIGINT NOT NULL,
+    day_of_week VARCHAR(20) NOT NULL,
+    shift_type VARCHAR(30) NOT NULL,
+    preference_type VARCHAR(30) DEFAULT 'PREFERRED',
+    start_date DATE,
+    end_date DATE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    reason VARCHAR(500),
+    created_by VARCHAR(100),
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6),
+    CONSTRAINT fk_recurring_pref_emp FOREIGN KEY (employee_id) REFERENCES employees(id),
+    INDEX idx_recurring_emp (employee_id)
+);
+
+CREATE TABLE IF NOT EXISTS date_shift_preferences (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    employee_id BIGINT NOT NULL,
+    preference_date DATE NOT NULL,
+    shift_type VARCHAR(30) NOT NULL,
+    preference_type VARCHAR(30) DEFAULT 'PREFERRED',
+    reason VARCHAR(500),
+    created_by VARCHAR(100),
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6),
+    CONSTRAINT fk_date_pref_emp FOREIGN KEY (employee_id) REFERENCES employees(id),
+    CONSTRAINT uk_date_pref_emp_date UNIQUE (employee_id, preference_date),
+    INDEX idx_date_pref_emp (employee_id)
+);
