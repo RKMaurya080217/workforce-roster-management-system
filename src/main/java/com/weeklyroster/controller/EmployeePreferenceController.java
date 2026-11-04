@@ -83,12 +83,15 @@ public class EmployeePreferenceController {
                 ? dateShiftPreferenceService.getDatePreferencesByEmployee(emp.getId())
                 : Collections.emptyList();
         var general = preferenceService.getMyActiveApprovedPreference(emp.getId()).orElse(null);
+        var fallback = (general != null) ? general : preferenceService.getEmptyPreferenceResponse(emp.getId());
         Map<String, Object> result = new HashMap<>();
         result.put("employeeId", emp.getId());
         result.put("employeeCode", emp.getEmployeeCode());
+        result.put("employeeName", (emp.getFirstName() + " " + (emp.getLastName() != null ? emp.getLastName() : "")).trim());
+        result.put("basePreferredShift", preferenceService.getEmployeeShiftPreference(emp.getId()));
         result.put("recurringPreferences", recurring);
         result.put("dateSpecificPreferences", dateSpecific);
-        result.put("generalPreference", general != null ? general : preferenceService.getEmptyPreferenceResponse(emp.getId()));
+        result.put("generalPreference", fallback);
         return ResponseEntity.ok(result);
     }
 

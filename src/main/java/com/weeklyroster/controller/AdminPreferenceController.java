@@ -85,11 +85,15 @@ public class AdminPreferenceController {
         var recurring = recurringShiftPreferenceService.getByEmployee(employeeId);
         var dateSpecific = dateShiftPreferenceService.getDatePreferencesByEmployee(employeeId);
         var general = preferenceService.getMyActiveApprovedPreference(employeeId).orElse(null);
+        var fallback = (general != null) ? general : preferenceService.getEmptyPreferenceResponse(employeeId);
         java.util.Map<String, Object> result = new java.util.HashMap<>();
         result.put("employeeId", employeeId);
+        result.put("employeeCode", fallback != null ? fallback.employeeCode() : null);
+        result.put("employeeName", fallback != null ? fallback.employeeName() : null);
+        result.put("basePreferredShift", preferenceService.getEmployeeShiftPreference(employeeId));
         result.put("recurringPreferences", recurring);
         result.put("dateSpecificPreferences", dateSpecific);
-        result.put("generalPreference", general != null ? general : preferenceService.getEmptyPreferenceResponse(employeeId));
+        result.put("generalPreference", fallback);
         return ResponseEntity.ok(result);
     }
 

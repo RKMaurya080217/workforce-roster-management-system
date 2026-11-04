@@ -7362,7 +7362,7 @@ function renderWorkspaceProfileHTML(employee, profile, changeRequests = []) {
                 </strong>
               </div>
               <div class="profile-field-action">
-                <button type="button" class="btn btn-ghost btn-xs" onclick="switchWorkspaceTab('preferences')" style="font-size:0.75rem; color:var(--primary); font-weight:600; text-decoration:underline; padding:2px 6px;">
+                <button type="button" class="btn btn-ghost btn-xs" id="btnViewAllRules" onclick="openEmployeeRulesModal()" style="font-size:0.75rem; color:var(--primary); font-weight:600; text-decoration:underline; padding:2px 6px;" title="View all shift preference rules and restrictions">
                   View All Rules &rarr;
                 </button>
               </div>
@@ -7835,6 +7835,204 @@ async function renderEmployeePreferencesTabHTML() {
   }
 }
 window.renderEmployeePreferencesTabHTML = renderEmployeePreferencesTabHTML;
+
+// =========================================================================
+// BATCH 132: EMPLOYEE SHIFT PREFERENCE RULES MODAL ("VIEW ALL RULES")
+// =========================================================================
+async function openEmployeeRulesModal() {
+  const modal = document.getElementById("employeeRulesModal");
+  const body = document.getElementById("employeeRulesModalBody");
+  const subTitle = document.getElementById("employeeRulesModalSubtitle");
+  if (!modal || !body) return;
+
+  const empCode = (state.empProfile && state.empProfile.employeeCode) || (state.profile && state.profile.username) || "";
+  const empName = (state.empProfile && `${state.empProfile.firstName} ${state.empProfile.lastName || ''}`.trim()) || (state.profile && state.profile.employeeName) || "Employee";
+  if (subTitle) {
+    subTitle.textContent = empCode ? `${empName} (${empCode}) — Shift Preference Rules` : "Active recurring patterns & date-specific preferences";
+  }
+
+  // Open modal immediately
+  openModal("employeeRulesModal");
+
+  // Show loading indicator
+  body.innerHTML = `
+    <div style="text-align:center; padding:36px 16px;">
+      <div class="spinner" style="margin:0 auto 12px; width:30px; height:30px; border-width:3px;"></div>
+      <p style="color:var(--text-muted, #64748b); font-size:0.9rem; margin:0; font-weight:500;">Loading shift preference rules...</p>
+    </div>
+  `;
+
+  try {
+    const summary = await apiRequest("/api/preferences/my/summary");
+    const recList = (summary && Array.isArray(summary.recurringPreferences)) ? summary.recurringPreferences : [];
+    const dateList = (summary && Array.isArray(summary.dateSpecificPreferences)) ? summary.dateSpecificPreferences : [];
+    const basePref = (summary && summary.basePreferredShift) || (state.empProfile && state.empProfile.shiftPreference) || null;
+
+    const hasAnyRules = recList.length > 0 || dateList.length > 0 || basePref;
+
+    if (!hasAnyRules) {
+      body.innerHTML = `
+        <div style="text-align:center; padding:36px 16px;">
+          <div style="font-size:2.4rem; margin-bottom:12px; color:var(--text-muted);">📋</div>
+          <h4 style="margin:0 0 8px; font-size:1.05rem; color:var(--text-primary); font-weight:700;">No Rules Configured</h4>
+          <p style="color:var(--text-muted, #64748b); font-size:0.9rem; max-width:460px; margin:0 auto 16px; line-height:1.5;">
+            No shift preference rules have been configured for your profile.
+          </p>
+          <div class="alert-info-box" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; font-size:0.82rem; color:#475569; text-align:left; max-width:540px; margin:0 auto; line-height:1.5;">
+            <strong style="color:#0f172a; display:block; margin-bottom:4px;">ℹ️ Requesting Shift Preferences:</strong>
+            Shift preferences, recurring assignments, and day-off restrictions are managed and approved by system administrators. Please contact your administrator to configure your shift rules.
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = `
+      <div class="stack-gap" style="gap:16px;">
+        
+        <!-- Base / Default Shift Banner -->
+        <div style="background:var(--bg-app, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; color:var(--text-muted, #64748b); letter-spacing:0.5px;">Default Base Shift</div>
+            <div style="font-size:0.92rem; font-weight:700; color:var(--text-primary, #0f172a); margin-top:2px;">
+              ${basePref ? `Assigned Base Preference: <span class="badge ${formatShiftBadgeClass(basePref)}">${escapeHTML(formatShiftName(basePref))}</span>` : '<span style="color:var(--text-muted);">No Base Preference Set</span>'}
+            </div>
+          </div>
+          <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">
+            ${recList.length} Weekly Rule${recList.length === 1 ? '' : 's'} &bull; ${dateList.length} Date Rule${dateList.length === 1 ? '' : 's'}
+          </div>
+        </div>
+
+        <!-- Section 1: Recurring Weekly Rules -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:var(--text-primary, #0f172a); display:flex; align-items:center; gap:6px;">
+              <span>📅</span> Recurring Weekly Rules
+            </h4>
+            <span class="badge general" style="font-size:0.72rem;">${recList.length} Rule${recList.length === 1 ? '' : 's'}</span>
+          </div>
+          ${recList.length === 0 ? `
+            <div style="padding:14px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; font-size:0.83rem; color:var(--text-muted); text-align:center;">
+              No recurring weekly preferences configured.
+            </div>
+          ` : `
+            <div class="table-wrap" style="max-height:220px; overflow-y:auto; border:1px solid var(--border-color, #e2e8f0); border-radius:6px;">
+              <table class="data-table" style="font-size:0.85rem; width:100%; margin:0;">
+                <thead style="position:sticky; top:0; background:var(--bg-table-header, #f1f5f9); z-index:1;">
+                  <tr>
+                    <th style="padding:8px 12px;">Day</th>
+                    <th style="padding:8px 12px;">Preference</th>
+                    <th style="padding:8px 12px;">Type</th>
+                    <th style="padding:8px 12px;">Status</th>
+                    <th style="padding:8px 12px;">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${recList.map(r => `
+                    <tr>
+                      <td style="padding:8px 12px; font-weight:600;">${escapeHTML(r.dayOfWeek)}</td>
+                      <td style="padding:8px 12px;"><span class="badge ${formatShiftBadgeClass(r.shiftType)}">${escapeHTML(formatShiftName(r.shiftType))}</span></td>
+                      <td style="padding:8px 12px;">
+                        ${r.preferenceType === 'DO_NOT_ASSIGN'
+                          ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.72rem; font-weight:700;">⛔ Do Not Assign</span>'
+                          : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.72rem; font-weight:700;">⭐ Preferred</span>'}
+                      </td>
+                      <td style="padding:8px 12px;">
+                        ${r.active !== false
+                          ? '<span style="color:#16a34a; font-weight:600; font-size:0.78rem;">Active</span>'
+                          : '<span style="color:#94a3b8; font-size:0.78rem;">Inactive</span>'}
+                      </td>
+                      <td style="padding:8px 12px; color:var(--text-muted); font-size:0.8rem;">${escapeHTML(r.notes || '-')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+
+        <!-- Section 2: Date-Specific Rules -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:var(--text-primary, #0f172a); display:flex; align-items:center; gap:6px;">
+              <span>📌</span> Date-Specific Rules
+            </h4>
+            <span class="badge general" style="font-size:0.72rem;">${dateList.length} Rule${dateList.length === 1 ? '' : 's'}</span>
+          </div>
+          ${dateList.length === 0 ? `
+            <div style="padding:14px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:6px; font-size:0.83rem; color:var(--text-muted); text-align:center;">
+              No date-specific shift rules configured.
+            </div>
+          ` : `
+            <div class="table-wrap" style="max-height:220px; overflow-y:auto; border:1px solid var(--border-color, #e2e8f0); border-radius:6px;">
+              <table class="data-table" style="font-size:0.85rem; width:100%; margin:0;">
+                <thead style="position:sticky; top:0; background:var(--bg-table-header, #f1f5f9); z-index:1;">
+                  <tr>
+                    <th style="padding:8px 12px;">Date</th>
+                    <th style="padding:8px 12px;">Preference</th>
+                    <th style="padding:8px 12px;">Type</th>
+                    <th style="padding:8px 12px;">Status</th>
+                    <th style="padding:8px 12px;">Reason / Remark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dateList.map(d => `
+                    <tr>
+                      <td style="padding:8px 12px; font-weight:600;">${formatDate(d.preferenceDate)}</td>
+                      <td style="padding:8px 12px;"><span class="badge ${formatShiftBadgeClass(d.shiftType)}">${escapeHTML(formatShiftName(d.shiftType))}</span></td>
+                      <td style="padding:8px 12px;">
+                        ${d.preferenceType === 'DO_NOT_ASSIGN'
+                          ? '<span class="badge badge-danger" style="background:#fee2e2; color:#991b1b; font-size:0.72rem; font-weight:700;">⛔ Do Not Assign</span>'
+                          : '<span class="badge badge-success" style="background:#dcfce7; color:#166534; font-size:0.72rem; font-weight:700;">⭐ Preferred</span>'}
+                      </td>
+                      <td style="padding:8px 12px;"><span style="color:#16a34a; font-weight:600; font-size:0.78rem;">Active</span></td>
+                      <td style="padding:8px 12px; color:var(--text-muted); font-size:0.8rem;">${escapeHTML(d.reason || '-')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+
+        <!-- Section 3: Rule Priority & Explanation Box -->
+        <div class="alert-info-box" style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:12px 14px; font-size:0.8rem; color:#334155; line-height:1.5;">
+          <div style="font-weight:700; margin-bottom:6px; color:#0f172a; display:flex; align-items:center; gap:6px;">
+            <span>ℹ️</span> Rule Priority &amp; Preference Logic:
+          </div>
+          <ol style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px;">
+            <li><strong>Date-Specific Priority:</strong> Date-specific rules take absolute priority over recurring weekly rules and base shift settings on the matching calendar day.</li>
+            <li><strong>Preferred Shift:</strong> Indicates your preferred shift for that day, prioritized by the roster engine whenever mathematically feasible.</li>
+            <li><strong>Do Not Assign:</strong> Strict avoidance restriction &mdash; the roster engine will never schedule this shift on the specified day.</li>
+            <li><strong>Hard Regulations Precedence:</strong> Mandatory safety rules (12h rest interval, max 2 nights/week, night followed by weekly off, female day-shift protection) always strictly supersede soft preferences.</li>
+            <li><strong>Single Canonical Source:</strong> All rules shown here are synchronized in real-time between your profile, the Admin preference management panel, and the automated roster generator.</li>
+          </ol>
+        </div>
+
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `
+      <div style="text-align:center; padding:32px 16px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px;">
+        <div style="font-size:2rem; margin-bottom:8px; color:#ef4444;">⚠️</div>
+        <h4 style="margin:0 0 6px; font-size:1rem; color:#991b1b; font-weight:700;">Failed to Load Shift Rules</h4>
+        <p style="color:#b91c1c; font-size:0.85rem; max-width:440px; margin:0 auto 16px;">
+          ${escapeHTML(err.message || "An error occurred while fetching your preference rules.")}
+        </p>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openEmployeeRulesModal()" style="display:inline-flex; align-items:center; gap:6px;">
+          <span>🔄</span> Retry
+        </button>
+      </div>
+    `;
+  }
+}
+window.openEmployeeRulesModal = openEmployeeRulesModal;
+window.switchWorkspaceTab = function(tab) {
+  if (typeof switchEmployeeWorkspaceTab === "function") {
+    switchEmployeeWorkspaceTab(tab);
+  }
+};
+
 
 function renderWorkspaceLeaveManagementHTML(leaves, roster, empId) {
   const activeAndPendingLeaves = leaves.filter(l => l.status === "APPROVED" || l.status === "PENDING" || l.status === "PENDING_MODIFICATION" || l.status === "PENDING_CANCELLATION");
