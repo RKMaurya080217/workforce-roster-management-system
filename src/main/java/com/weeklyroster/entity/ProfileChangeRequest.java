@@ -33,6 +33,12 @@ public class ProfileChangeRequest extends EmployeeWorkflowRequest {
     @Column(name = "admin_remarks", length = 500)
     private String adminRemarks;
 
+    @Column(name = "request_reason", length = 1000)
+    private String reason;
+
+    @Column(name = "decided_by", length = 100)
+    private String reviewedBy;
+
     public Employee getEmployee() { return employee; }
     public void setEmployee(Employee employee) { this.employee = employee; }
     public String getFieldName() { return fieldName; }
@@ -49,6 +55,10 @@ public class ProfileChangeRequest extends EmployeeWorkflowRequest {
     public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
     public String getAdminRemarks() { return adminRemarks; }
     public void setAdminRemarks(String adminRemarks) { this.adminRemarks = adminRemarks; }
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
+    public String getReviewedBy() { return reviewedBy; }
+    public void setReviewedBy(String reviewedBy) { this.reviewedBy = reviewedBy; }
     public Long getVersion() { return super.getVersion(); }
     public void setVersion(Long version) { super.setVersion(version); }
 }

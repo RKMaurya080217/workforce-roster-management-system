@@ -89,6 +89,7 @@ public class ProfileChangeRequestService {
     private final NotificationService notificationService;
     private final EmployeeActivityLogService activityLogService;
     private final DevCredentialMirrorService devCredentialMirrorService;
+    private final EmployeeMasterSyncService employeeMasterSyncService;
 
     public ProfileChangeRequestService(ProfileChangeRequestRepository profileChangeRequestRepository,
                                        EmployeeRepository employeeRepository,
@@ -96,7 +97,7 @@ public class ProfileChangeRequestService {
                                        AuditService auditService,
                                        NotificationService notificationService,
                                        EmployeeActivityLogService activityLogService) {
-        this(profileChangeRequestRepository, employeeRepository, userRepository, auditService, notificationService, activityLogService, null);
+        this(profileChangeRequestRepository, employeeRepository, userRepository, auditService, notificationService, activityLogService, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -106,7 +107,8 @@ public class ProfileChangeRequestService {
                                        AuditService auditService,
                                        NotificationService notificationService,
                                        EmployeeActivityLogService activityLogService,
-                                       @org.springframework.beans.factory.annotation.Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService) {
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) DevCredentialMirrorService devCredentialMirrorService,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) EmployeeMasterSyncService employeeMasterSyncService) {
         this.profileChangeRequestRepository = profileChangeRequestRepository;
         this.employeeRepository = employeeRepository;
         this.userRepository = userRepository;
@@ -114,6 +116,7 @@ public class ProfileChangeRequestService {
         this.notificationService = notificationService;
         this.activityLogService = activityLogService;
         this.devCredentialMirrorService = devCredentialMirrorService;
+        this.employeeMasterSyncService = employeeMasterSyncService;
     }
 
     @Transactional
@@ -146,11 +149,16 @@ public class ProfileChangeRequestService {
             throw new BusinessException("A pending change request already exists for field: " + canonicalField);
         }
 
+        String reason = (request.reason() != null && !request.reason().isBlank())
+                ? request.reason().trim()
+                : "Profile update requested by employee";
+
         ProfileChangeRequest changeRequest = new ProfileChangeRequest();
         changeRequest.setEmployee(employee);
         changeRequest.setFieldName(canonicalField);
         changeRequest.setCurrentValue(currentValue);
         changeRequest.setRequestedValue(requestedValue);
+        changeRequest.setReason(reason);
         changeRequest.setStatus(ProfileChangeStatus.PENDING);
         changeRequest.setRequestedAt(LocalDateTime.now());
 
@@ -165,7 +173,7 @@ public class ProfileChangeRequestService {
                     ActivityCategory.PROFILE,
                     "PROFILE_CHANGE_REQUESTED",
                     ActivityStatus.SUCCESS,
-                    "Submitted profile change request for " + canonicalField + " to '" + requestedValue + "'",
+                    "Submitted profile change request for " + canonicalField + " to '" + requestedValue + "' (Reason: " + reason + ")",
                     "WEB"
             );
         }
@@ -194,7 +202,7 @@ public class ProfileChangeRequestService {
                     employee.getFirstName() + " " + employee.getLastName(),
                     currentValue,
                     requestedValue,
-                    "Employee requested profile change for " + canonicalField,
+                    "Employee requested profile change for " + canonicalField + ". Reason: " + reason,
                     "WEB"
             );
         }
@@ -224,12 +232,31 @@ public class ProfileChangeRequestService {
         employeeRepository.save(employee);
 
         if (devCredentialMirrorService != null) {
-            devCredentialMirrorService.updateProfile(employee, null);
+            try {
+                devCredentialMirrorService.updateProfile(employee, null);
+            } catch (Exception e) {
+                log.warn("Dev credential mirror update failed: {}", e.getMessage());
+            }
+        }
+
+        if (employeeMasterSyncService != null) {
+            try {
+                employeeMasterSyncService.exportCanonicalCsv();
+            } catch (Exception e) {
+                log.warn("Canonical CSV export failed after profile change approval: {}", e.getMessage());
+            }
+        }
+
+        String reviewer = "admin";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getName() != null && !auth.getName().isBlank()) {
+            reviewer = auth.getName();
         }
 
         String remarks = decision != null ? decision.adminRemarks() : null;
         request.setStatus(ProfileChangeStatus.APPROVED);
         request.setReviewedAt(LocalDateTime.now());
+        request.setReviewedBy(reviewer);
         request.setAdminRemarks(remarks);
 
         ProfileChangeRequest saved = profileChangeRequestRepository.save(request);
@@ -238,7 +265,7 @@ public class ProfileChangeRequestService {
 
         // Activity log
         if (activityLogService != null) {
-            String desc = "Profile change request for " + field + " was approved by admin"
+            String desc = "Profile change request for " + field + " was approved by " + reviewer
                     + (remarks != null && !remarks.isBlank() ? ". Remarks: " + remarks : "");
             activityLogService.logActivity(
                     employee.getId(),
@@ -262,7 +289,7 @@ public class ProfileChangeRequestService {
                     employee.getFirstName() + " " + employee.getLastName(),
                     request.getCurrentValue(),
                     requestedValue,
-                    remarks != null && !remarks.isBlank() ? remarks : "Profile change request approved",
+                    remarks != null && !remarks.isBlank() ? remarks : "Profile change request approved by " + reviewer,
                     "MANUAL"
             );
         }
@@ -297,8 +324,15 @@ public class ProfileChangeRequestService {
         Employee employee = request.getEmployee();
         String remarks = decision != null ? decision.adminRemarks() : null;
 
+        String reviewer = "admin";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && auth.getName() != null && !auth.getName().isBlank()) {
+            reviewer = auth.getName();
+        }
+
         request.setStatus(ProfileChangeStatus.REJECTED);
         request.setReviewedAt(LocalDateTime.now());
+        request.setReviewedBy(reviewer);
         request.setAdminRemarks(remarks);
 
         ProfileChangeRequest saved = profileChangeRequestRepository.save(request);
@@ -310,7 +344,7 @@ public class ProfileChangeRequestService {
 
         // Activity log
         if (activityLogService != null && empId != null) {
-            String desc = "Profile change request for " + request.getFieldName() + " was rejected by admin"
+            String desc = "Profile change request for " + request.getFieldName() + " was rejected by " + reviewer
                     + (remarks != null && !remarks.isBlank() ? ". Remarks: " + remarks : "");
             activityLogService.logActivity(
                     empId,
@@ -334,7 +368,7 @@ public class ProfileChangeRequestService {
                     employee != null ? employee.getFirstName() + " " + employee.getLastName() : "Unknown",
                     request.getCurrentValue(),
                     request.getRequestedValue(),
-                    remarks != null && !remarks.isBlank() ? remarks : "Profile change request rejected",
+                    remarks != null && !remarks.isBlank() ? remarks : "Profile change request rejected by " + reviewer,
                     "MANUAL"
             );
         }
@@ -367,6 +401,12 @@ public class ProfileChangeRequestService {
     @Transactional(readOnly = true)
     public List<ProfileChangeRequestResponse> getPendingRequests() {
         return profileChangeRequestRepository.findByStatusOrderByRequestedAtAsc(ProfileChangeStatus.PENDING)
+                .stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProfileChangeRequestResponse> getAllRequests(ProfileChangeStatus status, Long employeeId) {
+        return profileChangeRequestRepository.findByFilters(status, employeeId)
                 .stream().map(this::toResponse).toList();
     }
 
@@ -405,10 +445,16 @@ public class ProfileChangeRequestService {
                 if (value.length() > 80) {
                     throw new BusinessException("First name must not exceed 80 characters");
                 }
+                if (value.length() < 2) {
+                    throw new BusinessException("First name must be at least 2 characters");
+                }
             }
             case "lastName" -> {
                 if (value.length() > 80) {
                     throw new BusinessException("Last name must not exceed 80 characters");
+                }
+                if (value.length() < 1) {
+                    throw new BusinessException("Last name cannot be empty");
                 }
             }
             case "email" -> {
@@ -542,11 +588,12 @@ public class ProfileChangeRequestService {
                 r.getFieldName(),
                 r.getCurrentValue(),
                 r.getRequestedValue(),
+                r.getReason(),
                 r.getStatus(),
                 r.getRequestedAt(),
                 r.getReviewedAt(),
-                r.getAdminRemarks()
+                r.getAdminRemarks(),
+                r.getReviewedBy()
         );
     }
 }
-

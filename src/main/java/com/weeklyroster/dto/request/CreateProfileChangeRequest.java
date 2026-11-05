@@ -15,7 +15,13 @@ public record CreateProfileChangeRequest(
         @JsonAlias({"value", "newValue", "new_value", "requested_value", "targetValue"})
         @NotBlank(message = "Requested value is required")
         @Size(max = 255, message = "Requested value must not exceed 255 characters")
-        String requestedValue
-) {
-}
+        String requestedValue,
 
+        @JsonAlias({"requestReason", "employeeReason", "justification", "comment", "note"})
+        @Size(max = 1000, message = "Reason must not exceed 1000 characters")
+        String reason
+) {
+    public CreateProfileChangeRequest(String fieldName, String requestedValue) {
+        this(fieldName, requestedValue, null);
+    }
+}

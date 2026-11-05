@@ -1,18 +1,18 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 132: EMPLOYEE PROFILE SHIFT PREFERENCE, VIEW ALL RULES & UI FUNCTIONALITY AUDIT
+BATCH 133: EMPLOYEE PROFILE REQUEST CHANGE, ADMIN APPROVAL & DATA SYNCHRONIZATION
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-132-FRESH.jar
+Artifact Name           : WRMS-BATCH-133-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.7.jar
-Build Timestamp         : 2026-11-04 22:33:46 IST
-SHA-256 Checksum        : 83F465FD544BDD09A3508BC24909E9645860813DCCABE8C04948A9B2CFF8FC61
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.8.jar
+Build Timestamp         : 2026-11-06 04:09:10 IST
+SHA-256 Checksum        : 68CF2CD2E5D3B535EDBEA4A8E451E63675CDA5C57719E87055B887F534F81981
+Previous Build (B132)   : 83F465FD544BDD09A3508BC24909E9645860813DCCABE8C04948A9B2CFF8FC61
 Previous Build (B131)   : F66BE61976352E3CAE95C4DF06401FD1F8C1D82DD5EAFC285FC8C545DDD41CAE
-Previous Build (B130)   : DCEE5C5549465DF24369EFDE52C331A9FE45DF033C010524E43015A2B63FB341
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -21,69 +21,51 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Test Suite Execution    : 69 tests executed across 9 test classes, 0 failures, 0 errors, 0 skipped
+Test Suite Execution    : 89 tests executed across 10 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
 
 3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
 [ROOT CAUSE IDENTIFIED]
-In app.js (line 7365), the "View All Rules →" action beside Shift Preference in Employee Profile
-called onclick="switchWorkspaceTab('preferences')". However, no function named `switchWorkspaceTab`
-was ever defined (the sub-nav function was `switchEmployeeWorkspaceTab`). Clicking the button threw
-an uncaught ReferenceError in the browser console, resulting in zero visible user interaction.
+Previously, the Profile Request Change workflow was disconnected in several critical places:
+1. When employees changed a profile field inline (e.g. mobile number) and clicked "Request Change",
+   the handler submitted directly via `submitDirectProfileChange(...)` without opening a confirmation dialog
+   and without collecting a mandatory reason/justification from the employee.
+2. The Request Change modal (`#profileChangeModal`) lacked a Reason for Change input, an explicit confirmation alert,
+   and did not display request reference IDs.
+3. The Employee Profile Change Requests table lacked columns for "Request ID" and "Reason", hiding the justification.
+4. The Admin unified approval dashboard Reason column defaulted to `'Pending admin review'` because `r.reason`
+   was not mapped on `ProfileChangeRequest` entity or returned in `ProfileChangeRequestResponse`.
+5. Reviewer identity (`decided_by`) was not recorded on profile approval/rejection.
+6. Approval did not trigger canonical CSV synchronization via `EmployeeMasterSyncService`.
 
 [IMPLEMENTATION FIXES]
-1. First-Class Responsive Modal ("Shift Preference Rules"):
-   - Added `#employeeRulesModal` to index.html with accessible header, scrollable body, and footer.
-   - Implemented `openEmployeeRulesModal()` in app.js:
-     * Immediately displays a loading state with spinner.
-     * Fetches live canonical rules from `/api/preferences/my/summary`.
-     * Renders Default Base Shift card.
-     * Renders Recurring Weekly Rules table (Day, Preference badge, Type [Preferred / Do Not Assign], Status, Notes).
-     * Renders Date-Specific Rules table (Date, Preference badge, Type [Preferred / Do Not Assign], Status, Reason).
-     * Renders informative Rule Priority & Preference Logic explanation card.
-     * Handles empty state cleanly with prompt-mandated text: "No shift preference rules have been configured for your profile."
-     * Handles network/API failures with descriptive message and an interactive "Retry" button.
-     * Includes "Open in Workspace →" quick navigation to the full Preferences tab.
-     * Fully responsive on desktop, tablet, and mobile.
-     * Closes via Header Close (&times;), Footer Close button, Backdrop click, and Escape key.
+1. Domain Entity & DTO Mapping:
+   - Mapped `request_reason VARCHAR(1000)` and `decided_by VARCHAR(100)` onto `ProfileChangeRequest.java`.
+   - Updated `CreateProfileChangeRequest.java` to support `reason` with backward-compatible 2-argument constructor.
+   - Updated `ProfileChangeRequestResponse.java` to include `reason` and `reviewedBy` with backward-compatible constructor.
+2. Service & Approval Workflow:
+   - Updated `ProfileChangeRequestService.java`:
+     * Saves employee's reason on submission.
+     * Records reviewer identity from authenticated `SecurityContextHolder` on approval and rejection.
+     * Re-validates requested values upon approval before mutating employee master data.
+     * Atomically synchronizes canonical CSV (`EmployeeMasterSyncService`) and dev mirror on approval.
+     * Generates in-app notifications (`PROFILE_CHANGE_DECISION`) and audit logs.
+     * Added `getAllRequests(status, employeeId)` with filtering support.
+3. Admin Endpoints:
+   - Added `GET /api/admin/profile-change-requests` with `status` and `employeeId` filters.
+   - Added `GET /api/admin/profile-change-requests/history`.
+4. Frontend UI Enhancements:
+   - Added `#pcrFormReason` textarea and confirmation banner to `#profileChangeModal` in `index.html`.
+   - Updated `handleProfileChangeClick` in `app.js` to always present modal confirmation and capture reason.
+   - Enhanced `renderMyChangeRequestsTableHTML` with full 9-column specification (Request ID, Field, Current Value,
+     Requested Value, Reason, Submitted At, Status, Reviewed At, Admin Remarks).
+   - Displayed employee's reason in `renderProfileApprovalsCategoryBody` for Admin review.
+   - Updated client distribution launcher `run.bat` to detect `WRMS-Client-1.0.8.jar`.
 
-2. Profile Button Binding:
-   - Updated Employee Profile Shift Preference action to call `openEmployeeRulesModal()` with id `btnViewAllRules`.
-   - Added global fallback alias `window.switchWorkspaceTab = switchEmployeeWorkspaceTab;` for backwards compatibility.
-
-3. Symmetrical Preference Summary Endpoints:
-   - Enhanced both `GET /api/preferences/my/summary` and `GET /api/admin/preferences/employee/{id}/summary`
-     to guarantee consistent payloads: `employeeId`, `employeeCode`, `employeeName`, `basePreferredShift`,
-     `recurringPreferences`, `dateSpecificPreferences`, and `generalPreference`.
-
-4. Employee Dashboard & Profile Comprehensive Audit:
-   - Verified Dashboard (overview cards, today's shift badge, 7-day compact Mon-Sun strip, next duty context).
-   - Verified My Roster (week selector, shift cards, weekly off, holiday / leave flags).
-   - Verified Leave Management (application form, calculation, submit, pending / approved history).
-   - Verified Notifications (unread badge, mark as read, list render).
-   - Verified Activity / Logs (paginated activity stream).
-   - Verified Profile (personal & employment fields, joining date, change request buttons, password change).
-
-4. AUTOMATED TEST SUITE EXECUTION
+4. VERIFICATION EVIDENCE
 --------------------------------------------------------------------------------
-- Batch132ViewAllRulesAndEmployeeProfileTest: 10 passed (0 failures, 0 errors)
-  * testViewAllRulesSummaryEndpoint_ReturnsAllPreferences: PASSED
-  * testStrictEmployeeDataIsolation: PASSED
-  * testBothPreferredAndDoNotAssignPreferencesSupported: PASSED
-  * testAdminPreferenceChange_ImmediatelyVisibleToEmployee: PASSED
-  * testEmptyStateHandling_WhenNoRulesConfigured: PASSED
-  * testUnauthorizedAccessRejected: PASSED
-  * testEmployeeCannotAccessAdminPreferenceEndpoints: PASSED
-  * testEmployeeProfileEndpointDataIntegrityAndPrivacy: PASSED
-  * testViewAllRulesModalMarkupAndClientBinding: PASSED
-  * testRosterEngineEvaluationOfSameCanonicalPreferences: PASSED
-- Batch131RegressionAuditTest: 11 passed (0 failures)
-- Batch130CentralizedPreferenceSyncTest: 5 passed (0 failures)
-- CustomUserDetailsServiceTest: 6 passed (0 failures)
-- AuthServiceTest: 4 passed (0 failures)
-- Batch44LoginPageRoleSelectionTest: 3 passed (0 failures)
-- Batch45ProductionLoginAndSharedLayoutTest: 4 passed (0 failures)
-- Batch126EmployeeMasterDataSyncTest: 20 passed (0 failures)
-- Batch128FinalRosterEngineRebuildTest: 6 passed (0 failures)
-TOTAL: 69 passed, 0 failures, 0 errors, 0 skipped (100% SUCCESS).
+- Test Suite: Batch133ProfileChangeWorkflowTest (20/20 passed)
+- Full Regression Suite: 89/89 passed, 0 failures, 0 errors, 0 skipped.
+- Independent Smoke Test on isolated port 8089: Succeeded.
+- Railway Deployment: 0 deployments.
 ================================================================================

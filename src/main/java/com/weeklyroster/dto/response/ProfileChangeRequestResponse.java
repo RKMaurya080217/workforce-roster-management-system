@@ -11,9 +11,26 @@ public record ProfileChangeRequestResponse(
         String fieldName,
         String currentValue,
         String requestedValue,
+        String reason,
         ProfileChangeStatus status,
         LocalDateTime requestedAt,
         LocalDateTime reviewedAt,
-        String adminRemarks
+        String adminRemarks,
+        String reviewedBy
 ) {
+    public ProfileChangeRequestResponse(
+            Long id,
+            Long employeeId,
+            String employeeCode,
+            String employeeName,
+            String fieldName,
+            String currentValue,
+            String requestedValue,
+            ProfileChangeStatus status,
+            LocalDateTime requestedAt,
+            LocalDateTime reviewedAt,
+            String adminRemarks
+    ) {
+        this(id, employeeId, employeeCode, employeeName, fieldName, currentValue, requestedValue, null, status, requestedAt, reviewedAt, adminRemarks, null);
+    }
 }

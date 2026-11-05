@@ -21,5 +21,11 @@ public interface ProfileChangeRequestRepository extends JpaRepository<ProfileCha
     @Query("SELECT r FROM ProfileChangeRequest r JOIN FETCH r.employee WHERE r.status = :status ORDER BY r.requestedAt ASC")
     List<ProfileChangeRequest> findByStatusOrderByRequestedAtAsc(@Param("status") ProfileChangeStatus status);
 
+    @Query("SELECT r FROM ProfileChangeRequest r JOIN FETCH r.employee ORDER BY r.requestedAt DESC")
+    List<ProfileChangeRequest> findAllOrderByRequestedAtDesc();
+
+    @Query("SELECT r FROM ProfileChangeRequest r JOIN FETCH r.employee WHERE (:status IS NULL OR r.status = :status) AND (:employeeId IS NULL OR r.employee.id = :employeeId) ORDER BY r.requestedAt DESC")
+    List<ProfileChangeRequest> findByFilters(@Param("status") ProfileChangeStatus status, @Param("employeeId") Long employeeId);
+
     boolean existsByEmployeeIdAndFieldNameAndStatus(Long employeeId, String fieldName, ProfileChangeStatus status);
 }

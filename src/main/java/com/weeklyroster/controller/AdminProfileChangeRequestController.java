@@ -2,6 +2,7 @@ package com.weeklyroster.controller;
 
 import com.weeklyroster.dto.request.ProfileChangeDecisionRequest;
 import com.weeklyroster.dto.response.ProfileChangeRequestResponse;
+import com.weeklyroster.entity.ProfileChangeStatus;
 import com.weeklyroster.service.ProfileChangeRequestService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -25,6 +27,19 @@ public class AdminProfileChangeRequestController {
 
     public AdminProfileChangeRequestController(ProfileChangeRequestService profileChangeRequestService) {
         this.profileChangeRequestService = profileChangeRequestService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<ProfileChangeRequestResponse>> getAllRequests(
+            @RequestParam(value = "status", required = false) ProfileChangeStatus status,
+            @RequestParam(value = "employeeId", required = false) Long employeeId) {
+        return ResponseEntity.ok(profileChangeRequestService.getAllRequests(status, employeeId));
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<List<ProfileChangeRequestResponse>> getHistory(
+            @RequestParam(value = "employeeId", required = false) Long employeeId) {
+        return ResponseEntity.ok(profileChangeRequestService.getAllRequests(null, employeeId));
     }
 
     @GetMapping("/pending")

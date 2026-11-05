@@ -7550,12 +7550,14 @@ function renderMyChangeRequestsTableHTML(list) {
     <table>
       <thead>
         <tr>
+          <th style="white-space:nowrap;">Request ID</th>
           <th>Field</th>
           <th>Current Value</th>
           <th>Requested Value</th>
+          <th>Reason</th>
+          <th style="white-space:nowrap;">Submitted At</th>
           <th>Status</th>
-          <th>Requested On</th>
-          <th>Reviewed On</th>
+          <th style="white-space:nowrap;">Reviewed At</th>
           <th>Admin Remarks</th>
         </tr>
       </thead>
@@ -7567,18 +7569,22 @@ function renderMyChangeRequestsTableHTML(list) {
           if (r.status === "APPROVED") { statusClass = "active"; statusText = "Approved"; }
           else if (r.status === "REJECTED") { statusClass = "inactive"; statusText = "Rejected"; }
 
+          const reqId = r.id ? `#PCR-${r.id}` : "-";
+
           return `
             <tr>
+              <td><strong><code>${escapeHTML(reqId)}</code></strong></td>
               <td><strong>${escapeHTML(fieldLabel)}</strong></td>
               <td><code>${escapeHTML(r.currentValue || '-')}</code></td>
               <td><strong style="color:var(--primary);">${escapeHTML(r.requestedValue)}</strong></td>
+              <td style="max-width:200px; font-size:0.82rem;">${escapeHTML(r.reason || '-')}</td>
+              <td><small style="color:var(--text-muted); white-space:nowrap;">${r.requestedAt ? new Date(r.requestedAt).toLocaleString() : '-'}</small></td>
               <td>
                 <span class="status-pill ${statusClass}">
                   <span class="badge-dot"></span> ${statusText}
                 </span>
               </td>
-              <td><small style="color:var(--text-muted);">${r.requestedAt ? new Date(r.requestedAt).toLocaleString() : '-'}</small></td>
-              <td><small style="color:var(--text-muted);">${r.reviewedAt ? new Date(r.reviewedAt).toLocaleString() : '-'}</small></td>
+              <td><small style="color:var(--text-muted); white-space:nowrap;">${r.reviewedAt ? new Date(r.reviewedAt).toLocaleString() : '-'}</small></td>
               <td style="max-width:220px; font-size:0.82rem;">${r.adminRemarks ? escapeHTML(r.adminRemarks) : '<span style="color:var(--text-subtle);">-</span>'}</td>
             </tr>
           `;
@@ -12151,7 +12157,7 @@ function renderProfileApprovalsCategoryBody(requests) {
                     <span class="badge" style="background:#dcfce7; color:#166534; font-weight:700;">${escapeHTML(String(newVal || '-'))}</span>
                   </div>
                 </td>
-                <td style="max-width:220px; font-size:0.82rem;">${escapeHTML(r.adminRemarks || r.reason || 'Pending admin review')}</td>
+                <td style="max-width:220px; font-size:0.82rem;">${escapeHTML(r.reason || 'No reason provided')}</td>
                 <td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${timeDisplay}</td>
                 <td><span class="status-pill pending">PENDING</span></td>
                 <td style="text-align:right; white-space:nowrap;">
@@ -12940,87 +12946,29 @@ async function handleProfileChangeClick(btn) {
   const inlineInput = inputId ? document.getElementById(inputId) : null;
   const inlineValue = inlineInput ? inlineInput.value.trim() : "";
 
-  // If user changed the value inline and it differs from currentValue:
-  if (inlineValue && inlineValue.toLowerCase() !== currentValue.toLowerCase()) {
-    await submitDirectProfileChange(fieldName, inlineValue, btn, currentValue);
-    return;
-  }
-
-  // If user clicked without modifying inline or left it identical, open the modal:
+  // Always open modal to allow employee to verify current vs requested and provide required justification
   openProfileChangeModal({
     fieldName,
     label,
     currentValue,
     type,
-    prefillValue: inlineValue || (currentValue !== "-" ? currentValue : "")
+    prefillValue: (inlineValue && inlineValue.toLowerCase() !== currentValue.toLowerCase()) ? inlineValue : (currentValue !== "-" ? currentValue : "")
   });
 }
 window.handleProfileChangeClick = handleProfileChangeClick;
 
 async function submitDirectProfileChange(fieldName, requestedValue, btnElement, currentValRef) {
-  if (isSubmittingProfileChange) return;
-
-  const lowerField = (fieldName || "").toLowerCase();
-  const trimmed = (requestedValue || "").trim();
-
-  if (!trimmed) {
-    toast("Please enter a requested value.", "warning");
-    return;
-  }
-
+  // Redirect to full modal workflow with prefill to ensure reason is captured
+  const label = btnElement ? (btnElement.getAttribute("data-label") || fieldName) : fieldName;
   const currentVal = currentValRef !== undefined ? currentValRef : (btnElement ? btnElement.getAttribute("data-current") || "" : "");
-  if (currentVal && trimmed.toLowerCase() === currentVal.trim().toLowerCase() && currentVal !== "-") {
-    toast("Please enter a new value different from your current value.", "warning");
-    return;
-  }
-
-  // Pre-validate mobile / phone numbers
-  if (lowerField.includes("phone") || lowerField.includes("contact") || lowerField.includes("mobile")) {
-    const digitsOnly = trimmed.replace(/[^0-9]/g, "");
-    if (digitsOnly.length < 7 || !/^[+]?[0-9\s\-()]{7,30}$/.test(trimmed)) {
-      toast("Please enter a valid mobile number (at least 7 digits).", "error");
-      return;
-    }
-  }
-
-  // Pre-validate email
-  if (lowerField.includes("email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    toast("Please enter a valid email address.", "error");
-    return;
-  }
-
-  // Pre-validate first/last name
-  if ((lowerField.includes("first") || lowerField.includes("last")) && trimmed.length < 2) {
-    toast("Please enter a valid name (at least 2 characters).", "error");
-    return;
-  }
-
-  const originalContent = btnElement ? btnElement.innerHTML : "";
-  try {
-    isSubmittingProfileChange = true;
-    if (btnElement) {
-      btnElement.disabled = true;
-      btnElement.innerHTML = `<span>Submitting...</span>`;
-    }
-
-    await apiRequest("/api/profile-change-requests", {
-      method: "POST",
-      body: { fieldName, requestedValue: trimmed }
-    });
-
-    toast("Profile change request submitted successfully.", "success");
-    broadcastDataMutation("PROFILE_CHANGE_REQUESTED");
-    await renderEmployeeWorkspaceView();
-  } catch (err) {
-    const errMsg = err.message || "Unable to submit profile change. Please try again.";
-    toast(errMsg, "error");
-    if (btnElement) {
-      btnElement.disabled = false;
-      btnElement.innerHTML = originalContent;
-    }
-  } finally {
-    isSubmittingProfileChange = false;
-  }
+  const type = btnElement ? (btnElement.getAttribute("data-type") || "text") : "text";
+  openProfileChangeModal({
+    fieldName,
+    label,
+    currentValue: currentVal,
+    type,
+    prefillValue: requestedValue
+  });
 }
 window.submitDirectProfileChange = submitDirectProfileChange;
 
@@ -13030,6 +12978,9 @@ function openProfileChangeModal({ fieldName, label, currentValue, type, prefillV
   document.getElementById("pcrFormCurrentLabel").textContent = `Current ${label}`;
   document.getElementById("pcrFormCurrentValue").value = currentValue || "-";
   document.getElementById("pcrFormRequestedLabel").innerHTML = `Requested New ${label} <span class="req">*</span>`;
+
+  const reasonInput = document.getElementById("pcrFormReason");
+  if (reasonInput) reasonInput.value = "";
 
   const container = document.getElementById("pcrFormInputContainer");
   const helper = document.getElementById("pcrFormHelperText");
@@ -13069,7 +13020,10 @@ function openProfileChangeModal({ fieldName, label, currentValue, type, prefillV
   openModal("profileChangeModal");
   setTimeout(() => {
     const input = document.getElementById("pcrFormRequestedValue");
-    if (input) {
+    const reasonEl = document.getElementById("pcrFormReason");
+    if (initialVal && initialVal.toLowerCase() !== (currentValue || "").toLowerCase() && reasonEl) {
+      reasonEl.focus();
+    } else if (input) {
       input.focus();
       if (input.select) input.select();
     }
@@ -13084,6 +13038,8 @@ async function handleConfirmProfileChange(e) {
   const reqInput = document.getElementById("pcrFormRequestedValue");
   const requestedValue = reqInput ? reqInput.value.trim() : "";
   const currentVal = (document.getElementById("pcrFormCurrentValue")?.value || "").trim();
+  const reasonInput = document.getElementById("pcrFormReason");
+  const reason = reasonInput ? reasonInput.value.trim() : "";
   const alertBox = document.getElementById("pcrFormAlertBox");
   const submitBtn = document.getElementById("submitProfileChangeBtn");
   const spinner = submitBtn?.querySelector(".spinner");
@@ -13101,6 +13057,7 @@ async function handleConfirmProfileChange(e) {
       alertBox.classList.remove("hidden");
     }
     toast(msg, "warning");
+    reqInput?.focus();
     return;
   }
 
@@ -13111,6 +13068,7 @@ async function handleConfirmProfileChange(e) {
       alertBox.classList.remove("hidden");
     }
     toast(msg, "warning");
+    reqInput?.focus();
     return;
   }
 
@@ -13125,6 +13083,7 @@ async function handleConfirmProfileChange(e) {
         alertBox.classList.remove("hidden");
       }
       toast(msg, "error");
+      reqInput?.focus();
       return;
     }
   }
@@ -13137,6 +13096,19 @@ async function handleConfirmProfileChange(e) {
       alertBox.classList.remove("hidden");
     }
     toast(msg, "error");
+    reqInput?.focus();
+    return;
+  }
+
+  // Validate reason for change
+  if (!reason || reason.length < 3) {
+    const msg = "Please provide an explanation/reason for this profile change request (at least 3 characters).";
+    if (alertBox) {
+      alertBox.textContent = msg;
+      alertBox.classList.remove("hidden");
+    }
+    toast(msg, "warning");
+    reasonInput?.focus();
     return;
   }
 
@@ -13146,12 +13118,13 @@ async function handleConfirmProfileChange(e) {
     if (spinner) spinner.classList.remove("hidden");
     if (submitText) submitText.textContent = "Submitting...";
 
-    await apiRequest("/api/profile-change-requests", {
+    const res = await apiRequest("/api/profile-change-requests", {
       method: "POST",
-      body: { fieldName, requestedValue }
+      body: { fieldName, requestedValue, reason }
     });
 
-    toast("Profile change request submitted successfully.", "success");
+    const refId = res && res.id ? `#PCR-${res.id}` : "Request";
+    toast(`Profile change request ${refId} submitted successfully for admin review.`, "success");
     broadcastDataMutation("PROFILE_CHANGE_REQUESTED");
     closeModal("profileChangeModal");
     await renderEmployeeWorkspaceView();
