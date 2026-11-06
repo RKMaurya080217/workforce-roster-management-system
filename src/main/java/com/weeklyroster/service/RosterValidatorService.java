@@ -230,7 +230,11 @@ public class RosterValidatorService {
             long offCount = empAssignments.stream().filter(RosterAssignment::isWeeklyOff).count();
             checksRun++;
             int expectedOffs = (cycle != null) ? cycle.getExpectedWeeklyOffs() : 1;
-            if (offCount == 0) {
+            int cycleWorkingDays = (cycle != null && cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
+            boolean worksSundayNight = (cycle != null && cycle.getEndDate() != null) && empAssignments.stream()
+                    .anyMatch(a -> a.getRosterDate().equals(cycle.getEndDate()) && !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT);
+            int targetExpectedOffs = (worksSundayNight && cycleWorkingDays == 6) ? 0 : expectedOffs;
+            if (offCount == 0 && targetExpectedOffs > 0) {
                 findings.add(new RosterValidationFinding(
                         "NO_WEEKLY_OFF",
                         "Missing Weekly OFF",
@@ -239,14 +243,14 @@ public class RosterValidatorService {
                         empName + " has 0 Weekly OFF days in this cycle.",
                         "Every employee must receive at least 1 Weekly OFF per 7-day cycle."
                 ));
-            } else if (offCount > expectedOffs) {
+            } else if (offCount > targetExpectedOffs) {
                 findings.add(new RosterValidationFinding(
                         "EXCESS_WEEKLY_OFF",
                         "High Weekly OFF Count",
-                        (expectedOffs == 1) ? ValidationSeverity.ERROR : ValidationSeverity.WARNING,
+                        (targetExpectedOffs == 1) ? ValidationSeverity.ERROR : ValidationSeverity.WARNING,
                         emp.getEmployeeCode(), empName, null,
                         empName + " has " + offCount + " Weekly OFF days in this cycle.",
-                        "Configured allotment is " + expectedOffs + " Weekly OFF" + (expectedOffs > 1 ? "s" : "") + "."
+                        "Configured allotment is " + targetExpectedOffs + " Weekly OFF" + (targetExpectedOffs > 1 ? "s" : "") + "."
                 ));
             }
 
@@ -279,6 +283,30 @@ public class RosterValidatorService {
                             empName + " has 2 night shifts that are scattered (" + nightDates.get(0) + " and " + nightDates.get(1) + ") instead of clustered consecutively.",
                             "CRIS mandatory fatigue safety rule: If an employee receives two Night shifts in the same week, they must be consecutive."
                     ));
+                }
+            }
+
+            // BATCH 135: Strict invariant: Weekly Off can NEVER precede a later Night shift in the same cycle
+            checksRun++;
+            LocalDate firstNightInCycle = null;
+            for (RosterAssignment a : empAssignments) {
+                if (!a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT) {
+                    firstNightInCycle = a.getRosterDate();
+                    break;
+                }
+            }
+            if (firstNightInCycle != null) {
+                for (RosterAssignment a : empAssignments) {
+                    if (a.getRosterDate().isBefore(firstNightInCycle) && a.isWeeklyOff()) {
+                        findings.add(new RosterValidationFinding(
+                                "WEEKLY_OFF_BEFORE_NIGHT_VIOLATION",
+                                "Weekly OFF Precedes Night Shift",
+                                ValidationSeverity.ERROR,
+                                emp.getEmployeeCode(), empName, a.getRosterDate(),
+                                empName + " has Weekly OFF on " + a.getRosterDate() + " prior to Night shift on " + firstNightInCycle + " in the same cycle.",
+                                "Mandatory invariant: Weekly OFF must immediately follow a Night shift for fatigue recovery; Weekly OFF can never precede a later Night shift in the same roster cycle."
+                        ));
+                    }
                 }
             }
 
@@ -328,15 +356,19 @@ public class RosterValidatorService {
             }
 
             long eligibleDays = empAssignments.stream().filter(a -> emp.isEligibleForDate(a.getRosterDate())).count();
-            int cycleWorkingDays = (cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
+            cycleWorkingDays = (cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
             long leaveCount = empAssignments.stream().filter(RosterAssignment::isOnLeave).count();
             long workCount = empAssignments.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() != ShiftType.OFF).count();
             long nonWorkedHolidays = empAssignments.stream()
                     .filter(a -> holidayDates.contains(a.getRosterDate()))
                     .filter(a -> a.isWeeklyOff() || a.isOnLeave() || a.getShift() == null || a.getShift().getShiftType() == ShiftType.OFF)
                     .count();
-            int targetExpectedOffs = Math.min(expectedOffs, Math.max(0, (int) eligibleDays - (int) leaveCount));
-            int expectedWorkDays = Math.max(0, (eligibleDays == 7 ? cycleWorkingDays : (int) eligibleDays - targetExpectedOffs) - (int) leaveCount - (int) nonWorkedHolidays);
+            worksSundayNight = (cycle != null && cycle.getEndDate() != null) && empAssignments.stream()
+                    .anyMatch(a -> a.getRosterDate().equals(cycle.getEndDate()) && !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT);
+            targetExpectedOffs = (worksSundayNight && cycleWorkingDays == 6) ? 0 : Math.min(expectedOffs, Math.max(0, (int) eligibleDays - (int) leaveCount));
+            int expectedWorkDays = (worksSundayNight && cycleWorkingDays == 6)
+                    ? (int) eligibleDays - (int) leaveCount - (int) nonWorkedHolidays
+                    : Math.max(0, (eligibleDays == 7 ? cycleWorkingDays : (int) eligibleDays - targetExpectedOffs) - (int) leaveCount - (int) nonWorkedHolidays);
 
             checksRun++;
             if (cycleWorkingDays == 6 && emp.isActive() && eligibleDays == 7) {

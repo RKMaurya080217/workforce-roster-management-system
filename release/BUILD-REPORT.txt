@@ -1,16 +1,17 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 134: WRMS ROSTER ENGINE DEEP AUDIT, CONSTRAINT VALIDATION & OPTIMIZATION
+BATCH 135: WRMS STRICT NIGHT-TO-OFF ENFORCEMENT & DAY-WISE PREFERENCE MATCHING
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-134-FRESH.jar
+Artifact Name           : WRMS-BATCH-135-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.9.jar
-Build Timestamp         : 2026-11-06 05:45:00 IST
-SHA-256 Checksum        : 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.1.0.jar
+Build Timestamp         : 2026-11-06 12:05:50 IST
+SHA-256 Checksum        : 34B3F5AC533E69823CC5EFC8957469E6EA2FDF2368BD5FB3C4C738E604A409AE
+Previous Build (B134)   : 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
 Previous Build (B133)   : 68CF2CD2E5D3B535EDBEA4A8E451E63675CDA5C57719E87055B887F534F81981
 Previous Build (B132)   : 83F465FD544BDD09A3508BC24909E9645860813DCCABE8C04948A9B2CFF8FC61
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
@@ -21,64 +22,44 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Test Suite Execution    : 81 tests executed across 6 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
-Batch 134 Specifics     : 14/14 tests in Batch134RosterEngineAuditAndOptimizationTest PASSED
+Test Suite Execution    : 91 tests executed across 7 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
+Batch 135 Specifics     : 10/10 tests in Batch135StrictNightToOffAndPreferenceMatchingTest PASSED
 
 3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
 [ROOT CAUSE IDENTIFIED]
-1. Infeasibility Reporting:
-   - When minimum required workforce capacity was mathematically insufficient (e.g. fewer active employees than
-     required daily coverage + mandatory weekly offs, or 4 employees with 2 females where 2 males cannot physically
-     cover 7 nights under max-2-night limits), the engine threw standard exceptions rather than the explicit
-     "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE" required by operations.
-2. Evening Shift Rebalance Drift:
-   - In `pickBestWorkShiftForEmployee`, when an employee's Weekly Off was repaired or reallocated, the fallback
-     shift defaulted to `ShiftType.EVENING`, creating an over-allocation of evening shifts (> 2 max capacity)
-     resulting in `MAX_COVERAGE_EVENING` warnings and conflicts.
-3. Mid-Week Partial-Week Eligibility:
-   - Employees joining mid-week or resigning mid-week were incorrectly evaluated for a full 6-day work week
-     by `RosterValidatorService`, generating false `INVALID_WORKING_DAYS_COUNT` violations.
-4. Historical Cycle Preservation:
-   - Weekly off repair across week boundaries (`enforceAndRepairExactWeeklyOff`) lacked a lower bound guard,
-     risking mutating previous cycle day assignments when repairing Day 1.
-5. Sunday Night Cross-Week Off Validation:
-   - Cross-week transition checks in `RosterValidatorService` exempted employees if their start date was not OFF,
-     permitting illegal Monday morning shifts immediately following Sunday night.
-6. Null Safety for OFF Shift Intervals:
-   - `ShiftType.OFF` has null `startTime` and `endTime`. Evaluating rest intervals against `OFF` threw
-     `NullPointerException: time` inside `LocalDate.atTime`.
+1. Issue 1 — Wrong Weekly Off Order (Off Preceding Night):
+   - In 6-day mode, the generator pre-assigned Weekly Off on Saturday for an employee working Sunday night,
+     placing Weekly Off BEFORE the Night shift in the same roster cycle.
+   - Core Invariant: NIGHT SHIFT -> IMMEDIATE NEXT-DAY WEEKLY OFF. An off prior to a later night shift violates
+     recovery sequencing. For Sunday night workers in 6-day mode, Sunday night must be followed by Monday OFF
+     of the subsequent roster cycle (resulting in 0 offs in the current Monday-Sunday cycle).
+2. Issue 2 — Day-Wise Shift Preference Not Honored:
+   - Configured Saturday Night preferences (e.g., Rajat Maurya) were overwritten by candidate scoring penalties
+     or daytime balance heuristics where assigning Weekly Off received 0 penalty while night transitions incurred
+     penalties.
+   - General profile avoidance (`isShiftAvoided(NIGHT)`) was incorrectly overriding specific date preferences.
+3. Capacity Calculation & Development Team Safety:
+   - When active male staffing was <= 4, individual `maxNightsPerWeek` caps below 2 physically precluded covering
+     7 nights in a 7-day week (4 * 1 = 4 < 7). Heuristic boosting to 2 nights ensured mathematical feasibility.
+   - Development team members were strictly exempted from Night shift rotations across all backtracking and
+     scoring branches.
 
-[IMPLEMENTATION FIXES]
-1. `RosterService.java`:
-   - Updated workforce shortage checks to explicitly throw "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE".
-   - Added mid-week eligibility checks (`employee.isEligibleForDate(date)`) in `generateDay`.
-   - Enforced Sunday Night cross-week recovery off on Monday for the incoming cycle.
-   - Guarded `enforceAndRepairExactWeeklyOff` with `checkIdx > 0` to preserve historical cycles.
-   - Fixed fallback shift assignment to `ShiftType.GENERAL` and added evening surplus rebalancing in `rebalanceDailyCoverage`.
-   - Set overall status to "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE" on constraint failures.
-2. `RosterValidatorService.java`:
-   - Updated date-specific negative preference evaluation for `DO_NOT_ASSIGN`.
-   - Added `NIGHT_SHIFTS_NOT_CLUSTERED` error detection for isolated/non-consecutive nights.
-   - Enforced exact 1 night per day (`EXACT_NIGHT_COVERAGE`) and database-driven morning capacity.
-   - Strictly enforced Monday off after Sunday night without non-night exemptions.
-   - Adjusted expected work days dynamically based on `eligibleDays` for mid-week join/resignation.
-   - Injected `RosterOverrideRepository` to detect and enforce `MANUAL_OVERRIDE_VIOLATION`.
-   - Added null and `ShiftType != OFF` checks on all rest interval calculations.
-3. `Batch134RosterEngineAuditAndOptimizationTest.java`:
-   - 14 comprehensive test methods verifying scaling (4-25 employees), night clustering, Sunday-Monday rest,
-     12-hour minimum rest, female daytime safety, mid-week joins, approved leaves, shift preferences,
-     manual overrides, inactive employee exclusion, mathematical infeasibility, regeneration diversity,
-     database-driven capacity, and performance/stress benchmarks.
-
-4. ARTIFACT SIGNATURES & VERIFICATION
---------------------------------------------------------------------------------
-release/WRMS-BATCH-134-FRESH.jar:
-  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
-WRMS-Client-Release/WRMS-Client-1.0.9.jar:
-  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
-target/weekly-roster-management-system-1.0.0.jar:
-  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
-
-Status: FULL INTEGRATION & VALIDATION CONFIRMED
+[REPAIRS APPLIED]
+1. `RosterValidatorService.java`:
+   - Updated `NO_WEEKLY_OFF` and `EXCESS_WEEKLY_OFF` validation to recognize Sunday night workers in 6-day mode
+     as legitimately having 0 offs in current cycle (`targetExpectedOffs = 0`).
+   - Added `WEEKLY_OFF_BEFORE_NIGHT_VIOLATION` validation check (`ValidationSeverity.ERROR`) flagging any
+     Weekly Off occurring before an employee's Night shift in the cycle.
+2. `RosterService.java`:
+   - Implemented `planNightSchedule`: prioritizes date-specific night preferences, handles consecutive night clustering,
+     and pre-reserves post-night recovery offs while strictly preventing pre-night offs.
+   - Updated `canWorkNightOnDate` so date-specific targets override general avoidances.
+   - Updated `enforceAndRepairExactWeeklyOff`: converts any pre-night off to a safe daytime working shift and sets
+     target offs = 0 for Sunday night workers in 6-day mode.
+   - Updated `calculateSmartScore`: heavy reward (+25,000) for matching date-specific preferences, heavy penalty
+     (-35,000) for assigning non-matching shifts or Weekly Off on preference dates, and -40,000 for `DO_NOT_ASSIGN`.
+   - Hardened Development Team exemption from Night shifts across `solveDay`, `HungarianAlgorithm`, and `rebalanceDailyCoverage`.
+3. Client Distribution & Launch Script:
+   - Synchronized `WRMS-Client-Release/WRMS-Client-1.1.0.jar` and updated `run.bat` auto-discovery priority.
 ================================================================================

@@ -103,9 +103,14 @@ public class Batch128FinalRosterEngineRebuildTest {
             List<RosterAssignment> empAssigns = empMap.get(emp.getId());
             assertNotNull(empAssigns, "Assignments must exist for employee " + emp.getFirstName());
             long weeklyOffCount = empAssigns.stream().filter(RosterAssignment::isWeeklyOff).count();
+            boolean worksSundayNight = empAssigns.stream().anyMatch(a ->
+                    a.getRosterDate().getDayOfWeek() == DayOfWeek.SUNDAY
+                    && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT
+                    && !a.isWeeklyOff() && !a.isOnLeave());
+            long expected = worksSundayNight ? 0 : 1;
 
-            assertEquals(1, weeklyOffCount,
-                    "Employee " + emp.getFirstName() + " (" + emp.getEmployeeCode() + ") must have EXACTLY 1 Weekly Off (got " + weeklyOffCount + ")");
+            assertEquals(expected, weeklyOffCount,
+                    "Employee " + emp.getFirstName() + " (" + emp.getEmployeeCode() + ") must have expected Weekly Off (got " + weeklyOffCount + ")");
         }
 
         // Clean up
@@ -122,8 +127,11 @@ public class Batch128FinalRosterEngineRebuildTest {
 
         List<RosterAssignment> assignments = rosterAssignmentRepository.findByCycleIdOrderByRosterDateAsc(response.id());
         long totalWeeklyOffs = assignments.stream().filter(RosterAssignment::isWeeklyOff).count();
-
-        int expectedTotalOffs = activeEmployees.size();
+        boolean hasSundayNightWorker = assignments.stream().anyMatch(a ->
+                a.getRosterDate().getDayOfWeek() == DayOfWeek.SUNDAY
+                && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT
+                && !a.isWeeklyOff() && !a.isOnLeave());
+        int expectedTotalOffs = hasSundayNightWorker ? activeEmployees.size() - 1 : activeEmployees.size();
         assertEquals(expectedTotalOffs, totalWeeklyOffs,
                 "Workforce total weekly offs must equal eligible active employee count N (" + expectedTotalOffs + ")");
 
@@ -184,10 +192,15 @@ public class Batch128FinalRosterEngineRebuildTest {
                 }
             }
 
-            // Total weekly offs must still be exactly 1
+            // Total weekly offs must still be exactly 1 (or 0 if working Sunday night cross-week)
             long weeklyOffCount = empAssigns.stream().filter(RosterAssignment::isWeeklyOff).count();
-            assertEquals(1, weeklyOffCount,
-                    "Employee " + emp.getFirstName() + " must have exactly 1 Weekly Off even with night shift recovery");
+            boolean worksSundayNight = empAssigns.stream().anyMatch(a ->
+                    a.getRosterDate().getDayOfWeek() == DayOfWeek.SUNDAY
+                    && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT
+                    && !a.isWeeklyOff() && !a.isOnLeave());
+            long expectedWeeklyOffs = worksSundayNight ? 0 : 1;
+            assertEquals(expectedWeeklyOffs, weeklyOffCount,
+                    "Employee " + emp.getFirstName() + " must have expected Weekly Off count even with night shift recovery");
         }
 
         // Clean up
