@@ -8,6 +8,7 @@ import com.weeklyroster.repository.HolidayRepository;
 import com.weeklyroster.repository.LeaveRequestRepository;
 import com.weeklyroster.repository.RosterAssignmentRepository;
 import com.weeklyroster.repository.RosterCycleRepository;
+import com.weeklyroster.repository.RosterOverrideRepository;
 import com.weeklyroster.repository.ShiftRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,13 @@ public class RosterValidatorService {
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.weeklyroster.repository.EmployeePreferenceRepository preferenceRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private RosterOverrideRepository overrideRepository;
+
+    public void setOverrideRepository(RosterOverrideRepository overrideRepository) {
+        this.overrideRepository = overrideRepository;
+    }
 
     public void setHolidayRepository(HolidayRepository holidayRepository) {
         this.holidayRepository = holidayRepository;
@@ -104,7 +112,9 @@ public class RosterValidatorService {
 
             long workingCountOnDate = counts.values().stream().mapToLong(Long::longValue).sum();
             boolean isWeekend = (d.getDayOfWeek() == java.time.DayOfWeek.SATURDAY || d.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
-            int minMorning = (isWeekend || workingCountOnDate <= 5) ? 1 : 2;
+            Shift morningShiftObj = shiftMap.get(ShiftType.MORNING);
+            int configuredMorningCap = (morningShiftObj != null && morningShiftObj.getCapacity() > 0) ? morningShiftObj.getCapacity() : 2;
+            int minMorning = Math.min(configuredMorningCap, (isWeekend || workingCountOnDate <= 5) ? 1 : 2);
             long morningCount = counts.getOrDefault(ShiftType.MORNING, 0L);
             if (morningCount < minMorning) {
                 findings.add(new RosterValidationFinding(
@@ -113,7 +123,19 @@ public class RosterValidatorService {
                         ValidationSeverity.ERROR,
                         null, null, d,
                         "Morning shift has " + morningCount + " employees assigned on " + d + " (minimum required is " + minMorning + ").",
-                        "Monday–Friday requires at least 2 employees on Morning shift; weekends or reduced workforce require at least 1."
+                        "Monday–Friday requires at least " + minMorning + " employees on Morning shift; weekends or reduced workforce require at least 1."
+                ));
+            }
+
+            long nightCountOnDate = counts.getOrDefault(ShiftType.NIGHT, 0L);
+            if (nightCountOnDate > 1) {
+                findings.add(new RosterValidationFinding(
+                        "EXACT_NIGHT_COVERAGE",
+                        "Exact Night Shift Coverage Violation",
+                        ValidationSeverity.ERROR,
+                        null, null, d,
+                        "Night shift has " + nightCountOnDate + " employees assigned on " + d + " (strictly exactly 1 required).",
+                        "CRIS mandatory fatigue safety rule: Exactly one Night shift must be assigned per calendar day."
                 ));
             }
 
@@ -241,6 +263,23 @@ public class RosterValidatorService {
                         empName + " has " + nightCount + " night shifts (max allowed is 2).",
                         "Fatigue safety policy limits night shifts to at most 2 per week."
                 ));
+            } else if (nightCount == 2) {
+                checksRun++;
+                List<LocalDate> nightDates = empAssignments.stream()
+                        .filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() == ShiftType.NIGHT)
+                        .map(RosterAssignment::getRosterDate)
+                        .sorted()
+                        .toList();
+                if (nightDates.size() == 2 && !nightDates.get(1).equals(nightDates.get(0).plusDays(1))) {
+                    findings.add(new RosterValidationFinding(
+                            "NIGHT_SHIFTS_NOT_CLUSTERED",
+                            "Scattered Night Shifts Forbidden",
+                            ValidationSeverity.ERROR,
+                            emp.getEmployeeCode(), empName, null,
+                            empName + " has 2 night shifts that are scattered (" + nightDates.get(0) + " and " + nightDates.get(1) + ") instead of clustered consecutively.",
+                            "CRIS mandatory fatigue safety rule: If an employee receives two Night shifts in the same week, they must be consecutive."
+                    ));
+                }
             }
 
             if (emp.getGender() == Gender.FEMALE) {
@@ -288,6 +327,7 @@ public class RosterValidatorService {
                 }
             }
 
+            long eligibleDays = empAssignments.stream().filter(a -> emp.isEligibleForDate(a.getRosterDate())).count();
             int cycleWorkingDays = (cycle.getWorkingDays() != null) ? cycle.getWorkingDays() : 6;
             long leaveCount = empAssignments.stream().filter(RosterAssignment::isOnLeave).count();
             long workCount = empAssignments.stream().filter(a -> !a.isWeeklyOff() && !a.isOnLeave() && a.getShift() != null && a.getShift().getShiftType() != ShiftType.OFF).count();
@@ -295,11 +335,11 @@ public class RosterValidatorService {
                     .filter(a -> holidayDates.contains(a.getRosterDate()))
                     .filter(a -> a.isWeeklyOff() || a.isOnLeave() || a.getShift() == null || a.getShift().getShiftType() == ShiftType.OFF)
                     .count();
-            int targetExpectedOffs = Math.min(expectedOffs, Math.max(0, 7 - (int) leaveCount));
-            int expectedWorkDays = Math.max(0, cycleWorkingDays - (int) leaveCount - (int) nonWorkedHolidays);
+            int targetExpectedOffs = Math.min(expectedOffs, Math.max(0, (int) eligibleDays - (int) leaveCount));
+            int expectedWorkDays = Math.max(0, (eligibleDays == 7 ? cycleWorkingDays : (int) eligibleDays - targetExpectedOffs) - (int) leaveCount - (int) nonWorkedHolidays);
 
             checksRun++;
-            if (cycleWorkingDays == 6 && emp.isActive()) {
+            if (cycleWorkingDays == 6 && emp.isActive() && eligibleDays == 7) {
                 if (offCount != targetExpectedOffs && leaveCount < 7) {
                     findings.add(new RosterValidationFinding(
                             "INVALID_WEEKLY_OFF_COUNT",
@@ -320,6 +360,17 @@ public class RosterValidatorService {
                             "Hard invariant: Normal employee has 6 working days + 1 Weekly OFF when no leave, adjusted for non-worked official holidays."
                     ));
                 }
+            } else if (cycleWorkingDays == 6 && emp.isActive() && eligibleDays < 7) {
+                if (offCount > targetExpectedOffs) {
+                    findings.add(new RosterValidationFinding(
+                            "EXCESS_WEEKLY_OFF",
+                            "High Weekly OFF Count",
+                            ValidationSeverity.WARNING,
+                            emp.getEmployeeCode(), empName, null,
+                            empName + " has " + offCount + " Weekly OFF days in partial cycle (" + eligibleDays + " eligible days).",
+                            "Configured allotment is " + targetExpectedOffs + " Weekly OFF."
+                    ));
+                }
             }
 
             if (!empAssignments.isEmpty()) {
@@ -330,19 +381,20 @@ public class RosterValidatorService {
                     if (prevA.getRosterDate() != null && prevA.getRosterDate().equals(first.getRosterDate().minusDays(1))) {
                         if (prevA.getShift() != null && prevA.getShift().getShiftType() == ShiftType.NIGHT) {
                             checksRun++;
-                            if (!first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null && first.getShift().getShiftType() != ShiftType.OFF) {
-                                if (first.getShift().getShiftType() != ShiftType.NIGHT) {
-                                    findings.add(new RosterValidationFinding(
-                                            "NIGHT_REQUIRES_NEXT_DAY_OFF",
-                                            "Night Shift Must Be Followed by Weekly OFF",
-                                            ValidationSeverity.ERROR,
-                                            emp.getEmployeeCode(), empName, first.getRosterDate(),
-                                            empName + " worked NIGHT on preceding Sunday (" + prevA.getRosterDate() + ") but is assigned " + first.getShift().getShiftType().name() + " on " + first.getRosterDate() + " (must be Weekly OFF).",
-                                            "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
-                                    ));
-                                }
+                            if (!first.isWeeklyOff() && !first.isOnLeave()) {
+                                findings.add(new RosterValidationFinding(
+                                        "NIGHT_REQUIRES_NEXT_DAY_OFF",
+                                        "Night Shift Must Be Followed by Weekly OFF",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, first.getRosterDate(),
+                                        empName + " worked NIGHT on preceding Sunday (" + prevA.getRosterDate() + ") but is assigned " + (first.getShift() != null ? first.getShift().getShiftType().name() : "Duty") + " on " + first.getRosterDate() + " (must be Weekly OFF).",
+                                        "CRIS mandatory fatigue safety rule: Whenever an employee is assigned NIGHT (22:00 - 07:00), they MUST receive WEEKLY OFF on the following calendar day."
+                                ));
                             }
-                        } else if (prevA.getShift() != null && !first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null) {
+                        } else if (prevA.getShift() != null && !first.isWeeklyOff() && !first.isOnLeave() && first.getShift() != null
+                                && prevA.getShift().getShiftType() != ShiftType.OFF && first.getShift().getShiftType() != ShiftType.OFF
+                                && prevA.getShift().getStartTime() != null && prevA.getShift().getEndTime() != null
+                                && first.getShift().getStartTime() != null && first.getShift().getEndTime() != null) {
                             checksRun++;
                             Shift sPrev = prevA.getShift();
                             Shift sCur = first.getShift();
@@ -419,24 +471,28 @@ public class RosterValidatorService {
                             }
                         }
 
-                        LocalDateTime end1 = curr.getRosterDate().atTime(s1.getEndTime());
-                        if (s1.isOvernight() || s1.getEndTime().isBefore(s1.getStartTime())) {
-                            end1 = end1.plusDays(1);
-                        }
-                        LocalDateTime start2 = next.getRosterDate().atTime(s2.getStartTime());
+                        if (s1.getShiftType() != ShiftType.OFF && s2.getShiftType() != ShiftType.OFF
+                                && s1.getStartTime() != null && s1.getEndTime() != null
+                                && s2.getStartTime() != null && s2.getEndTime() != null) {
+                            LocalDateTime end1 = curr.getRosterDate().atTime(s1.getEndTime());
+                            if (s1.isOvernight() || s1.getEndTime().isBefore(s1.getStartTime())) {
+                                end1 = end1.plusDays(1);
+                            }
+                            LocalDateTime start2 = next.getRosterDate().atTime(s2.getStartTime());
 
-                        long restMinutes = Duration.between(end1, start2).toMinutes();
-                        if (restMinutes < 720) {
-                            long hours = restMinutes / 60;
-                            long mins = Math.abs(restMinutes % 60);
-                            findings.add(new RosterValidationFinding(
-                                    "REST_INTERVAL_VIOLATION",
-                                    "12-Hour Rest Violation",
-                                    ValidationSeverity.ERROR,
-                                    emp.getEmployeeCode(), empName, next.getRosterDate(),
-                                    s1.getShiftType().name() + " -> " + s2.getShiftType().name() + " (" + hours + "h " + mins + "m rest; required 12h 00m)",
-                                    "Consecutive shift gap between " + curr.getRosterDate() + " and " + next.getRosterDate() + " is below minimum 12h mandatory rest."
-                            ));
+                            long restMinutes = Duration.between(end1, start2).toMinutes();
+                            if (restMinutes < 720) {
+                                long hours = restMinutes / 60;
+                                long mins = Math.abs(restMinutes % 60);
+                                findings.add(new RosterValidationFinding(
+                                        "REST_INTERVAL_VIOLATION",
+                                        "12-Hour Rest Violation",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, next.getRosterDate(),
+                                        s1.getShiftType().name() + " -> " + s2.getShiftType().name() + " (" + hours + "h " + mins + "m rest; required 12h 00m)",
+                                        "Consecutive shift gap between " + curr.getRosterDate() + " and " + next.getRosterDate() + " is below minimum 12h mandatory rest."
+                                ));
+                            }
                         }
                     }
                 }
@@ -479,32 +535,46 @@ public class RosterValidatorService {
                     if (dspOpt.isPresent()) {
                         hasDateSpecificPref = true;
                         checksRun++;
-                        ShiftType expected = dspOpt.get().getShiftType();
-                        boolean femaleSafetyConflict = emp.getGender() == Gender.FEMALE && (expected == ShiftType.NIGHT || expected == ShiftType.EVENING);
-                        boolean higherPrecedenceApplies = curr.isOnLeave() || curr.isManualAssignment() || curr.isOverridden() || femaleSafetyConflict || (prevDayWasNight && expected != ShiftType.OFF);
+                        var dsp = dspOpt.get();
+                        ShiftType expected = dsp.getShiftType();
+                        if (dsp.getPreferenceType() == RecurringPreferenceType.DO_NOT_ASSIGN) {
+                            if (!curr.isWeeklyOff() && !curr.isOnLeave() && curr.getShift() != null && curr.getShift().getShiftType() == expected) {
+                                findings.add(new RosterValidationFinding(
+                                        "DATE_RESTRICTION_VIOLATION",
+                                        "Date Shift Restriction Violated",
+                                        ValidationSeverity.ERROR,
+                                        emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                        empName + " has Date-Specific Restriction 'Do Not Assign " + expected.name() + "' on " + curr.getRosterDate() + " but was assigned " + expected.name(),
+                                        "Admin configured date shift restriction is a mandatory hard constraint."
+                                ));
+                            }
+                        } else {
+                            boolean femaleSafetyConflict = emp.getGender() == Gender.FEMALE && (expected == ShiftType.NIGHT || expected == ShiftType.EVENING);
+                            boolean higherPrecedenceApplies = curr.isOnLeave() || curr.isManualAssignment() || curr.isOverridden() || femaleSafetyConflict || (prevDayWasNight && expected != ShiftType.OFF);
 
-                        if (!higherPrecedenceApplies) {
-                            if (expected == ShiftType.OFF) {
-                                if (!curr.isWeeklyOff()) {
-                                    findings.add(new RosterValidationFinding(
-                                            "DATE_PREFERENCE_VIOLATION",
-                                            "Date Shift Preference Mismatch",
-                                            ValidationSeverity.ERROR,
-                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                            empName + " has Date Preference for OFF on " + curr.getRosterDate() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
-                                            "Admin configured date-specific preference is a mandatory hard constraint."
-                                    ));
-                                }
-                            } else {
-                                if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
-                                    findings.add(new RosterValidationFinding(
-                                            "DATE_PREFERENCE_VIOLATION",
-                                            "Date Shift Preference Mismatch",
-                                            ValidationSeverity.ERROR,
-                                            emp.getEmployeeCode(), empName, curr.getRosterDate(),
-                                            empName + " has Date Preference for " + expected.name() + " on " + curr.getRosterDate() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
-                                            "Admin configured date-specific preference is a mandatory hard constraint."
-                                    ));
+                            if (!higherPrecedenceApplies) {
+                                if (expected == ShiftType.OFF) {
+                                    if (!curr.isWeeklyOff()) {
+                                        findings.add(new RosterValidationFinding(
+                                                "DATE_PREFERENCE_VIOLATION",
+                                                "Date Shift Preference Mismatch",
+                                                ValidationSeverity.ERROR,
+                                                emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                empName + " has Date Preference for OFF on " + curr.getRosterDate() + " but was assigned " + (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Duty"),
+                                                "Admin configured date-specific preference is a mandatory hard constraint."
+                                        ));
+                                    }
+                                } else {
+                                    if (curr.isWeeklyOff() || curr.getShift() == null || curr.getShift().getShiftType() != expected) {
+                                        findings.add(new RosterValidationFinding(
+                                                "DATE_PREFERENCE_VIOLATION",
+                                                "Date Shift Preference Mismatch",
+                                                ValidationSeverity.ERROR,
+                                                emp.getEmployeeCode(), empName, curr.getRosterDate(),
+                                                empName + " has Date Preference for " + expected.name() + " on " + curr.getRosterDate() + " but was assigned " + (curr.isWeeklyOff() ? "OFF" : (curr.getShift() != null ? curr.getShift().getShiftType().name() : "Unknown")),
+                                                "Admin configured date-specific preference is a mandatory hard constraint."
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -596,6 +666,39 @@ public class RosterValidatorService {
                     }
                 }
             }
+        }
+
+        if (overrideRepository != null && start != null && end != null) {
+            try {
+                List<RosterOverride> overrides = overrideRepository.findByDateRange(start, end);
+                for (RosterOverride ro : overrides) {
+                    if (ro.getAssignment() != null && ro.getAssignment().getEmployee() != null && ro.getAssignment().getRosterDate() != null) {
+                        Long oEmpId = ro.getAssignment().getEmployee().getId();
+                        LocalDate oDate = ro.getAssignment().getRosterDate();
+                        RosterAssignment currentAssign = assignments.stream()
+                                .filter(a -> a.getEmployee() != null && a.getEmployee().getId().equals(oEmpId) && a.getRosterDate().equals(oDate))
+                                .findFirst().orElse(null);
+                        if (currentAssign != null) {
+                            checksRun++;
+                            boolean expectedOff = ro.isWeeklyOff();
+                            ShiftType expectedShift = ro.getNewShiftType();
+                            boolean matches = expectedOff ? currentAssign.isWeeklyOff() : (!currentAssign.isWeeklyOff() && currentAssign.getShift() != null && currentAssign.getShift().getShiftType() == expectedShift);
+                            if (!matches) {
+                                Employee oEmp = currentAssign.getEmployee();
+                                String oEmpName = oEmp.getFirstName() + " " + (oEmp.getLastName() != null ? oEmp.getLastName() : "");
+                                findings.add(new RosterValidationFinding(
+                                        "MANUAL_OVERRIDE_VIOLATION",
+                                        "Manual Assignment / Override Not Preserved",
+                                        ValidationSeverity.ERROR,
+                                        oEmp.getEmployeeCode(), oEmpName, oDate,
+                                        "Admin override for " + oEmpName + " on " + oDate + " (expected " + (expectedOff ? "OFF" : expectedShift) + ") was not preserved (current: " + (currentAssign.isWeeklyOff() ? "OFF" : (currentAssign.getShift() != null ? currentAssign.getShift().getShiftType() : "NULL")) + ").",
+                                        "Explicit manual assignments and admin overrides must never be silently overwritten."
+                                ));
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
         }
 
         int errorCount = (int) findings.stream().filter(f -> f.severity() == ValidationSeverity.ERROR).count();

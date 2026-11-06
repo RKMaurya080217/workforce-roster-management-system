@@ -1,18 +1,18 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 133: EMPLOYEE PROFILE REQUEST CHANGE, ADMIN APPROVAL & DATA SYNCHRONIZATION
+BATCH 134: WRMS ROSTER ENGINE DEEP AUDIT, CONSTRAINT VALIDATION & OPTIMIZATION
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-133-FRESH.jar
+Artifact Name           : WRMS-BATCH-134-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.8.jar
-Build Timestamp         : 2026-11-06 04:09:10 IST
-SHA-256 Checksum        : 68CF2CD2E5D3B535EDBEA4A8E451E63675CDA5C57719E87055B887F534F81981
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.0.9.jar
+Build Timestamp         : 2026-11-06 05:45:00 IST
+SHA-256 Checksum        : 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
+Previous Build (B133)   : 68CF2CD2E5D3B535EDBEA4A8E451E63675CDA5C57719E87055B887F534F81981
 Previous Build (B132)   : 83F465FD544BDD09A3508BC24909E9645860813DCCABE8C04948A9B2CFF8FC61
-Previous Build (B131)   : F66BE61976352E3CAE95C4DF06401FD1F8C1D82DD5EAFC285FC8C545DDD41CAE
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -21,51 +21,64 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Test Suite Execution    : 89 tests executed across 10 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
+Test Suite Execution    : 81 tests executed across 6 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
+Batch 134 Specifics     : 14/14 tests in Batch134RosterEngineAuditAndOptimizationTest PASSED
 
 3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
 [ROOT CAUSE IDENTIFIED]
-Previously, the Profile Request Change workflow was disconnected in several critical places:
-1. When employees changed a profile field inline (e.g. mobile number) and clicked "Request Change",
-   the handler submitted directly via `submitDirectProfileChange(...)` without opening a confirmation dialog
-   and without collecting a mandatory reason/justification from the employee.
-2. The Request Change modal (`#profileChangeModal`) lacked a Reason for Change input, an explicit confirmation alert,
-   and did not display request reference IDs.
-3. The Employee Profile Change Requests table lacked columns for "Request ID" and "Reason", hiding the justification.
-4. The Admin unified approval dashboard Reason column defaulted to `'Pending admin review'` because `r.reason`
-   was not mapped on `ProfileChangeRequest` entity or returned in `ProfileChangeRequestResponse`.
-5. Reviewer identity (`decided_by`) was not recorded on profile approval/rejection.
-6. Approval did not trigger canonical CSV synchronization via `EmployeeMasterSyncService`.
+1. Infeasibility Reporting:
+   - When minimum required workforce capacity was mathematically insufficient (e.g. fewer active employees than
+     required daily coverage + mandatory weekly offs, or 4 employees with 2 females where 2 males cannot physically
+     cover 7 nights under max-2-night limits), the engine threw standard exceptions rather than the explicit
+     "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE" required by operations.
+2. Evening Shift Rebalance Drift:
+   - In `pickBestWorkShiftForEmployee`, when an employee's Weekly Off was repaired or reallocated, the fallback
+     shift defaulted to `ShiftType.EVENING`, creating an over-allocation of evening shifts (> 2 max capacity)
+     resulting in `MAX_COVERAGE_EVENING` warnings and conflicts.
+3. Mid-Week Partial-Week Eligibility:
+   - Employees joining mid-week or resigning mid-week were incorrectly evaluated for a full 6-day work week
+     by `RosterValidatorService`, generating false `INVALID_WORKING_DAYS_COUNT` violations.
+4. Historical Cycle Preservation:
+   - Weekly off repair across week boundaries (`enforceAndRepairExactWeeklyOff`) lacked a lower bound guard,
+     risking mutating previous cycle day assignments when repairing Day 1.
+5. Sunday Night Cross-Week Off Validation:
+   - Cross-week transition checks in `RosterValidatorService` exempted employees if their start date was not OFF,
+     permitting illegal Monday morning shifts immediately following Sunday night.
+6. Null Safety for OFF Shift Intervals:
+   - `ShiftType.OFF` has null `startTime` and `endTime`. Evaluating rest intervals against `OFF` threw
+     `NullPointerException: time` inside `LocalDate.atTime`.
 
 [IMPLEMENTATION FIXES]
-1. Domain Entity & DTO Mapping:
-   - Mapped `request_reason VARCHAR(1000)` and `decided_by VARCHAR(100)` onto `ProfileChangeRequest.java`.
-   - Updated `CreateProfileChangeRequest.java` to support `reason` with backward-compatible 2-argument constructor.
-   - Updated `ProfileChangeRequestResponse.java` to include `reason` and `reviewedBy` with backward-compatible constructor.
-2. Service & Approval Workflow:
-   - Updated `ProfileChangeRequestService.java`:
-     * Saves employee's reason on submission.
-     * Records reviewer identity from authenticated `SecurityContextHolder` on approval and rejection.
-     * Re-validates requested values upon approval before mutating employee master data.
-     * Atomically synchronizes canonical CSV (`EmployeeMasterSyncService`) and dev mirror on approval.
-     * Generates in-app notifications (`PROFILE_CHANGE_DECISION`) and audit logs.
-     * Added `getAllRequests(status, employeeId)` with filtering support.
-3. Admin Endpoints:
-   - Added `GET /api/admin/profile-change-requests` with `status` and `employeeId` filters.
-   - Added `GET /api/admin/profile-change-requests/history`.
-4. Frontend UI Enhancements:
-   - Added `#pcrFormReason` textarea and confirmation banner to `#profileChangeModal` in `index.html`.
-   - Updated `handleProfileChangeClick` in `app.js` to always present modal confirmation and capture reason.
-   - Enhanced `renderMyChangeRequestsTableHTML` with full 9-column specification (Request ID, Field, Current Value,
-     Requested Value, Reason, Submitted At, Status, Reviewed At, Admin Remarks).
-   - Displayed employee's reason in `renderProfileApprovalsCategoryBody` for Admin review.
-   - Updated client distribution launcher `run.bat` to detect `WRMS-Client-1.0.8.jar`.
+1. `RosterService.java`:
+   - Updated workforce shortage checks to explicitly throw "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE".
+   - Added mid-week eligibility checks (`employee.isEligibleForDate(date)`) in `generateDay`.
+   - Enforced Sunday Night cross-week recovery off on Monday for the incoming cycle.
+   - Guarded `enforceAndRepairExactWeeklyOff` with `checkIdx > 0` to preserve historical cycles.
+   - Fixed fallback shift assignment to `ShiftType.GENERAL` and added evening surplus rebalancing in `rebalanceDailyCoverage`.
+   - Set overall status to "ROSTER INFEASIBLE / WORKFORCE CAPACITY SHORTAGE" on constraint failures.
+2. `RosterValidatorService.java`:
+   - Updated date-specific negative preference evaluation for `DO_NOT_ASSIGN`.
+   - Added `NIGHT_SHIFTS_NOT_CLUSTERED` error detection for isolated/non-consecutive nights.
+   - Enforced exact 1 night per day (`EXACT_NIGHT_COVERAGE`) and database-driven morning capacity.
+   - Strictly enforced Monday off after Sunday night without non-night exemptions.
+   - Adjusted expected work days dynamically based on `eligibleDays` for mid-week join/resignation.
+   - Injected `RosterOverrideRepository` to detect and enforce `MANUAL_OVERRIDE_VIOLATION`.
+   - Added null and `ShiftType != OFF` checks on all rest interval calculations.
+3. `Batch134RosterEngineAuditAndOptimizationTest.java`:
+   - 14 comprehensive test methods verifying scaling (4-25 employees), night clustering, Sunday-Monday rest,
+     12-hour minimum rest, female daytime safety, mid-week joins, approved leaves, shift preferences,
+     manual overrides, inactive employee exclusion, mathematical infeasibility, regeneration diversity,
+     database-driven capacity, and performance/stress benchmarks.
 
-4. VERIFICATION EVIDENCE
+4. ARTIFACT SIGNATURES & VERIFICATION
 --------------------------------------------------------------------------------
-- Test Suite: Batch133ProfileChangeWorkflowTest (20/20 passed)
-- Full Regression Suite: 89/89 passed, 0 failures, 0 errors, 0 skipped.
-- Independent Smoke Test on isolated port 8089: Succeeded.
-- Railway Deployment: 0 deployments.
+release/WRMS-BATCH-134-FRESH.jar:
+  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
+WRMS-Client-Release/WRMS-Client-1.0.9.jar:
+  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
+target/weekly-roster-management-system-1.0.0.jar:
+  SHA-256: 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
+
+Status: FULL INTEGRATION & VALIDATION CONFIRMED
 ================================================================================
