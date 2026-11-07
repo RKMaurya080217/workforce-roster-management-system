@@ -6413,6 +6413,36 @@ public class RosterService {
 					break;
 				}
 			}
+
+			int maxMorningCap = shifts.containsKey(ShiftType.MORNING) ? Math.max(2, shifts.get(ShiftType.MORNING).getCapacity()) : 2;
+			updatedM = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList()).size();
+			while (updatedM > maxMorningCap) {
+				RosterAssignment toMove = null;
+				List<RosterAssignment> morningAssigns = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList());
+				for (RosterAssignment ma : morningAssigns) {
+					if (ma.isManualAssignment() || ma.isOverridden()) continue;
+					ApplicablePreference pref = preferencesMap != null ? preferencesMap.get(ma.getEmployee().getId()) : null;
+					if (pref != null && pref.hasTargetShiftForDate(date)) continue;
+					List<RosterAssignment> empList = empAssignments.getOrDefault(ma.getEmployee().getId(), Collections.emptyList());
+					int idx = empList.indexOf(ma);
+					RosterAssignment prev = idx > 0 ? empList.get(idx - 1) : null;
+					RosterAssignment next = idx < empList.size() - 1 ? empList.get(idx + 1) : null;
+					if (hasRestWithAdjacent(ma.getEmployee().getId(), date, shifts.get(ShiftType.GENERAL), prev, next)) {
+						toMove = ma;
+						break;
+					}
+				}
+				if (toMove != null) {
+					log.info("[WRMS REBALANCE] Day {}: Moving {} from MORNING to GENERAL to adhere to maximum capacity ({})",
+							date, toMove.getEmployee().getEmployeeCode(), maxMorningCap);
+					toMove.setShift(shifts.get(ShiftType.GENERAL));
+					shiftMap.get(ShiftType.MORNING).remove(toMove);
+					shiftMap.computeIfAbsent(ShiftType.GENERAL, k -> new ArrayList<>()).add(toMove);
+					updatedM = shiftMap.getOrDefault(ShiftType.MORNING, Collections.emptyList()).size();
+				} else {
+					break;
+				}
+			}
 		}
 	}
 
