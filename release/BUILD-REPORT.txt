@@ -1,20 +1,21 @@
 ================================================================================
 WEEKLY ROSTER MANAGEMENT SYSTEM (WRMS) - RELEASE BUILD REPORT
-BATCH 136: COMPLETE DATA SYNCHRONIZATION, SYSTEM MAPPING & ADVANCED ROSTER OPTIMIZATION
+BATCH 138: ADVANCED ROSTER ENGINE CORRECTION
 ================================================================================
 
 1. ARTIFACT INFORMATION
 --------------------------------------------------------------------------------
-Artifact Name           : WRMS-BATCH-136-FRESH.jar
+Artifact Name           : WRMS-BATCH-138-FRESH.jar
 Release Directory       : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\release
 Target Output           : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\target\weekly-roster-management-system-1.0.0.jar
-Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.1.1.jar
-Build Timestamp         : 2026-11-07 12:47:10 IST
-SHA-256 Checksum        : 5C4AECB02FB70D34C189AB95811B83041CAEFDB7303837EDF9AF7A491FB53705
+Client Distribution     : C:\Users\RK Maurya\OneDrive\Documents\Roster Management System\WRMS-Client-Release\WRMS-Client-1.1.2.jar
+Build Timestamp         : 2026-11-11 20:33:21 IST
+File Size (Bytes)       : 74,546,705
+SHA-256 Checksum        : 6E0A92352EA772517FD30721BED82293BC3730EE443D54E8E92638403665C0DE
+Previous Build (B137)   : 823CDF6B1135C71AB28A97589433F2665FD0C3F8C97B8CE2B9447E5559A62E95
+Previous Build (B136)   : 5C4AECB02FB70D34C189AB95811B83041CAEFDB7303837EDF9AF7A491FB53705
 Previous Build (B135)   : 34B3F5AC533E69823CC5EFC8957469E6EA2FDF2368BD5FB3C4C738E604A409AE
 Previous Build (B134)   : 014F2A119D0630A28124AB8B8FEA219B662DA4BB9D3984791C7C818B5C6A5204
-Previous Build (B133)   : 68CF2CD2E5D3B535EDBEA4A8E451E63675CDA5C57719E87055B887F534F81981
-Previous Build (B132)   : 83F465FD544BDD09A3508BC24909E9645860813DCCABE8C04948A9B2CFF8FC61
 Status                  : GENUINE FRESH REBUILD CONFIRMED (Checksums Distinct)
 
 2. COMPILER & RUNTIME ENVIRONMENT
@@ -23,42 +24,52 @@ JDK Version             : Java 25.0.2 (Build release target: 17)
 Spring Boot Version     : 3.3.5
 Database Engines        : SQLite 3.46.1.0 (local) / MySQL Connector-J (production)
 Build Tool              : Apache Maven 3.x
-Test Suite Execution    : 103 tests executed across 8 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
-Batch 136 Specifics     : 12/12 tests in Batch136SystemSyncAndOptimizationTest PASSED
+Test Suite Execution    : 138 tests executed across 11 test classes, 0 failures, 0 errors, 0 skipped (100% PASS)
+Batch 138 Specifics     : 20/20 tests in Batch138AdvancedRosterEngineCorrectionTest PASSED
 
 3. ROOT CAUSE & ARCHITECTURAL FIX SUMMARY
 --------------------------------------------------------------------------------
-[ROOT CAUSE IDENTIFIED]
-1. Domain & API Synchronization:
-   - Synchronized canonical master data structures across SQLite and MySQL.
-   - Unified `/api/admin/preferences/employee/{id}/summary` and `/api/preferences/my/summary`
-     projections with full profile endpoints.
-2. Morning Shift Capacity in Scaled Workforces:
-   - In large workforces (e.g., 25 employees), high day-only worker density previously led to
-     overflow on Morning shift (`MAX_COVERAGE_MORNING`) during initial candidate allocations.
-   - Solution: Symmetric rebalance capping loop implemented in `rebalanceShiftCoverage` for
-     MORNING shifts, automatically migrating excess personnel to GENERAL while preserving rest
-     and female safety rules.
-3. Constraint Solver & Optimization Invariants:
-   - Mandatory Night -> next-day Weekly Off strictly maintained across all candidate loops.
-   - Zero pre-night Weekly Offs within same cycle guaranteed.
-   - Sunday Night cross-week handling (0 current cycle offs, Monday recovery) verified.
-   - Exact Day-Wise Preference Matching and Negative `DO_NOT_ASSIGN` preferences strictly honored.
+[ROOT CAUSE IDENTIFIED & PERMANENTLY FIXED]
+1. Issue 1 - Weekly Off Assigned Before Night:
+   - Root Cause: `planWeeklyOffs` in 5-day mode did not reserve 0 offs for Sunday night
+     workers or <=1 off for Saturday night workers, and `pairTemplates` lacked `mFirstNight`
+     ordering checks. Furthermore, `enforceAndRepairExactWeeklyOff` could strip a mandatory
+     Monday recovery off (following Sunday night of previous cycle) when checking `firstNightDate`,
+     and `evaluateFinalValidation` didn't deduct deferred offs in 5-day mode.
+   - Solution: Enforced strict Night-First commitment in `generateDay`, updated `planWeeklyOffs`
+     and `enforceAndRepairExactWeeklyOff` for both 5-day and 6-day modes, protected previous-cycle
+     Sunday night Monday recovery offs (`!postNightOffDates.contains(...)` and cross-cycle checks
+     in `rebalanceDailyCoverage`), and synchronized `evaluateFinalValidation` target calculations.
+2. Issue 2 - Development Team Night Preferences (Divyansh & Sriram):
+   - Root Cause: `planNightSchedule`, `repairDailyCoverage`, and `solveDay` unconditionally
+     excluded `isDevelopmentTeam()` employees from NIGHT shifts, overriding explicit NIGHT preferences.
+   - Solution: Added rule-based `hasNightPreference` / `hasNightPreferenceForDate` helpers (zero
+     hardcoded names in production logic) so explicitly preferring Night enables eligibility while
+     non-preferring Dev Team members remain Mon-Fri General.
+3. Issue 3 - Regeneration Diversity After Draft Deletion:
+   - Root Cause: Deleted draft history needed immediate flush (`saveAndFlush`), candidate solver
+     permutations needed tie-breaking perturbation across eligible pools (`cycleSalt`), and 5-day
+     validation false positives prevented clean candidate selection.
+   - Solution: Flushed deletion history, added salt-based permutation tie-breaker in `planNightSchedule`,
+     and resolved 5-day validation conflicts so distinct, zero-conflict candidates are chosen.
 
 4. REGRESSION SUITE VERIFICATION MATRIX (100% PASS)
 --------------------------------------------------------------------------------
-1. Batch126EmployeeMasterDataSyncTest                     : 10/10 PASS
-2. Batch128FinalRosterEngineRebuildTest                   : 16/16 PASS
-3. Batch131RegressionAuditTest                            : 12/12 PASS
-4. Batch132ViewAllRulesAndEmployeeProfileTest             : 11/11 PASS
-5. Batch133ProfileChangeWorkflowTest                      : 14/14 PASS
-6. Batch134RosterEngineAuditAndOptimizationTest           : 18/18 PASS
-7. Batch135StrictNightToOffAndPreferenceMatchingTest      : 10/10 PASS
-8. Batch136SystemSyncAndOptimizationTest                  : 12/12 PASS
-Total Executed: 103 | Passed: 103 | Failures: 0 | Errors: 0 | Skipped: 0 | Elapsed Time: 8m 22s
+1. Batch126EmployeeMasterDataSyncTest                     : 20/20 PASS (22.34 s)
+2. Batch128FinalRosterEngineRebuildTest                   :  6/6  PASS (53.90 s)
+3. Batch130CentralizedPreferenceSyncTest                  :  5/5  PASS (7.75 s)
+4. Batch131RegressionAuditTest                            : 11/11 PASS (8.19 s)
+5. Batch132ViewAllRulesAndEmployeeProfileTest             : 10/10 PASS (3.90 s)
+6. Batch133ProfileChangeWorkflowTest                      : 20/20 PASS (4.77 s)
+7. Batch134RosterEngineAuditAndOptimizationTest           : 14/14 PASS (158.9 s)
+8. Batch135StrictNightToOffAndPreferenceMatchingTest      : 10/10 PASS (92.31 s)
+9. Batch136SystemSyncAndOptimizationTest                  : 12/12 PASS (110.1 s)
+10. Batch137TenRosterCyclesValidationTest                 : 10/10 PASS (75.55 s)
+11. Batch138AdvancedRosterEngineCorrectionTest             : 20/20 PASS (242.4 s)
+Total Executed: 138 | Passed: 138 | Failures: 0 | Errors: 0 | Skipped: 0 | Elapsed Time: 13m 06s
 
 5. CLIENT RUNTIME LAUNCHER
 --------------------------------------------------------------------------------
-`WRMS-Client-Release/run.bat` updated to detect and launch `WRMS-Client-1.1.1.jar`
+`WRMS-Client-Release/run.bat` updated to detect and launch `WRMS-Client-1.1.2.jar`
 as primary artifact with fallback cascading through previous releases.
 ================================================================================
