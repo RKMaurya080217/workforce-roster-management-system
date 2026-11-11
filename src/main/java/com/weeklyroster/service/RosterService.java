@@ -5808,7 +5808,7 @@ public class RosterService {
 						if (emp.isDevelopmentTeam()) continue;
 						boolean isSixDayMode = (cycle != null && cycle.getWorkingDays() != null && cycle.getWorkingDays() == 6);
 						int maxNights = emp.getMaxNightsPerWeek() != null ? emp.getMaxNightsPerWeek() : maxNightsAllowed;
-						if (totalNonDevMales <= 3 && emp.getMaxNightsPerWeek() != null) {
+						if (totalNonDevMales <= 4 && emp.getMaxNightsPerWeek() != null) {
 							maxNights = Math.max(maxNights, 2);
 						} else if (isSixDayMode && emp.getMaxNightsPerWeek() != null && emp.getMaxNightsPerWeek() > 1) {
 							maxNights = Math.max(maxNights, 2);
@@ -5857,7 +5857,7 @@ public class RosterService {
 						long totalNonDevMales = employees.stream().filter(e -> e.getGender() == Gender.MALE && e.isActive() && !e.isDevelopmentTeam()).count();
 						boolean isSixDayMode = (cycle != null && cycle.getWorkingDays() != null && cycle.getWorkingDays() == 6);
 						int maxNights = male.getMaxNightsPerWeek() != null ? male.getMaxNightsPerWeek() : maxNightsAllowed;
-						if (totalNonDevMales <= 3 && male.getMaxNightsPerWeek() != null) {
+						if (totalNonDevMales <= 4 && male.getMaxNightsPerWeek() != null) {
 							maxNights = Math.max(maxNights, 2);
 						} else if (isSixDayMode && male.getMaxNightsPerWeek() != null && male.getMaxNightsPerWeek() > 1) {
 							maxNights = Math.max(maxNights, 2);
@@ -5917,7 +5917,7 @@ public class RosterService {
 							long empNights = empList.stream().filter(x -> !x.isWeeklyOff() && !x.isOnLeave() && x.getShift() != null && x.getShift().getShiftType() == ShiftType.NIGHT).count();
 							long totalNonDevMales = employees.stream().filter(e2 -> e2.getGender() == Gender.MALE && e2.isActive() && !e2.isDevelopmentTeam()).count();
 							int empLimit = emp.getMaxNightsPerWeek() != null ? emp.getMaxNightsPerWeek() : maxNightsAllowed;
-							if (totalNonDevMales <= 3 && emp.getMaxNightsPerWeek() != null) {
+							if (totalNonDevMales <= 4 && emp.getMaxNightsPerWeek() != null) {
 								empLimit = Math.max(empLimit, 2);
 							} else if ((cycle != null && cycle.getWorkingDays() != null && cycle.getWorkingDays() == 6) && emp.getMaxNightsPerWeek() != null && emp.getMaxNightsPerWeek() > 1) {
 								empLimit = Math.max(empLimit, 2);
@@ -6766,7 +6766,14 @@ public class RosterService {
 						}
 					}
 				}
-				// Priority 1b: Offs following an Evening shift where converting to Day shift would violate 12h rest
+				// Priority 1b: Mandatory post-night recovery OFFs within cycle (postNightOffDates)
+				if (keepOffs.size() < targetOffs && !postNightOffDates.isEmpty()) {
+					for (LocalDate postNightDate : postNightOffDates) {
+						if (keepOffs.size() >= targetOffs) break;
+						offList.stream().filter(a -> a.getRosterDate().equals(postNightDate)).findFirst().ifPresent(keepOffs::add);
+					}
+				}
+				// Priority 1c: Offs following an Evening shift where converting to Day shift would violate 12h rest
 				if (keepOffs.size() < targetOffs) {
 					for (RosterAssignment offA : offList) {
 						if (keepOffs.size() >= targetOffs) break;
@@ -6776,13 +6783,6 @@ public class RosterService {
 								&& pA.getShift().getShiftType() == ShiftType.EVENING) {
 							keepOffs.add(offA);
 						}
-					}
-				}
-				// Priority 2: Other post-night OFFs
-				if (keepOffs.size() < targetOffs && !postNightOffDates.isEmpty()) {
-					for (LocalDate postNightDate : postNightOffDates) {
-						if (keepOffs.size() >= targetOffs) break;
-						offList.stream().filter(a -> a.getRosterDate().equals(postNightDate)).findFirst().ifPresent(keepOffs::add);
 					}
 				}
 				// Priority 2b: Consecutive rest adjacent to Holiday

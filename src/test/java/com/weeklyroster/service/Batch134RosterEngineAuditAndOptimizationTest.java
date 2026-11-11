@@ -168,7 +168,7 @@ public class Batch134RosterEngineAuditAndOptimizationTest {
                 for (int m = 0; m < reqMales; m++) {
                     Employee male = males.get(m);
                     male.setActive(true);
-                    if (size == 4) {
+                    if (reqMales <= 4) {
                         male.setMaxNightsPerWeek(2);
                     }
                     employeeRepository.save(male);
